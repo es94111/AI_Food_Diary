@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const target = url.searchParams.get("date")
     ? new Date(`${url.searchParams.get("date")}T00:00:00`)
-    : addDays(new Date(), -1);
+    : new Date();
   const summaryDate = startOfLocalDay(target);
 
   const existing = await prisma.dailySummary.findUnique({

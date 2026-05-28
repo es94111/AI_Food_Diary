@@ -23,6 +23,8 @@ export function MealCaptureForm() {
   const [preview, setPreview] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [nextMealAdvice, setNextMealAdvice] = useState("");
+  const [adviceLoading, setAdviceLoading] = useState(false);
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
@@ -129,10 +131,19 @@ export function MealCaptureForm() {
       setManualItems([emptyManualItem()]);
       setConfirmItems([]);
       setShowConfirm(false);
+      await loadNextMealAdvice();
       router.refresh();
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadNextMealAdvice() {
+    setAdviceLoading(true);
+    const response = await fetch("/api/recommendations/next-meal");
+    const data = await response.json().catch(() => ({}));
+    setAdviceLoading(false);
+    if (response.ok) setNextMealAdvice(data.advice ?? "");
   }
 
   return (
@@ -175,6 +186,13 @@ export function MealCaptureForm() {
         {loading ? "儲存中..." : preview ? "AI 分析並儲存" : "儲存餐點"}
       </button>
       <p className="mt-3 text-xs text-slate-500">AI 分析為估算值，請依實際份量修正。</p>
+      {adviceLoading ? <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">正在產生下一餐建議...</p> : null}
+      {nextMealAdvice ? (
+        <div className="mt-4 rounded-2xl bg-emerald-50 p-4">
+          <h3 className="font-black text-emerald-900">下一餐建議</h3>
+          <p className="mt-2 whitespace-pre-line text-sm leading-7 text-emerald-900">{nextMealAdvice}</p>
+        </div>
+      ) : null}
       {showConfirm ? (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 p-4">
           <div className="mx-auto max-w-2xl rounded-[2rem] bg-white p-6 shadow-2xl">

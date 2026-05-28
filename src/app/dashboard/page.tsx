@@ -126,8 +126,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
         <div className="space-y-6">
           {view === "week" ? <WeeklyNutritionReview days={weeklyDays} /> : null}
-          <AiInfoCard title="下一餐建議" endpoint="/api/recommendations/next-meal" type="advice" />
-          <AiInfoCard title="昨日總結" endpoint="/api/daily-summary" type="summary" />
+          <AiInfoCard title="今日總結" endpoint={`/api/daily-summary?date=${isoDate(selectedDate)}`} type="summary" />
         </div>
       </section>
     </main>
