@@ -144,9 +144,31 @@ function MealCard({ meal }: { meal: Meal }) {
         </form>
       ) : (
         <>
-          <ul className="mt-3 space-y-2 text-sm text-slate-700">
+          <ul className="mt-3 grid gap-3">
             {meal.items.map((item) => (
-              <li key={item.id}>{item.name} · {item.estimatedAmount} · {item.calories} kcal · P {Number(item.protein).toFixed(1)}g / F {Number(item.fat).toFixed(1)}g / C {Number(item.carbs).toFixed(1)}g</li>
+              <li className="rounded-2xl bg-slate-50 p-3" key={item.id}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-bold text-slate-900">{item.name}</p>
+                    <p className="mt-1 text-xs text-slate-500">份量：{item.estimatedAmount}</p>
+                  </div>
+                  <p className="shrink-0 rounded-full bg-white px-3 py-1 text-sm font-bold text-emerald-700 shadow-sm">{item.calories} kcal</p>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                  <div className="rounded-xl bg-white p-2">
+                    <p className="font-bold text-sky-700">{Number(item.protein).toFixed(1)}g</p>
+                    <p className="text-slate-500">蛋白質</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-2">
+                    <p className="font-bold text-amber-700">{Number(item.fat).toFixed(1)}g</p>
+                    <p className="text-slate-500">脂肪</p>
+                  </div>
+                  <div className="rounded-xl bg-white p-2">
+                    <p className="font-bold text-emerald-700">{Number(item.carbs).toFixed(1)}g</p>
+                    <p className="text-slate-500">碳水</p>
+                  </div>
+                </div>
+              </li>
             ))}
           </ul>
           <MacroBars protein={Number(meal.totalProtein)} fat={Number(meal.totalFat)} carbs={Number(meal.totalCarbs)} />
