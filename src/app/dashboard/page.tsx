@@ -6,6 +6,7 @@ import { sumMeals } from "@/lib/totals";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { UserHeaderActions } from "@/components/user-header-actions";
+import { resolveImageUrl } from "@/lib/storage";
 import { AiInfoCard } from "@/components/ai-info-card";
 import { MealList } from "@/components/meal-list";
 import { DateRangeSwitcher } from "@/components/date-range-switcher";
@@ -36,18 +37,24 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const proteinPercent = macroTotal ? Math.round((totals.protein / macroTotal) * 100) : 0;
   const fatPercent = macroTotal ? Math.round((totals.fat / macroTotal) * 100) : 0;
   const carbsPercent = macroTotal ? Math.round((totals.carbs / macroTotal) * 100) : 0;
-  const mealList = meals.map((meal) => ({
-    ...meal,
-    totalProtein: Number(meal.totalProtein),
-    totalFat: Number(meal.totalFat),
-    totalCarbs: Number(meal.totalCarbs),
-    items: meal.items.map((item) => ({
-      ...item,
-      protein: Number(item.protein),
-      fat: Number(item.fat),
-      carbs: Number(item.carbs)
+  const mealList = await Promise.all(
+    meals.map(async (meal) => ({
+      ...meal,
+      totalProtein: Number(meal.totalProtein),
+      totalFat: Number(meal.totalFat),
+      totalCarbs: Number(meal.totalCarbs),
+      // Resolve S3 storage key → presigned URL; fall back to null on error
+      imageStorageKey: meal.imageStorageKey
+        ? await resolveImageUrl(meal.imageStorageKey).catch(() => null)
+        : null,
+      items: meal.items.map((item) => ({
+        ...item,
+        protein: Number(item.protein),
+        fat: Number(item.fat),
+        carbs: Number(item.carbs)
+      }))
     }))
-  }));
+  );
   const profile = user.profile
     ? {
         gender: user.profile.gender,

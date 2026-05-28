@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { mealUpdateSchema } from "@/lib/validators";
+import { deleteImage, isStorageKey } from "@/lib/storage";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -18,7 +19,16 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
   const { id } = await context.params;
+  const meal = await prisma.meal.findFirst({ where: { id, userId: user.id }, select: { imageStorageKey: true } });
   await prisma.meal.deleteMany({ where: { id, userId: user.id } });
+
+  // Delete the associated image from object storage if one exists
+  if (meal?.imageStorageKey && isStorageKey(meal.imageStorageKey)) {
+    await deleteImage(meal.imageStorageKey).catch((err) => {
+      console.error("Failed to delete image from storage", err);
+    });
+  }
+
   return NextResponse.json({ ok: true });
 }
 
