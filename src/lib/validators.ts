@@ -26,5 +26,17 @@ export const profileSchema = z.object({
 export const mealSchema = z.object({
   mealType: z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]),
   imageDataUrl: z.string().startsWith("data:image/").optional(),
-  eatenAt: z.string().datetime().optional()
+  eatenAt: z.string().datetime().optional(),
+  manualItems: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(120),
+        estimatedAmount: z.string().min(1).max(120),
+        calories: z.coerce.number().int().min(0).max(10000),
+        protein: z.coerce.number().min(0).max(1000),
+        fat: z.coerce.number().min(0).max(1000),
+        carbs: z.coerce.number().min(0).max(1000)
+      })
+    )
+    .optional()
 });
