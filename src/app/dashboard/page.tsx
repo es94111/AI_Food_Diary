@@ -11,6 +11,7 @@ import { AiInfoCard } from "@/components/ai-info-card";
 import { MealList } from "@/components/meal-list";
 import { DateRangeSwitcher } from "@/components/date-range-switcher";
 import { WeeklyNutritionReview } from "@/components/weekly-nutrition-review";
+import { AdminPanel } from "@/components/admin-panel";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string }> }) {
   const user = await getCurrentUser();
@@ -81,6 +82,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     };
   });
   const title = view === "week" ? `${isoDate(start)} — ${isoDate(addDays(end, -1))}` : isoDate(start);
+  const appConfig = user.isAdmin
+    ? await prisma.appConfig.findUnique({ where: { id: "singleton" } })
+    : null;
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6">
@@ -147,6 +151,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <AiInfoCard title="今日總結" endpoint={`/api/daily-summary?date=${isoDate(selectedDate)}`} type="summary" />
         </div>
       </section>
+
+      {user.isAdmin && (
+        <section className="mt-8">
+          <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />
+        </section>
+      )}
     </main>
   );
 }

@@ -25,6 +25,7 @@ model User {
   email        String         @unique
   passwordHash String
   name         String?
+  isAdmin      Boolean        @default(false)
   profile      UserProfile?
   meals        Meal[]
   summaries    DailySummary[]
@@ -32,6 +33,11 @@ model User {
   recommendations DailyRecommendation[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
+}
+
+model AppConfig {
+  id               String  @id @default("singleton")
+  registrationOpen Boolean @default(true)
 }
 
 model UserProfile {

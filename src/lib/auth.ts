@@ -56,7 +56,7 @@ export async function getCurrentUser() {
 
     return prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true, name: true, profile: true }
+      select: { id: true, email: true, name: true, isAdmin: true, profile: true }
     });
   } catch {
     return null;
@@ -65,8 +65,13 @@ export async function getCurrentUser() {
 
 export async function requireUser() {
   const user = await getCurrentUser();
-  if (!user) {
-    throw new Error("Unauthorized");
-  }
+  if (!user) throw new Error("Unauthorized");
+  return user;
+}
+
+export async function requireAdmin() {
+  const user = await getCurrentUser();
+  if (!user) throw new Error("Unauthorized");
+  if (!user.isAdmin) throw new Error("Forbidden");
   return user;
 }
