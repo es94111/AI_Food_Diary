@@ -2,21 +2,130 @@
 
 :root {
   color-scheme: light;
-  --background: #f0fdf4;
   --foreground: #0f172a;
 }
 
+/* ── Animated ambient background blobs ───────────────────────────── */
 body {
   margin: 0;
-  background: radial-gradient(ellipse 90% 60% at -5% -10%, #bbf7d0, transparent), var(--background);
+  min-height: 100dvh;
+  background-color: #ecfdf5;
   color: var(--foreground);
   font-family: 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 65% 55% at 12% 12%,  rgba(52,  211, 153, 0.55) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 45% at 88% 8%,   rgba(167, 139, 250, 0.45) 0%, transparent 60%),
+    radial-gradient(ellipse 45% 60% at 4%  88%,  rgba(96,  165, 250, 0.40) 0%, transparent 60%),
+    radial-gradient(ellipse 55% 48% at 93% 90%,  rgba(251, 113, 133, 0.35) 0%, transparent 60%),
+    radial-gradient(ellipse 80% 70% at 50% 50%,  rgba(254, 240, 138, 0.20) 0%, transparent 70%);
+  animation: ambientBlobs 28s ease-in-out infinite alternate;
 }
+
+@keyframes ambientBlobs {
+  0%   { transform: scale(1)    rotate(0deg);  }
+  40%  { transform: scale(1.06) rotate(2.5deg);}
+  70%  { transform: scale(0.97) rotate(-1.5deg);}
+  100% { transform: scale(1.04) rotate(3deg);  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body::before { animation: none; }
+}
+
+/* ── Glass utilities ─────────────────────────────────────────────── */
+.glass {
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(22px) saturate(170%) brightness(1.03);
+  -webkit-backdrop-filter: blur(22px) saturate(170%) brightness(1.03);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.07),
+    0 2px 8px  rgba(0, 0, 0, 0.04),
+    inset 0  1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.03);
+}
+
+.glass-dark {
+  background: rgba(8, 14, 32, 0.72);
+  backdrop-filter: blur(24px) saturate(160%) brightness(0.88);
+  -webkit-backdrop-filter: blur(24px) saturate(160%) brightness(0.88);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.40),
+    0 2px 12px rgba(0, 0, 0, 0.25),
+    inset 0  1px 0 rgba(255, 255, 255, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.20);
+}
+
+/* Hover lift — apply in addition to .glass */
+.glass-lift {
+  transition:
+    transform  240ms cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 240ms ease,
+    background 240ms ease;
+}
+.glass-lift:hover {
+  transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.68);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.10),
+    0 4px  16px rgba(0, 0, 0, 0.06),
+    inset 0  1px 0 rgba(255, 255, 255, 0.98);
+}
+
+/* Iridescent animated border accent */
+.iridescent {
+  position: relative;
+  isolation: isolate;
+}
+.iridescent::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    135deg,
+    rgba(255,200,200,0.6),
+    rgba(200,240,200,0.6),
+    rgba(180,210,255,0.6),
+    rgba(240,180,255,0.6),
+    rgba(255,240,180,0.6),
+    rgba(255,200,200,0.6)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  animation: prism 8s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes prism {
+  0%   { filter: hue-rotate(0deg);   }
+  100% { filter: hue-rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .iridescent::after { animation: none; }
+}
+
+/* Fallback for browsers without backdrop-filter */
+@supports not (backdrop-filter: blur(1px)) {
+  .glass      { background: rgba(255, 255, 255, 0.96); }
+  .glass-dark { background: rgba(8, 14, 32, 0.96);     }
+}
+
+button, input, select, textarea { font: inherit; }

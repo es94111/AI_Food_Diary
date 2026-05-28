@@ -99,7 +99,7 @@ function MealCard({ meal }: { meal: Meal }) {
   }
 
   return (
-    <article className="rounded-2xl border border-slate-100 p-4">
+    <article className="glass glass-lift rounded-2xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-bold">{meal.mealType}</p>
@@ -149,7 +149,7 @@ function MealCard({ meal }: { meal: Meal }) {
         <>
           <ul className="mt-3 grid gap-3">
             {meal.items.map((item) => (
-              <li className="rounded-2xl bg-slate-50 p-3" key={item.id}>
+              <li className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.7)" }} key={item.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-bold text-slate-900"><RatingBadge rating={item.aiRating} /> {item.name}</p>

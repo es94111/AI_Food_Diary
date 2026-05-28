@@ -104,7 +104,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-5">
-          <div className="rounded-[2rem] bg-gradient-to-br from-slate-900 to-slate-950 p-6 text-white shadow-xl">
+          <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
             <p className="text-sm font-medium text-slate-400">{view === "week" ? "本週攝取" : "當日攝取"}</p>
             <div className="mt-1 flex items-end gap-2">
               <p className="text-5xl font-black tracking-tight">{totals.calories}</p>
@@ -123,7 +123,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <Macro label={`碳水 ${carbsPercent}%`} value={`${totals.carbs.toFixed(1)}g`} />
             </div>
           </div>
-          <div className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-100">
+          <div className="glass glass-lift rounded-[2rem] p-6">
             <h2 className="text-xl font-black">代謝估算</h2>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <Metric label="BMR 基礎代謝" value={bmr ? `${bmr} kcal` : "資料不足"} />
@@ -136,7 +136,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       </section>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div className="rounded-[2rem] bg-white p-6 shadow-sm ring-1 ring-slate-100">
+        <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">{view === "week" ? "本週餐點" : "當日餐點"}</h2>
           <div className="mt-4">
             <MealList meals={mealList} />
@@ -153,16 +153,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
 function Macro({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-white/10 p-3.5">
+    <div className="rounded-2xl p-3.5" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)" }}>
       <p className="text-lg font-black">{value}</p>
-      <p className="mt-0.5 text-xs text-slate-400">{label}</p>
+      <p className="mt-0.5 text-xs text-slate-300">{label}</p>
     </div>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-4">
+    <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.6)", backdropFilter: "blur(8px)" }}>
       <p className="text-xl font-black">{value}</p>
       <p className="mt-0.5 text-xs font-medium text-slate-500">{label}</p>
     </div>

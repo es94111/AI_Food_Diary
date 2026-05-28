@@ -210,7 +210,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   }
 
   return (
-    <form onSubmit={onSubmit} className="rounded-[2rem] bg-white p-6 shadow-sm">
+    <form onSubmit={onSubmit} className="glass glass-lift rounded-[2rem] p-6">
       <h2 className="text-2xl font-black">新增餐點</h2>
       <p className="mt-2 text-sm text-slate-600">拍照或上傳圖片後可由 AI 估算；沒有圖片時也可手動輸入餐點。</p>
       <select className="mt-5 w-full rounded-2xl border border-slate-200 px-4 py-3" name="mealType" defaultValue="LUNCH">

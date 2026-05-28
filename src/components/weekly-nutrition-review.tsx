@@ -9,11 +9,11 @@ type DayReview = {
 
 export function WeeklyNutritionReview({ days }: { days: DayReview[] }) {
   return (
-    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+    <div className="glass glass-lift rounded-[2rem] p-6">
       <h2 className="text-2xl font-black">星期營養回顧</h2>
       <div className="mt-4 grid gap-3">
         {days.map((day) => (
-          <article className="rounded-2xl border border-slate-100 p-4" key={day.date}>
+          <article className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.65)" }} key={day.date}>
             <div className="flex items-center justify-between gap-3">
               <p className="font-bold">{day.date}</p>
               <p className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">{day.calories} kcal</p>

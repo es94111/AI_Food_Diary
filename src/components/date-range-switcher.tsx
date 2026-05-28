@@ -16,7 +16,7 @@ export function DateRangeSwitcher({ date, view }: { date: string; view: "day" | 
   }
 
   return (
-    <div className="mt-6 rounded-[2rem] bg-white p-4 shadow-sm">
+    <div className="glass mt-6 rounded-[2rem] p-4">
       <div className="flex flex-wrap items-center gap-3">
         <input className="rounded-xl border border-slate-200 px-3 py-2" onChange={(event) => update(event.target.value)} type="date" value={date} />
         <div className="flex rounded-xl bg-slate-100 p-1 text-sm font-semibold">

@@ -29,7 +29,7 @@ export function UserHeaderActions({ profile }: { profile?: Profile | null }) {
       <div className="flex items-center gap-2">
         <button
           onClick={() => setOpen(true)}
-          className="flex cursor-pointer items-center gap-2 rounded-full bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-slate-50"
+          className="glass glass-lift flex cursor-pointer items-center gap-2 rounded-full px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors"
         >
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
             <circle cx="12" cy="8" r="4" />
@@ -39,7 +39,7 @@ export function UserHeaderActions({ profile }: { profile?: Profile | null }) {
         </button>
         <button
           onClick={logout}
-          className="cursor-pointer rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-700"
+          className="glass-dark cursor-pointer rounded-full px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-80"
         >
           登出
         </button>
@@ -48,13 +48,13 @@ export function UserHeaderActions({ profile }: { profile?: Profile | null }) {
       {open && (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-16 sm:pt-20">
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <div className="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+          <div className="glass iridescent relative w-full max-w-lg rounded-3xl p-6">
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-2xl font-black">使用者設定</h2>
               <button
                 onClick={() => setOpen(false)}
                 aria-label="關閉"
-                className="cursor-pointer rounded-full bg-slate-100 p-2 text-slate-500 transition-colors hover:bg-slate-200"
+                className="glass cursor-pointer rounded-full p-2 text-slate-500 transition-colors hover:opacity-80"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
                   <path d="M18 6 6 18M6 6l12 12" />

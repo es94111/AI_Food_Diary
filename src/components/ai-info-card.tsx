@@ -28,7 +28,7 @@ export function AiInfoCard({ title, endpoint, type }: { title: string; endpoint:
   }
 
   return (
-    <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+    <div className="glass glass-lift rounded-[2rem] p-6">
       <h2 className="text-2xl font-black">{title}</h2>
       <p className="mt-3 text-sm leading-6 text-slate-600">點擊下方按鈕由 AI 產生內容，會消耗模型額度。</p>
       <button className="mt-4 rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={loading} onClick={load}>
