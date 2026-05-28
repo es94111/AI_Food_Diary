@@ -27,20 +27,17 @@ export async function POST(request: Request) {
     const user = await requireUser();
     const body = mealSchema.parse(await request.json());
     const manualItems = body.manualItems ?? [];
-    const analysis =
-      body.imageDataUrl || manualItems.length === 0
-        ? await analyzeMealImage(body.imageDataUrl)
-        : {
-            foods: manualItems,
-            total: {
-              calories: manualItems.reduce((total, item) => total + item.calories, 0),
-              protein: manualItems.reduce((total, item) => total + item.protein, 0),
-              fat: manualItems.reduce((total, item) => total + item.fat, 0),
-              carbs: manualItems.reduce((total, item) => total + item.carbs, 0)
-            },
-            confidence: 1,
-            notes: "手動新增餐點項目。"
-          };
+    const analysis = {
+      foods: manualItems,
+      total: {
+        calories: manualItems.reduce((total, item) => total + item.calories, 0),
+        protein: manualItems.reduce((total, item) => total + item.protein, 0),
+        fat: manualItems.reduce((total, item) => total + item.fat, 0),
+        carbs: manualItems.reduce((total, item) => total + item.carbs, 0)
+      },
+      confidence: body.imageDataUrl ? 0.8 : 1,
+      notes: body.imageDataUrl ? "使用者已確認 AI 分析結果。" : "手動新增餐點項目。"
+    };
 
     const meal = await prisma.meal.create({
       data: {
