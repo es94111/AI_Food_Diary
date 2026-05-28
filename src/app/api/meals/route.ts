@@ -46,6 +46,7 @@ export async function POST(request: Request) {
       data: {
         userId: user.id,
         mealType: body.mealType,
+        imageStorageKey: body.imageDataUrl,
         eatenAt: body.eatenAt ? new Date(body.eatenAt) : new Date(),
         totalCalories: analysis.total.calories,
         totalProtein: analysis.total.protein,

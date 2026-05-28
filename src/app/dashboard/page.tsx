@@ -3,9 +3,12 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { addDays, startOfLocalDay } from "@/lib/dates";
 import { sumMeals } from "@/lib/totals";
+import { calculateBmr, calculateTdee } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { LogoutButton } from "@/components/logout-button";
 import { AiInfoCard } from "@/components/ai-info-card";
+import { MealList } from "@/components/meal-list";
+import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
 
 export default async function DashboardPage() {
   const user = await getCurrentUser();
@@ -19,6 +22,35 @@ export default async function DashboardPage() {
   });
   const totals = sumMeals(meals);
   const target = user.profile?.calorieTarget ?? 2000;
+  const bmr = calculateBmr(user.profile ?? null);
+  const tdee = calculateTdee(bmr, user.profile?.activityLevel);
+  const macroTotal = totals.protein + totals.fat + totals.carbs;
+  const proteinPercent = macroTotal ? Math.round((totals.protein / macroTotal) * 100) : 0;
+  const fatPercent = macroTotal ? Math.round((totals.fat / macroTotal) * 100) : 0;
+  const carbsPercent = macroTotal ? Math.round((totals.carbs / macroTotal) * 100) : 0;
+  const mealList = meals.map((meal) => ({
+    ...meal,
+    totalProtein: Number(meal.totalProtein),
+    totalFat: Number(meal.totalFat),
+    totalCarbs: Number(meal.totalCarbs),
+    items: meal.items.map((item) => ({
+      ...item,
+      protein: Number(item.protein),
+      fat: Number(item.fat),
+      carbs: Number(item.carbs)
+    }))
+  }));
+  const profile = user.profile
+    ? {
+        gender: user.profile.gender,
+        birthDate: user.profile.birthDate?.toISOString() ?? null,
+        heightCm: user.profile.heightCm,
+        weightKg: user.profile.weightKg ? Number(user.profile.weightKg) : null,
+        activityLevel: user.profile.activityLevel,
+        goal: user.profile.goal,
+        calorieTarget: user.profile.calorieTarget
+      }
+    : null;
 
   return (
     <main className="mx-auto min-h-screen max-w-6xl px-6 py-8">
@@ -31,41 +63,41 @@ export default async function DashboardPage() {
       </header>
 
       <section className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-xl">
-          <p className="text-slate-300">今日攝取</p>
-          <p className="mt-2 text-5xl font-black">{totals.calories} kcal</p>
-          <p className="mt-2 text-sm text-slate-400">目標 {target} kcal</p>
-          <div className="mt-6 h-3 overflow-hidden rounded-full bg-white/10">
-            <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min((totals.calories / target) * 100, 100)}%` }} />
+        <div className="space-y-6">
+          <div className="rounded-[2rem] bg-slate-950 p-6 text-white shadow-xl">
+            <p className="text-slate-300">今日攝取</p>
+            <p className="mt-2 text-5xl font-black">{totals.calories} kcal</p>
+            <p className="mt-2 text-sm text-slate-400">目標 {target} kcal</p>
+            <div className="mt-6 h-3 overflow-hidden rounded-full bg-white/10">
+              <div className="h-full rounded-full bg-emerald-400" style={{ width: `${Math.min((totals.calories / target) * 100, 100)}%` }} />
+            </div>
+            <div className="mt-6 grid grid-cols-3 gap-3 text-center">
+              <Macro label={`蛋白質 ${proteinPercent}%`} value={`${totals.protein.toFixed(1)}g`} />
+              <Macro label={`脂肪 ${fatPercent}%`} value={`${totals.fat.toFixed(1)}g`} />
+              <Macro label={`碳水 ${carbsPercent}%`} value={`${totals.carbs.toFixed(1)}g`} />
+            </div>
           </div>
-          <div className="mt-6 grid grid-cols-3 gap-3 text-center">
-            <Macro label="蛋白質" value={`${totals.protein.toFixed(1)}g`} />
-            <Macro label="脂肪" value={`${totals.fat.toFixed(1)}g`} />
-            <Macro label="碳水" value={`${totals.carbs.toFixed(1)}g`} />
+          <div className="rounded-[2rem] bg-white p-6 shadow-sm">
+            <h2 className="text-2xl font-black">代謝估算</h2>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Metric label="BMR 基礎代謝" value={bmr ? `${bmr} kcal` : "資料不足"} />
+              <Metric label="TDEE 每日消耗" value={tdee ? `${tdee} kcal` : "資料不足"} />
+            </div>
+            <p className="mt-3 text-xs text-slate-500">使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。</p>
           </div>
         </div>
         <MealCaptureForm />
       </section>
 
+      <section className="mt-8">
+        <ProfileMetabolismForm profile={profile} />
+      </section>
+
       <section className="mt-8 grid gap-6 lg:grid-cols-2">
         <div className="rounded-[2rem] bg-white p-6 shadow-sm">
           <h2 className="text-2xl font-black">今日餐點</h2>
-          <div className="mt-4 space-y-4">
-            {meals.length === 0 ? <p className="text-slate-500">今天還沒有紀錄。</p> : null}
-            {meals.map((meal) => (
-              <article className="rounded-2xl border border-slate-100 p-4" key={meal.id}>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-bold">{meal.mealType}</p>
-                  <p className="text-sm text-slate-500">{meal.totalCalories} kcal</p>
-                </div>
-                <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                  {meal.items.map((item) => (
-                    <li key={item.id}>{item.name} · {item.estimatedAmount} · {item.calories} kcal</li>
-                  ))}
-                </ul>
-                {meal.aiNotes ? <p className="mt-3 text-xs text-slate-500">{meal.aiNotes}</p> : null}
-              </article>
-            ))}
+          <div className="mt-4">
+            <MealList meals={mealList} />
           </div>
         </div>
         <div className="space-y-6">
@@ -79,4 +111,8 @@ export default async function DashboardPage() {
 
 function Macro({ label, value }: { label: string; value: string }) {
   return <div className="rounded-2xl bg-white/10 p-4"><p className="text-xl font-bold">{value}</p><p className="text-xs text-slate-300">{label}</p></div>;
+}
+
+function Metric({ label, value }: { label: string; value: string }) {
+  return <div className="rounded-2xl bg-slate-50 p-4"><p className="text-2xl font-black">{value}</p><p className="text-xs text-slate-500">{label}</p></div>;
 }

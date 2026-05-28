@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { mealUpdateSchema } from "@/lib/validators";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -19,4 +20,50 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   const { id } = await context.params;
   await prisma.meal.deleteMany({ where: { id, userId: user.id } });
   return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const user = await requireUser();
+  const { id } = await context.params;
+  const body = mealUpdateSchema.parse(await request.json());
+  const existing = await prisma.meal.findFirst({ where: { id, userId: user.id } });
+  if (!existing) return NextResponse.json({ error: "找不到餐點" }, { status: 404 });
+
+  const totals = body.items.reduce(
+    (acc, item) => ({
+      calories: acc.calories + item.calories,
+      protein: acc.protein + item.protein,
+      fat: acc.fat + item.fat,
+      carbs: acc.carbs + item.carbs
+    }),
+    { calories: 0, protein: 0, fat: 0, carbs: 0 }
+  );
+
+  const meal = await prisma.$transaction(async (tx) => {
+    await tx.mealItem.deleteMany({ where: { mealId: id } });
+    return tx.meal.update({
+      where: { id },
+      data: {
+        mealType: body.mealType,
+        totalCalories: totals.calories,
+        totalProtein: totals.protein,
+        totalFat: totals.fat,
+        totalCarbs: totals.carbs,
+        aiNotes: "使用者已修正餐點項目。",
+        items: {
+          create: body.items.map((item) => ({
+            name: item.name,
+            estimatedAmount: item.estimatedAmount,
+            calories: item.calories,
+            protein: item.protein,
+            fat: item.fat,
+            carbs: item.carbs
+          }))
+        }
+      },
+      include: { items: true }
+    });
+  });
+
+  return NextResponse.json({ meal });
 }

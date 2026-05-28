@@ -40,3 +40,20 @@ export const mealSchema = z.object({
     )
     .optional()
 });
+
+export const mealUpdateSchema = z.object({
+  mealType: z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]),
+  items: z
+    .array(
+      z.object({
+        id: z.string().optional(),
+        name: z.string().min(1).max(120),
+        estimatedAmount: z.string().min(1).max(120),
+        calories: z.coerce.number().int().min(0).max(10000),
+        protein: z.coerce.number().min(0).max(1000),
+        fat: z.coerce.number().min(0).max(1000),
+        carbs: z.coerce.number().min(0).max(1000)
+      })
+    )
+    .min(1)
+});
