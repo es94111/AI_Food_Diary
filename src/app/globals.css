@@ -2,19 +2,21 @@
 
 :root {
   color-scheme: light;
-  --background: #f8fafc;
-  --foreground: #111827;
+  --background: #f0fdf4;
+  --foreground: #0f172a;
 }
 
 body {
   margin: 0;
-  background: radial-gradient(circle at top left, #d1fae5, transparent 32rem), var(--background);
+  background: radial-gradient(ellipse 90% 60% at -5% -10%, #bbf7d0, transparent), var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Plus Jakarta Sans', Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }

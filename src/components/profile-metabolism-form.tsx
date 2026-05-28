@@ -14,7 +14,7 @@ type Profile = {
   calorieTarget?: number | null;
 };
 
-export function ProfileMetabolismForm({ profile }: { profile?: Profile | null }) {
+export function ProfileMetabolismForm({ profile, onSaved }: { profile?: Profile | null; onSaved?: () => void }) {
   const router = useRouter();
   const [message, setMessage] = useState("");
   const [gender, setGender] = useState(profile?.gender ?? "MALE");
@@ -51,43 +51,43 @@ export function ProfileMetabolismForm({ profile }: { profile?: Profile | null })
     }
     setMessage("已更新 BMR/TDEE 資料。");
     router.refresh();
+    if (onSaved) setTimeout(onSaved, 900);
   }
 
   return (
-    <details className="rounded-[2rem] bg-white p-6 shadow-sm">
-      <summary className="cursor-pointer text-2xl font-black">使用者設定</summary>
-      <form className="mt-5" onSubmit={onSubmit}>
-        <h2 className="text-xl font-black">BMR / TDEE 設定</h2>
-        <p className="mt-2 text-sm text-slate-600">填寫身體資料後會自動估算基礎代謝與每日總消耗。</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <select className="rounded-xl border border-slate-200 px-3 py-2" name="gender" onChange={(event) => setGender(event.target.value)} value={gender}>
+    <form onSubmit={onSubmit}>
+      <h3 className="text-base font-bold text-slate-700">BMR / TDEE 設定</h3>
+      <p className="mt-1 text-sm text-slate-500">填寫身體資料後會自動估算基礎代謝與每日總消耗。</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" name="gender" onChange={(e) => setGender(e.target.value)} value={gender}>
           <option value="MALE">男性</option>
           <option value="FEMALE">女性</option>
         </select>
-        <input className="rounded-xl border border-slate-200 px-3 py-2" name="birthDate" onChange={(event) => setBirthDateValue(event.target.value)} type="date" value={birthDateValue || birthDate} />
-        <input className="rounded-xl border border-slate-200 px-3 py-2" name="heightCm" onChange={(event) => setHeightCm(event.target.value)} placeholder="身高 cm" type="number" value={heightCm} />
-        <input className="rounded-xl border border-slate-200 px-3 py-2" name="weightKg" onChange={(event) => setWeightKg(event.target.value)} placeholder="體重 kg" type="number" step="0.1" value={weightKg} />
-        <select className="rounded-xl border border-slate-200 px-3 py-2" name="activityLevel" onChange={(event) => setActivityLevel(event.target.value)} value={activityLevel}>
+        <input className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" name="birthDate" onChange={(e) => setBirthDateValue(e.target.value)} type="date" value={birthDateValue || birthDate} />
+        <input className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" name="heightCm" onChange={(e) => setHeightCm(e.target.value)} placeholder="身高 cm" type="number" value={heightCm} />
+        <input className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" name="weightKg" onChange={(e) => setWeightKg(e.target.value)} placeholder="體重 kg" type="number" step="0.1" value={weightKg} />
+        <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" name="activityLevel" onChange={(e) => setActivityLevel(e.target.value)} value={activityLevel}>
           <option value="SEDENTARY">久坐少動</option>
           <option value="LIGHT">輕度活動</option>
           <option value="MODERATE">中度活動</option>
           <option value="HIGH">高度活動</option>
           <option value="ATHLETE">運動員等級</option>
         </select>
-        <select className="rounded-xl border border-slate-200 px-3 py-2" name="goal" onChange={(event) => setGoal(event.target.value)} value={goal}>
+        <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400" name="goal" onChange={(e) => setGoal(e.target.value)} value={goal}>
           <option value="LOSE_FAT">減脂</option>
           <option value="MAINTAIN">維持</option>
           <option value="BUILD_MUSCLE">增肌</option>
         </select>
-        <div className="rounded-xl bg-slate-50 px-3 py-2 sm:col-span-2">
-          <p className="text-xs text-slate-500">自動熱量目標</p>
-          <p className="text-2xl font-black">{calorieTarget} kcal</p>
-          <p className="text-xs text-slate-500">依 TDEE 與目標自動計算：減脂 -400、增肌 +250、維持 = TDEE。</p>
+        <div className="rounded-xl bg-emerald-50 px-3 py-3 sm:col-span-2">
+          <p className="text-xs font-semibold text-emerald-600">自動熱量目標</p>
+          <p className="mt-0.5 text-2xl font-black text-emerald-900">{calorieTarget} kcal</p>
+          <p className="mt-0.5 text-xs text-emerald-600">依 TDEE 與目標自動計算：減脂 -400、增肌 +250、維持 = TDEE。</p>
         </div>
-        </div>
-        {message ? <p className="mt-3 text-sm text-emerald-700">{message}</p> : null}
-        <button className="mt-4 w-full rounded-xl bg-slate-950 px-4 py-2 font-semibold text-white" type="submit">儲存身體資料</button>
-      </form>
-    </details>
+      </div>
+      {message ? <p className="mt-3 text-sm font-medium text-emerald-700">{message}</p> : null}
+      <button className="mt-4 w-full cursor-pointer rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800" type="submit">
+        儲存身體資料
+      </button>
+    </form>
   );
 }
