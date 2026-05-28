@@ -13,6 +13,17 @@ type MealItem = {
   carbs: number | string;
 };
 
+type EditableMealItem = {
+  clientId: string;
+  id?: string;
+  name: string;
+  estimatedAmount: string;
+  calories: string;
+  protein: string;
+  fat: string;
+  carbs: string;
+};
+
 type Meal = {
   id: string;
   mealType: string;
@@ -33,6 +44,7 @@ export function MealList({ meals }: { meals: Meal[] }) {
 function MealCard({ meal }: { meal: Meal }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
+  const [items, setItems] = useState<EditableMealItem[]>(() => meal.items.map(toEditableItem));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -51,21 +63,27 @@ function MealCard({ meal }: { meal: Meal }) {
   async function onSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
-    const items = meal.items.map((item) => ({
-      id: item.id,
-      name: String(formData.get(`name-${item.id}`) ?? ""),
-      estimatedAmount: String(formData.get(`amount-${item.id}`) ?? ""),
-      calories: Number(formData.get(`calories-${item.id}`) || 0),
-      protein: Number(formData.get(`protein-${item.id}`) || 0),
-      fat: Number(formData.get(`fat-${item.id}`) || 0),
-      carbs: Number(formData.get(`carbs-${item.id}`) || 0)
-    }));
+    const payloadItems = items
+      .filter((item) => item.name.trim())
+      .map((item) => ({
+        id: item.id,
+        name: item.name.trim(),
+        estimatedAmount: item.estimatedAmount.trim() || "未估算",
+        calories: Number(item.calories || 0),
+        protein: Number(item.protein || 0),
+        fat: Number(item.fat || 0),
+        carbs: Number(item.carbs || 0)
+      }));
+    if (payloadItems.length === 0) {
+      setError("至少需要保留一項食物。");
+      return;
+    }
     setLoading(true);
     setError("");
     const response = await fetch(`/api/meals/${meal.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mealType: formData.get("mealType"), items })
+      body: JSON.stringify({ mealType: formData.get("mealType"), items: payloadItems })
     });
     setLoading(false);
     if (!response.ok) {
@@ -102,18 +120,23 @@ function MealCard({ meal }: { meal: Meal }) {
             <option value="DINNER">晚餐</option>
             <option value="SNACK">點心</option>
           </select>
-          {meal.items.map((item) => (
-            <div className="rounded-xl bg-slate-50 p-3" key={item.id}>
-              <input className="w-full rounded-lg border border-slate-200 px-3 py-2" defaultValue={item.name} name={`name-${item.id}`} placeholder="食物名稱" />
-              <input className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2" defaultValue={item.estimatedAmount} name={`amount-${item.id}`} placeholder="份量" />
+          {items.map((item, index) => (
+            <div className="rounded-xl bg-slate-50 p-3" key={item.clientId}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-sm font-bold">食物 {index + 1}</p>
+                <button className="text-sm font-semibold text-red-600 disabled:text-slate-300" disabled={items.length === 1} onClick={() => setItems((values) => values.filter((value) => value.clientId !== item.clientId))} type="button">刪除此項</button>
+              </div>
+              <input className="w-full rounded-lg border border-slate-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "name", event.target.value)} placeholder="食物名稱" value={item.name} />
+              <input className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "estimatedAmount", event.target.value)} placeholder="份量" value={item.estimatedAmount} />
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <input className="rounded-lg border border-slate-200 px-3 py-2" defaultValue={item.calories} name={`calories-${item.id}`} placeholder="熱量" type="number" />
-                <input className="rounded-lg border border-slate-200 px-3 py-2" defaultValue={Number(item.protein)} name={`protein-${item.id}`} placeholder="蛋白質" step="0.1" type="number" />
-                <input className="rounded-lg border border-slate-200 px-3 py-2" defaultValue={Number(item.fat)} name={`fat-${item.id}`} placeholder="脂肪" step="0.1" type="number" />
-                <input className="rounded-lg border border-slate-200 px-3 py-2" defaultValue={Number(item.carbs)} name={`carbs-${item.id}`} placeholder="碳水" step="0.1" type="number" />
+                <input className="rounded-lg border border-slate-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "calories", event.target.value)} placeholder="熱量" type="number" value={item.calories} />
+                <input className="rounded-lg border border-slate-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "protein", event.target.value)} placeholder="蛋白質" step="0.1" type="number" value={item.protein} />
+                <input className="rounded-lg border border-slate-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "fat", event.target.value)} placeholder="脂肪" step="0.1" type="number" value={item.fat} />
+                <input className="rounded-lg border border-slate-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "carbs", event.target.value)} placeholder="碳水" step="0.1" type="number" value={item.carbs} />
               </div>
             </div>
           ))}
+          <button className="w-full rounded-xl border border-dashed border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700" onClick={() => setItems((values) => [...values, emptyEditableItem()])} type="button">新增食物品項</button>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button className="w-full rounded-xl bg-emerald-600 px-4 py-2 font-semibold text-white disabled:opacity-60" disabled={loading} type="submit">
             儲存修正
@@ -133,6 +156,27 @@ function MealCard({ meal }: { meal: Meal }) {
       )}
     </article>
   );
+
+  function updateItem(clientId: string, field: keyof Omit<EditableMealItem, "clientId" | "id">, value: string) {
+    setItems((values) => values.map((item) => (item.clientId === clientId ? { ...item, [field]: value } : item)));
+  }
+}
+
+function toEditableItem(item: MealItem): EditableMealItem {
+  return {
+    clientId: item.id,
+    id: item.id,
+    name: item.name,
+    estimatedAmount: item.estimatedAmount,
+    calories: String(item.calories),
+    protein: String(Number(item.protein)),
+    fat: String(Number(item.fat)),
+    carbs: String(Number(item.carbs))
+  };
+}
+
+function emptyEditableItem(): EditableMealItem {
+  return { clientId: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "" };
 }
 
 function MacroBars({ protein, fat, carbs }: { protein: number; fat: number; carbs: number }) {

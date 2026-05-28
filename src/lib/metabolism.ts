@@ -38,3 +38,15 @@ export function calculateTdee(bmr: number | null, activityLevel?: string | null)
   if (!bmr) return null;
   return Math.round(bmr * activityFactor(activityLevel));
 }
+
+export function calorieTargetFromGoal(tdee: number | null, goal?: string | null) {
+  if (!tdee) return null;
+  switch (goal) {
+    case "LOSE_FAT":
+      return Math.max(800, Math.round(tdee - 400));
+    case "BUILD_MUSCLE":
+      return Math.round(tdee + 250);
+    default:
+      return tdee;
+  }
+}

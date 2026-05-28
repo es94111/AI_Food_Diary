@@ -3,7 +3,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { addDays, startOfLocalDay } from "@/lib/dates";
 import { sumMeals } from "@/lib/totals";
-import { calculateBmr, calculateTdee } from "@/lib/metabolism";
+import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { LogoutButton } from "@/components/logout-button";
 import { AiInfoCard } from "@/components/ai-info-card";
@@ -21,9 +21,9 @@ export default async function DashboardPage() {
     orderBy: { eatenAt: "desc" }
   });
   const totals = sumMeals(meals);
-  const target = user.profile?.calorieTarget ?? 2000;
   const bmr = calculateBmr(user.profile ?? null);
   const tdee = calculateTdee(bmr, user.profile?.activityLevel);
+  const target = user.profile?.calorieTarget ?? calorieTargetFromGoal(tdee, user.profile?.goal) ?? 2000;
   const macroTotal = totals.protein + totals.fat + totals.carbs;
   const proteinPercent = macroTotal ? Math.round((totals.protein / macroTotal) * 100) : 0;
   const fatPercent = macroTotal ? Math.round((totals.fat / macroTotal) * 100) : 0;
