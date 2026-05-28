@@ -1,0 +1,102 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Goal {
+  LOSE_FAT
+  MAINTAIN
+  BUILD_MUSCLE
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  passwordHash String
+  name         String?
+  profile      UserProfile?
+  meals        Meal[]
+  summaries    DailySummary[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model UserProfile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  gender               String?
+  birthDate            DateTime?
+  heightCm             Int?
+  weightKg             Decimal? @db.Decimal(5, 2)
+  activityLevel        String?
+  goal                 Goal     @default(MAINTAIN)
+  calorieTarget        Int      @default(2000)
+  encryptedPreferences Json?
+  encryptedAllergies   Json?
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Meal {
+  id              String     @id @default(cuid())
+  userId          String
+  mealType        MealType
+  imageStorageKey String?
+  totalCalories   Int        @default(0)
+  totalProtein    Decimal    @default(0) @db.Decimal(8, 2)
+  totalFat        Decimal    @default(0) @db.Decimal(8, 2)
+  totalCarbs      Decimal    @default(0) @db.Decimal(8, 2)
+  aiConfidence    Decimal?   @db.Decimal(4, 3)
+  aiNotes         String?
+  aiRawEncrypted  Json?
+  items           MealItem[]
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eatenAt         DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId, eatenAt])
+}
+
+model MealItem {
+  id              String   @id @default(cuid())
+  mealId          String
+  name            String
+  estimatedAmount String
+  calories        Int
+  protein         Decimal  @default(0) @db.Decimal(8, 2)
+  fat             Decimal  @default(0) @db.Decimal(8, 2)
+  carbs           Decimal  @default(0) @db.Decimal(8, 2)
+  meal            Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model DailySummary {
+  id               String   @id @default(cuid())
+  userId           String
+  summaryDate      DateTime
+  totalCalories    Int
+  totalProtein     Decimal  @default(0) @db.Decimal(8, 2)
+  totalFat         Decimal  @default(0) @db.Decimal(8, 2)
+  totalCarbs       Decimal  @default(0) @db.Decimal(8, 2)
+  aiSummary        String
+  aiRecommendation String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, summaryDate])
+}
