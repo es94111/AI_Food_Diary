@@ -26,6 +26,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     include: { items: true },
     orderBy: { eatenAt: "desc" }
   });
+  const todayRecommendation = await prisma.dailyRecommendation.findUnique({
+    where: { userId_recommendationDate: { userId: user.id, recommendationDate: startOfLocalDay(new Date()) } }
+  });
   const totals = sumMeals(meals);
   const bmr = calculateBmr(user.profile ?? null);
   const tdee = calculateTdee(bmr, user.profile?.activityLevel);
@@ -110,7 +113,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <p className="mt-3 text-xs text-slate-500">使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。</p>
           </div>
         </div>
-        <MealCaptureForm />
+        <MealCaptureForm initialNextMealAdvice={todayRecommendation?.advice ?? ""} />
       </section>
 
       <section className="mt-8">

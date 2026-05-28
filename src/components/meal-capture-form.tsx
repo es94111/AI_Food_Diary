@@ -29,12 +29,12 @@ function emptyManualItem(): ManualItem {
   return { id: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
 }
 
-export function MealCaptureForm() {
+export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMealAdvice?: string }) {
   const router = useRouter();
   const [preview, setPreview] = useState<string>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [nextMealAdvice, setNextMealAdvice] = useState("");
+  const [nextMealAdvice, setNextMealAdvice] = useState(initialNextMealAdvice);
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
   const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
@@ -269,6 +269,7 @@ export function MealCaptureForm() {
       {nextMealAdvice ? (
         <div className="mt-4 rounded-2xl bg-emerald-50 p-4">
           <h3 className="font-black text-emerald-900">下一餐建議</h3>
+          <p className="mt-1 text-xs text-emerald-700">此建議會保留到今天結束；新增下一餐後會自動更新。</p>
           <MarkdownContent className="mt-2 text-emerald-900" content={nextMealAdvice} />
         </div>
       ) : null}

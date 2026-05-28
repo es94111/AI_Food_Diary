@@ -29,6 +29,7 @@ model User {
   meals        Meal[]
   summaries    DailySummary[]
   savedFoods   SavedFood[]
+  recommendations DailyRecommendation[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
@@ -117,4 +118,20 @@ model DailySummary {
   updatedAt        DateTime @updatedAt
 
   @@unique([userId, summaryDate])
+}
+
+model DailyRecommendation {
+  id             String   @id @default(cuid())
+  userId         String
+  recommendationDate DateTime
+  advice         String
+  totalCalories  Int
+  totalProtein   Decimal  @default(0) @db.Decimal(8, 2)
+  totalFat       Decimal  @default(0) @db.Decimal(8, 2)
+  totalCarbs     Decimal  @default(0) @db.Decimal(8, 2)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, recommendationDate])
 }

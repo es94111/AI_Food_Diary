@@ -17,6 +17,25 @@ export async function GET() {
     calorieTarget: user.profile?.calorieTarget ?? 2000,
     goal: user.profile?.goal ?? "MAINTAIN"
   });
+  await prisma.dailyRecommendation.upsert({
+    where: { userId_recommendationDate: { userId: user.id, recommendationDate: start } },
+    update: {
+      advice,
+      totalCalories: today.calories,
+      totalProtein: today.protein,
+      totalFat: today.fat,
+      totalCarbs: today.carbs
+    },
+    create: {
+      userId: user.id,
+      recommendationDate: start,
+      advice,
+      totalCalories: today.calories,
+      totalProtein: today.protein,
+      totalFat: today.fat,
+      totalCarbs: today.carbs
+    }
+  });
 
   return NextResponse.json({ advice, today });
 }
