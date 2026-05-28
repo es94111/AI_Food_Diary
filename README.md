@@ -58,3 +58,29 @@ npm run dev
 - AI 營養分析是估算值，正式產品應加入使用者修正餐點項目的 UI。
 - 目前圖片以 data URL 送到 AI，不會保存到 MinIO；MinIO 已在部署環境預留，下一步可改成 private bucket + signed URL。
 - Docker runtime 使用 `prisma db push` 方便 MVP 啟動；正式環境建議改為 migration 流程。
+
+## Docker Image CI
+
+GitHub Actions 會在推送 `v*.*.*` tag 或手動執行 workflow 時建置並推送 Docker image。
+
+需要在 GitHub repository secrets 設定：
+
+```text
+DOCKERHUB_USERNAME=你的 Docker Hub 帳號
+DOCKERHUB_TOKEN=你的 Docker Hub access token
+DOCKERHUB_IMAGE=你的 Docker Hub image，例如 username/ai-food-diary
+```
+
+建立版本 image：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+會推送：
+
+```text
+username/ai-food-diary:0.1.0
+username/ai-food-diary:latest
+```
