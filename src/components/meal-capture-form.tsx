@@ -1,7 +1,8 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { MarkdownContent } from "@/components/markdown-content";
 
 type ManualItem = {
   id: string;
@@ -12,6 +13,16 @@ type ManualItem = {
   fat: string;
   carbs: string;
   aiRating: string;
+};
+
+type SavedFood = {
+  id: string;
+  name: string;
+  estimatedAmount: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
 };
 
 function emptyManualItem(): ManualItem {
@@ -26,9 +37,14 @@ export function MealCaptureForm() {
   const [nextMealAdvice, setNextMealAdvice] = useState("");
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
+  const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
   const [showConfirm, setShowConfirm] = useState(false);
+
+  useEffect(() => {
+    loadSavedFoods();
+  }, []);
 
   async function onFileChange(file?: File) {
     if (!file) return;
@@ -146,6 +162,53 @@ export function MealCaptureForm() {
     if (response.ok) setNextMealAdvice(data.advice ?? "");
   }
 
+  async function loadSavedFoods() {
+    const response = await fetch("/api/saved-foods");
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) setSavedFoods(data.foods ?? []);
+  }
+
+  async function saveAsSavedFood(item: ManualItem) {
+    if (!item.name.trim()) {
+      setError("請先填寫食物名稱再儲存為常用食物。");
+      return;
+    }
+    const response = await fetch("/api/saved-foods", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: item.name.trim(),
+        estimatedAmount: item.estimatedAmount.trim() || "1 份",
+        calories: Number(item.calories || 0),
+        protein: Number(item.protein || 0),
+        fat: Number(item.fat || 0),
+        carbs: Number(item.carbs || 0)
+      })
+    });
+    if (response.ok) await loadSavedFoods();
+  }
+
+  async function deleteSavedFood(id: string) {
+    const response = await fetch(`/api/saved-foods/${id}`, { method: "DELETE" });
+    if (response.ok) setSavedFoods((foods) => foods.filter((food) => food.id !== id));
+  }
+
+  function addSavedFood(food: SavedFood) {
+    setManualItems((items) => [
+      ...items.filter((item) => item.name.trim()),
+      {
+        id: crypto.randomUUID(),
+        name: food.name,
+        estimatedAmount: food.estimatedAmount,
+        calories: String(food.calories),
+        protein: String(food.protein),
+        fat: String(food.fat),
+        carbs: String(food.carbs),
+        aiRating: "MANUAL"
+      }
+    ]);
+  }
+
   return (
     <form onSubmit={onSubmit} className="rounded-[2rem] bg-white p-6 shadow-sm">
       <h2 className="text-2xl font-black">新增餐點</h2>
@@ -161,12 +224,28 @@ export function MealCaptureForm() {
       <div className="mt-5 rounded-2xl bg-slate-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
         <p className="mt-1 text-xs text-slate-500">沒有圖片或 AI 無法分析時，可以填寫以下欄位直接儲存。</p>
+        {savedFoods.length ? (
+          <div className="mt-3 rounded-2xl bg-white p-3">
+            <p className="text-sm font-bold">常用食物</p>
+            <div className="mt-2 grid gap-2">
+              {savedFoods.map((food) => (
+                <div className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 p-2 text-sm" key={food.id}>
+                  <button className="text-left font-semibold text-slate-800" onClick={() => addSavedFood(food)} type="button">+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</button>
+                  <button className="shrink-0 text-red-600" onClick={() => deleteSavedFood(food.id)} type="button">刪除</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="mt-3 space-y-3">
           {manualItems.map((item, index) => (
             <div className="rounded-xl border border-slate-200 bg-white p-3" key={item.id}>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-bold">食物 {index + 1}</p>
-                <button className="text-sm font-semibold text-red-600 disabled:text-slate-300" disabled={manualItems.length === 1} onClick={() => setManualItems((items) => items.filter((value) => value.id !== item.id))} type="button">刪除</button>
+                <div className="flex gap-2">
+                  <button className="text-sm font-semibold text-emerald-700" onClick={() => saveAsSavedFood(item)} type="button">存常用</button>
+                  <button className="text-sm font-semibold text-red-600 disabled:text-slate-300" disabled={manualItems.length === 1} onClick={() => setManualItems((items) => items.filter((value) => value.id !== item.id))} type="button">刪除</button>
+                </div>
               </div>
               <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2" onChange={(event) => updateManualItem(item.id, "name", event.target.value)} placeholder="食物名稱，例如：炸素排" value={item.name} />
               <input className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2" onChange={(event) => updateManualItem(item.id, "estimatedAmount", event.target.value)} placeholder="份量，例如：150g" value={item.estimatedAmount} />
@@ -190,7 +269,7 @@ export function MealCaptureForm() {
       {nextMealAdvice ? (
         <div className="mt-4 rounded-2xl bg-emerald-50 p-4">
           <h3 className="font-black text-emerald-900">下一餐建議</h3>
-          <p className="mt-2 whitespace-pre-line text-sm leading-7 text-emerald-900">{nextMealAdvice}</p>
+          <MarkdownContent className="mt-2 text-emerald-900" content={nextMealAdvice} />
         </div>
       ) : null}
       {showConfirm ? (

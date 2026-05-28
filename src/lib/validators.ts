@@ -59,3 +59,12 @@ export const mealUpdateSchema = z.object({
     )
     .min(1)
 });
+
+export const savedFoodSchema = z.object({
+  name: z.string().min(1).max(120),
+  estimatedAmount: z.string().min(1).max(120),
+  calories: z.coerce.number().int().min(0).max(10000),
+  protein: z.coerce.number().min(0).max(1000),
+  fat: z.coerce.number().min(0).max(1000),
+  carbs: z.coerce.number().min(0).max(1000)
+});

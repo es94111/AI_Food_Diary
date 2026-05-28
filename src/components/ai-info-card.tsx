@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { MarkdownContent } from "@/components/markdown-content";
 
 export function AiInfoCard({ title, endpoint, type }: { title: string; endpoint: string; type: "advice" | "summary" }) {
   const [content, setContent] = useState("");
@@ -34,7 +35,7 @@ export function AiInfoCard({ title, endpoint, type }: { title: string; endpoint:
         {loading ? "產生中..." : `產生${title}`}
       </button>
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-      {content ? <p className="mt-4 whitespace-pre-line text-sm leading-7 text-slate-700">{content}</p> : null}
+      {content ? <MarkdownContent className="mt-4 text-slate-700" content={content} /> : null}
     </div>
   );
 }
