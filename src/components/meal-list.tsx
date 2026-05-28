@@ -11,6 +11,7 @@ type MealItem = {
   protein: number | string;
   fat: number | string;
   carbs: number | string;
+  aiRating: string;
 };
 
 type EditableMealItem = {
@@ -22,6 +23,7 @@ type EditableMealItem = {
   protein: string;
   fat: string;
   carbs: string;
+  aiRating: string;
 };
 
 type Meal = {
@@ -72,7 +74,8 @@ function MealCard({ meal }: { meal: Meal }) {
         calories: Number(item.calories || 0),
         protein: Number(item.protein || 0),
         fat: Number(item.fat || 0),
-        carbs: Number(item.carbs || 0)
+        carbs: Number(item.carbs || 0),
+        aiRating: item.aiRating || "MANUAL"
       }));
     if (payloadItems.length === 0) {
       setError("至少需要保留一項食物。");
@@ -149,7 +152,7 @@ function MealCard({ meal }: { meal: Meal }) {
               <li className="rounded-2xl bg-slate-50 p-3" key={item.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-bold text-slate-900">{item.name}</p>
+                    <p className="font-bold text-slate-900"><RatingBadge rating={item.aiRating} /> {item.name}</p>
                     <p className="mt-1 text-xs text-slate-500">份量：{item.estimatedAmount}</p>
                   </div>
                   <p className="shrink-0 rounded-full bg-white px-3 py-1 text-sm font-bold text-emerald-700 shadow-sm">{item.calories} kcal</p>
@@ -194,11 +197,17 @@ function toEditableItem(item: MealItem): EditableMealItem {
     protein: String(Number(item.protein)),
     fat: String(Number(item.fat)),
     carbs: String(Number(item.carbs))
+    ,aiRating: item.aiRating ?? "MANUAL"
   };
 }
 
 function emptyEditableItem(): EditableMealItem {
-  return { clientId: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "" };
+  return { clientId: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
+}
+
+function RatingBadge({ rating }: { rating: string }) {
+  const symbol = rating === "GOOD" ? "✅" : rating === "LIMIT" ? "❌" : rating === "MANUAL" ? "✎" : "⚠️";
+  return <span title={rating}>{symbol}</span>;
 }
 
 function MacroBars({ protein, fat, carbs }: { protein: number; fat: number; carbs: number }) {

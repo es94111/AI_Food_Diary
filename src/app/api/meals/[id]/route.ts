@@ -57,7 +57,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
             calories: item.calories,
             protein: item.protein,
             fat: item.fat,
-            carbs: item.carbs
+            carbs: item.carbs,
+            aiRating: item.aiRating ?? "MANUAL"
           }))
         }
       },

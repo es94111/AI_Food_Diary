@@ -9,7 +9,8 @@ const foodAnalysisSchema = z.object({
       calories: z.number().int().nonnegative(),
       protein: z.number().nonnegative(),
       fat: z.number().nonnegative(),
-      carbs: z.number().nonnegative()
+      carbs: z.number().nonnegative(),
+      aiRating: z.enum(["GOOD", "OK", "LIMIT", "MANUAL"])
     })
   ),
   total: z.object({
@@ -25,7 +26,7 @@ const foodAnalysisSchema = z.object({
 export type FoodAnalysis = z.infer<typeof foodAnalysisSchema>;
 
 const defaultMealAnalysisPrompt =
-  '你是營養分析助手。請根據餐點照片估算食物、份量、熱量與三大營養素。每一種可辨識食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱。例如炸素排與玉米濃湯必須分成兩筆。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。';
+  '你是營養分析助手。請根據餐點照片估算食物、份量、熱量與三大營養素。每一種可辨識食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱。例如炸素排與玉米濃湯必須分成兩筆。請為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。';
 
 const defaultNextMealAdvicePrompt =
   "請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。請包含建議餐點、避免事項與原因，避免醫療診斷。";
@@ -86,7 +87,8 @@ function parseFoodTextResponse(text: string): FoodAnalysis {
       calories: Math.round(numberValue(body.match(/熱量(?:\(千卡\))?[：:]\s*([\d.]+)/)?.[1])),
       protein: numberValue(body.match(/蛋白質(?:\(克\))?[：:]\s*([\d.]+)/)?.[1]),
       fat: numberValue(body.match(/脂肪(?:\(克\))?[：:]\s*([\d.]+)/)?.[1]),
-      carbs: numberValue(body.match(/碳水(?:化合物)?(?:\(克\))?[：:]\s*([\d.]+)/)?.[1])
+      carbs: numberValue(body.match(/碳水(?:化合物)?(?:\(克\))?[：:]\s*([\d.]+)/)?.[1]),
+      aiRating: ratingValue(body.match(/評分[：:]\s*(GOOD|OK|LIMIT|MANUAL|✅|⚠️|❌|✎)/)?.[1])
     };
   });
   if (foods.length === 0) throw new Error("OPENAI_RESPONSE_NOT_PARSEABLE");
@@ -120,6 +122,13 @@ function numberValue(value: unknown) {
   return Number.isFinite(number) && number >= 0 ? number : 0;
 }
 
+function ratingValue(value: unknown) {
+  if (value === "GOOD" || value === "✅") return "GOOD";
+  if (value === "LIMIT" || value === "❌") return "LIMIT";
+  if (value === "MANUAL" || value === "✎") return "MANUAL";
+  return "OK";
+}
+
 function pickValue(source: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
     if (source[key] !== undefined) return source[key];
@@ -138,7 +147,8 @@ function normalizeFoodAnalysis(parsed: unknown): FoodAnalysis {
       calories: Math.round(numberValue(pickValue(food, ["calories", "kcal", "熱量"]))),
       protein: numberValue(pickValue(food, ["protein", "protein_g", "蛋白質"])),
       fat: numberValue(pickValue(food, ["fat", "fat_g", "脂肪"])),
-      carbs: numberValue(pickValue(food, ["carbs", "carbohydrates", "carb_g", "碳水", "碳水化合物"]))
+      carbs: numberValue(pickValue(food, ["carbs", "carbohydrates", "carb_g", "碳水", "碳水化合物"])),
+      aiRating: ratingValue(pickValue(food, ["aiRating", "rating", "score", "評分", "建議"]))
     };
   });
   const rawTotal = pickValue(source, ["total", "totals", "總計", "合計"]);

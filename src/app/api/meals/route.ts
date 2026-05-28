@@ -62,7 +62,8 @@ export async function POST(request: Request) {
             calories: food.calories,
             protein: food.protein,
             fat: food.fat,
-            carbs: food.carbs
+            carbs: food.carbs,
+            aiRating: food.aiRating ?? "MANUAL"
           }))
         }
       },

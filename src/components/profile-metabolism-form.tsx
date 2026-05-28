@@ -54,10 +54,12 @@ export function ProfileMetabolismForm({ profile }: { profile?: Profile | null })
   }
 
   return (
-    <form className="rounded-[2rem] bg-white p-6 shadow-sm" onSubmit={onSubmit}>
-      <h2 className="text-2xl font-black">BMR / TDEE 設定</h2>
-      <p className="mt-2 text-sm text-slate-600">填寫身體資料後會自動估算基礎代謝與每日總消耗。</p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+    <details className="rounded-[2rem] bg-white p-6 shadow-sm">
+      <summary className="cursor-pointer text-2xl font-black">使用者設定</summary>
+      <form className="mt-5" onSubmit={onSubmit}>
+        <h2 className="text-xl font-black">BMR / TDEE 設定</h2>
+        <p className="mt-2 text-sm text-slate-600">填寫身體資料後會自動估算基礎代謝與每日總消耗。</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <select className="rounded-xl border border-slate-200 px-3 py-2" name="gender" onChange={(event) => setGender(event.target.value)} value={gender}>
           <option value="MALE">男性</option>
           <option value="FEMALE">女性</option>
@@ -82,9 +84,10 @@ export function ProfileMetabolismForm({ profile }: { profile?: Profile | null })
           <p className="text-2xl font-black">{calorieTarget} kcal</p>
           <p className="text-xs text-slate-500">依 TDEE 與目標自動計算：減脂 -400、增肌 +250、維持 = TDEE。</p>
         </div>
-      </div>
-      {message ? <p className="mt-3 text-sm text-emerald-700">{message}</p> : null}
-      <button className="mt-4 w-full rounded-xl bg-slate-950 px-4 py-2 font-semibold text-white" type="submit">儲存身體資料</button>
-    </form>
+        </div>
+        {message ? <p className="mt-3 text-sm text-emerald-700">{message}</p> : null}
+        <button className="mt-4 w-full rounded-xl bg-slate-950 px-4 py-2 font-semibold text-white" type="submit">儲存身體資料</button>
+      </form>
+    </details>
   );
 }

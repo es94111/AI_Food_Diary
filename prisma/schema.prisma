@@ -79,6 +79,7 @@ model MealItem {
   protein         Decimal  @default(0) @db.Decimal(8, 2)
   fat             Decimal  @default(0) @db.Decimal(8, 2)
   carbs           Decimal  @default(0) @db.Decimal(8, 2)
+  aiRating        String   @default("MANUAL")
   meal            Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

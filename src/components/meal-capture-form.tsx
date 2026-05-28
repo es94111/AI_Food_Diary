@@ -49,7 +49,8 @@ export function MealCaptureForm() {
         calories: Number(item.calories || 0),
         protein: Number(item.protein || 0),
         fat: Number(item.fat || 0),
-        carbs: Number(item.carbs || 0)
+        carbs: Number(item.carbs || 0),
+        aiRating: "MANUAL"
       }));
     if (!preview && items.length === 0) {
       setError("請先上傳圖片，或在下方手動輸入食物項目。");

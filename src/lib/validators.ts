@@ -35,7 +35,8 @@ export const mealSchema = z.object({
         calories: z.coerce.number().int().min(0).max(10000),
         protein: z.coerce.number().min(0).max(1000),
         fat: z.coerce.number().min(0).max(1000),
-        carbs: z.coerce.number().min(0).max(1000)
+        carbs: z.coerce.number().min(0).max(1000),
+        aiRating: z.enum(["GOOD", "OK", "LIMIT", "MANUAL"]).optional()
       })
     )
     .optional()
@@ -52,7 +53,8 @@ export const mealUpdateSchema = z.object({
         calories: z.coerce.number().int().min(0).max(10000),
         protein: z.coerce.number().min(0).max(1000),
         fat: z.coerce.number().min(0).max(1000),
-        carbs: z.coerce.number().min(0).max(1000)
+        carbs: z.coerce.number().min(0).max(1000),
+        aiRating: z.enum(["GOOD", "OK", "LIMIT", "MANUAL"]).optional()
       })
     )
     .min(1)
