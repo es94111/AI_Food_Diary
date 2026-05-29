@@ -1,6 +1,11 @@
-import type { Meal } from "@prisma/client";
+type MealTotals = {
+  totalCalories: number;
+  totalProtein: unknown;
+  totalFat: unknown;
+  totalCarbs: unknown;
+};
 
-export function sumMeals(meals: Pick<Meal, "totalCalories" | "totalProtein" | "totalFat" | "totalCarbs">[]) {
+export function sumMeals(meals: MealTotals[]) {
   return meals.reduce(
     (acc, meal) => ({
       calories: acc.calories + meal.totalCalories,
