@@ -11,6 +11,7 @@ import { MealList } from "@/components/meal-list";
 import { DateRangeSwitcher } from "@/components/date-range-switcher";
 import { WeeklyNutritionReview } from "@/components/weekly-nutrition-review";
 import { AdminPanel } from "@/components/admin-panel";
+import { HealthConnectionsPanel } from "@/components/health-connections-panel";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string }> }) {
   const user = await getCurrentUser();
@@ -33,6 +34,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     where: { userId: user.id },
     orderBy: { measuredAt: "desc" },
     take: 100
+  });
+  const healthConnections = await prisma.healthConnection.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, provider: true, deviceName: true, lastSyncedAt: true, revokedAt: true, createdAt: true }
   });
   const latestHealthMetrics = latestMetricsByType(healthMetrics);
   const totals = sumMeals(meals);
@@ -146,7 +152,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <Metric label="最新體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
               <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 1)} />
             </div>
-            <p className="mt-3 text-xs text-stone-400">同步 API：POST /api/health/sync。需使用登入後的 session cookie。</p>
+            <p className="mt-3 text-xs text-stone-400">同步 API：POST /api/health/sync。Flutter app 建議使用 Bearer token。</p>
+            <HealthConnectionsPanel initialConnections={healthConnections} />
           </div>
         </div>
         <MealCaptureForm initialNextMealAdvice={todayRecommendation?.advice ?? ""} />
