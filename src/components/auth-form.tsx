@@ -1,9 +1,10 @@
 "use client";
 
+import Script from "next/script";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+export function AuthForm({ mode, turnstileSiteKey }: { mode: "login" | "register"; turnstileSiteKey?: string }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,6 +35,12 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       ) : null}
       <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" name="email" placeholder="Email" type="email" required />
       <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" name="password" placeholder="密碼" type="password" minLength={8} required />
+      {mode === "login" && turnstileSiteKey ? (
+        <>
+          <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="afterInteractive" />
+          <div className="cf-turnstile" data-sitekey={turnstileSiteKey} />
+        </>
+      ) : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <button className="w-full rounded-2xl bg-slate-950 px-4 py-3 font-semibold text-white disabled:opacity-60" disabled={loading} type="submit">
         {loading ? "處理中..." : mode === "login" ? "登入" : "註冊"}
