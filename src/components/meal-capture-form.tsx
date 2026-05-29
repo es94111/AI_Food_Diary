@@ -106,6 +106,23 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         return;
       }
 
+      if (items.length > 0) {
+        const response = await fetch("/api/meals/analyze-manual", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mealType: formData.get("mealType"), manualItems: items, eatenAt: new Date().toISOString() })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setError(data.error ?? "AI 評分失敗，請稍後再試");
+          return;
+        }
+        setConfirmMealType(String(formData.get("mealType") ?? "LUNCH"));
+        setConfirmItems(itemsFromAnalysis(data.analysis.foods));
+        setShowConfirm(true);
+        return;
+      }
+
       const response = await fetch("/api/meals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -219,6 +236,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     ]);
   }
 
+  const hasManualItems = manualItems.some((item) => item.name.trim());
+
   return (
     <form onSubmit={onSubmit} className="glass glass-lift rounded-[2rem] p-6">
       <h2 className="text-2xl font-black">新增餐點</h2>
@@ -244,7 +263,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       </div>
       <div className="mt-5 rounded-2xl bg-slate-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
-        <p className="mt-1 text-xs text-slate-500">沒有圖片、文字描述，或 AI 無法分析時，可以填寫以下欄位直接儲存。</p>
+        <p className="mt-1 text-xs text-slate-500">沒有圖片、文字描述，或 AI 無法分析時，可以填寫以下欄位，AI 會先判斷推薦評分再讓你確認。</p>
         {savedFoods.length ? (
           <div className="mt-3 rounded-2xl bg-white p-3">
             <p className="text-sm font-bold">常用食物</p>
@@ -283,7 +302,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       </div>
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
       <button className="mt-5 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-semibold text-white disabled:opacity-60" disabled={loading} type="submit">
-        {loading ? "儲存中..." : preview || description.trim() ? "AI 分析並確認" : "儲存餐點"}
+        {loading ? "儲存中..." : preview || description.trim() || hasManualItems ? "AI 分析並確認" : "儲存餐點"}
       </button>
       <p className="mt-3 text-xs text-slate-500">AI 分析為估算值，請依實際份量修正。</p>
       {adviceLoading ? <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">正在產生下一餐建議...</p> : null}
