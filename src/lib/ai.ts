@@ -34,6 +34,9 @@ const defaultMealDescriptionAnalysisPrompt =
 const defaultManualFoodRatingPrompt =
   '你是營養分析助手。請根據使用者手動輸入的食物品項判斷每項食物的 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。請保留使用者已提供的食物名稱、份量、熱量與三大營養素；只有當數字為 0 或明顯缺漏時，才依食物與份量做保守估算。每一種食物都必須獨立成 foods 陣列中的一個項目。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者手動品項：{{items}}';
 
+const defaultNutritionLabelAnalysisPrompt =
+  '你是營養標示辨識助手。請讀取圖片中的營養標示，建立一個 foods 項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
+
 const defaultNextMealAdvicePrompt =
   "請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。請包含建議餐點、避免事項與原因，避免醫療診斷。";
 
@@ -206,6 +209,26 @@ export async function analyzeMealImage(imageDataUrl?: string): Promise<FoodAnaly
             text: promptFromEnv("AI_MEAL_ANALYSIS_PROMPT", defaultMealAnalysisPrompt)
           },
           { type: "image_url", image_url: { url: imageDataUrl, detail: "auto" } }
+        ]
+      }
+    ]
+  });
+
+  return parseMealAnalysisText(completionText(response));
+}
+
+export async function analyzeNutritionLabelImage(imageDataUrl: string): Promise<FoodAnalysis> {
+  const response = await openai().chat.completions.create({
+    model: process.env.OPENAI_VISION_MODEL ?? "gpt-4.1-mini",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: promptFromEnv("AI_NUTRITION_LABEL_ANALYSIS_PROMPT", defaultNutritionLabelAnalysisPrompt)
+          },
+          { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }
         ]
       }
     ]

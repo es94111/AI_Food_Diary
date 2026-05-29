@@ -1,6 +1,6 @@
 "use client";
 
-import { type FormEvent, useEffect, useState } from "react";
+import { type DragEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { MarkdownContent } from "@/components/markdown-content";
 
@@ -31,10 +31,14 @@ function emptyManualItem(): ManualItem {
 
 export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMealAdvice?: string }) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const nutritionLabelInputRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<string>();
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const [nutritionLabelLoading, setNutritionLabelLoading] = useState(false);
   const [error, setError] = useState("");
+  const [draggingImage, setDraggingImage] = useState(false);
   const [nextMealAdvice, setNextMealAdvice] = useState(initialNextMealAdvice);
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
@@ -49,14 +53,64 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
 
   async function onFileChange(file?: File) {
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("請選擇圖片檔案。");
+      return;
+    }
     if (file.size > 6 * 1024 * 1024) {
       setError("圖片不可超過 6MB");
       return;
     }
 
+    setError("");
     const reader = new FileReader();
     reader.onload = () => setPreview(String(reader.result));
     reader.readAsDataURL(file);
+  }
+
+  function onImageDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setDraggingImage(false);
+    onFileChange(event.dataTransfer.files?.[0]);
+  }
+
+  async function analyzeNutritionLabel(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("請選擇營養標示圖片檔案。");
+      return;
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      setError("營養標示圖片不可超過 6MB");
+      return;
+    }
+
+    setError("");
+    setNutritionLabelLoading(true);
+    try {
+      const imageDataUrl = await fileToDataUrl(file);
+      const response = await fetch("/api/meals/analyze-nutrition-label", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrl })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "營養標示分析失敗，請稍後再試");
+        return;
+      }
+      const items = itemsFromAnalysis(data.analysis.foods);
+      if (items.length === 0) {
+        setError("AI 沒有辨識到營養標示內容，請換一張更清楚的圖片。");
+        return;
+      }
+      setManualItems((current) => [...current.filter((item) => item.name.trim()), ...items]);
+    } catch (error) {
+      setError(error instanceof Error ? `營養標示分析失敗：${error.message}` : "營養標示分析失敗，請稍後再試");
+    } finally {
+      setNutritionLabelLoading(false);
+      if (nutritionLabelInputRef.current) nutritionLabelInputRef.current.value = "";
+    }
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -248,8 +302,36 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         <option value="DINNER">晚餐</option>
         <option value="SNACK">點心</option>
       </select>
-      <input accept="image/*" capture="environment" className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 px-4 py-6" type="file" onChange={(event) => onFileChange(event.target.files?.[0])} />
-      {preview ? <img alt="餐點預覽" className="mt-4 max-h-64 w-full rounded-2xl object-cover" src={preview} /> : null}
+      <div
+        className={`mt-5 rounded-2xl border border-dashed p-4 transition ${draggingImage ? "border-emerald-500 bg-emerald-50" : "border-emerald-200 bg-white"}`}
+        onDragLeave={() => setDraggingImage(false)}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setDraggingImage(true);
+        }}
+        onDrop={onImageDrop}
+      >
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="font-bold text-emerald-950">從圖片上傳食物</h3>
+            <p className="mt-1 text-xs text-slate-500">拍照或上傳餐點照片，AI 會辨識食物、估算營養並產生評分。</p>
+          </div>
+          <div className="flex gap-2">
+            {preview ? (
+              <button className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" onClick={() => setPreview(undefined)} type="button">移除圖片</button>
+            ) : null}
+            <button className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" onClick={() => fileInputRef.current?.click()} type="button">選擇圖片</button>
+          </div>
+        </div>
+        <input ref={fileInputRef} accept="image/*" capture="environment" className="sr-only" type="file" onChange={(event) => onFileChange(event.target.files?.[0])} />
+        {preview ? (
+          <img alt="餐點預覽" className="mt-4 max-h-64 w-full rounded-2xl object-cover" src={preview} />
+        ) : (
+          <button className="mt-4 w-full rounded-2xl bg-emerald-50 px-4 py-8 text-center text-sm font-semibold text-emerald-800" onClick={() => fileInputRef.current?.click()} type="button">
+            點此拍照/上傳，或將圖片拖放到這裡
+          </button>
+        )}
+      </div>
       <div className="mt-5 rounded-2xl bg-emerald-50 p-4">
         <h3 className="font-bold text-emerald-950">用文字描述餐點</h3>
         <p className="mt-1 text-xs text-emerald-700">例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。</p>
@@ -264,6 +346,18 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       <div className="mt-5 rounded-2xl bg-slate-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
         <p className="mt-1 text-xs text-slate-500">沒有圖片、文字描述，或 AI 無法分析時，可以填寫以下欄位，AI 會先判斷推薦評分再讓你確認。</p>
+        <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-bold text-amber-950">拍攝或上傳營養標示</p>
+              <p className="mt-1 text-xs text-amber-700">AI 會讀取每份熱量、蛋白質、脂肪與碳水，快速新增成一項食物。</p>
+            </div>
+            <button className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={nutritionLabelLoading} onClick={() => nutritionLabelInputRef.current?.click()} type="button">
+              {nutritionLabelLoading ? "辨識中..." : "上傳營養標示"}
+            </button>
+          </div>
+          <input ref={nutritionLabelInputRef} accept="image/*" capture="environment" className="sr-only" type="file" onChange={(event) => analyzeNutritionLabel(event.target.files?.[0])} />
+        </div>
         {savedFoods.length ? (
           <div className="mt-3 rounded-2xl bg-white p-3">
             <p className="text-sm font-bold">常用食物</p>
@@ -368,6 +462,15 @@ function itemsFromAnalysis(foods: Array<{ name: string; estimatedAmount: string;
     carbs: String(food.carbs),
     aiRating: food.aiRating ?? "OK"
   }));
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("無法讀取圖片檔案"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function FoodEditor({ item, index, items, setItems }: { item: ManualItem; index: number; items: ManualItem[]; setItems: (items: ManualItem[] | ((items: ManualItem[]) => ManualItem[])) => void }) {
