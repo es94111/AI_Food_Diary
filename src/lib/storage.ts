@@ -1,6 +1,5 @@
 import "server-only";
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 function createClient() {
   const endpoint = process.env.S3_ENDPOINT;
@@ -34,8 +33,8 @@ export async function uploadImage(dataUrl: string, userId: string): Promise<stri
   return key;
 }
 
-export async function getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
-  return getSignedUrl(createClient(), new GetObjectCommand({ Bucket: bucket(), Key: key }), { expiresIn });
+export async function getImageObject(key: string) {
+  return createClient().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
 }
 
 export async function deleteImage(key: string): Promise<void> {
@@ -47,9 +46,3 @@ export function isStorageKey(value: string): boolean {
   return !value.startsWith("data:") && !value.startsWith("http://") && !value.startsWith("https://");
 }
 
-// Resolves any imageStorageKey value to a displayable URL.
-// Legacy base64 data URLs are returned unchanged; S3 keys become presigned URLs.
-export async function resolveImageUrl(storageKeyOrDataUrl: string): Promise<string> {
-  if (!isStorageKey(storageKeyOrDataUrl)) return storageKeyOrDataUrl;
-  return getPresignedUrl(storageKeyOrDataUrl);
-}
