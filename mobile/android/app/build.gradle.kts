@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.aifood.mobile"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

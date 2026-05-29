@@ -10,15 +10,12 @@ class HealthService {
     HealthDataType.ACTIVE_ENERGY_BURNED,
   ];
 
-  static const _permissions = [
-    HealthDataAccess.READ,
-    HealthDataAccess.READ,
-    HealthDataAccess.READ,
-  ];
-
   static Future<bool> requestPermissions() async {
     await _health.configure();
-    return _health.requestAuthorization(_types, permissions: _permissions);
+    return _health.requestAuthorization(
+      _types,
+      permissions: List.filled(_types.length, HealthDataAccess.READ),
+    );
   }
 
   static Future<List<Map<String, dynamic>>> fetchLast7Days() async {
@@ -31,8 +28,7 @@ class HealthService {
       types: _types,
     );
 
-    final deduped = Health.removeDuplicates(data);
-    return deduped.map(_toPayload).toList();
+    return data.map(_toPayload).toList();
   }
 
   static Map<String, dynamic> _toPayload(HealthDataPoint p) {
@@ -50,7 +46,10 @@ class HealthService {
       _ => '',
     };
 
-    final value = (p.value as NumericHealthValue).numericValue.toDouble();
+    final raw = p.value;
+    final value = raw is NumericHealthValue
+        ? raw.numericValue.toDouble()
+        : double.tryParse(raw.toString()) ?? 0.0;
 
     return {
       'type': type,
