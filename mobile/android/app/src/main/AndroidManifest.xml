@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
+    <uses-permission android:name="android.permission.health.READ_WEIGHT"/>
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+
     <application
-        android:label="mobile"
+        android:label="AI Food Diary"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -41,5 +46,6 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <package android:name="com.google.android.apps.healthdata"/>
     </queries>
 </manifest>
