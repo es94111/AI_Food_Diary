@@ -1,0 +1,178 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Goal {
+  LOSE_FAT
+  MAINTAIN
+  BUILD_MUSCLE
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  passwordHash String
+  name         String?
+  isAdmin      Boolean        @default(false)
+  profile      UserProfile?
+  meals        Meal[]
+  summaries    DailySummary[]
+  savedFoods   SavedFood[]
+  recommendations DailyRecommendation[]
+  healthConnections HealthConnection[]
+  healthMetrics HealthMetric[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model AppConfig {
+  id               String  @id @default("singleton")
+  registrationOpen Boolean @default(true)
+}
+
+model UserProfile {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  gender               String?
+  birthDate            DateTime?
+  heightCm             Int?
+  weightKg             Decimal? @db.Decimal(5, 2)
+  activityLevel        String?
+  goal                 Goal     @default(MAINTAIN)
+  calorieTarget        Int      @default(2000)
+  encryptedPreferences Json?
+  encryptedAllergies   Json?
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Meal {
+  id              String     @id @default(cuid())
+  userId          String
+  mealType        MealType
+  imageStorageKey String?
+  totalCalories   Int        @default(0)
+  totalProtein    Decimal    @default(0) @db.Decimal(8, 2)
+  totalFat        Decimal    @default(0) @db.Decimal(8, 2)
+  totalCarbs      Decimal    @default(0) @db.Decimal(8, 2)
+  aiConfidence    Decimal?   @db.Decimal(4, 3)
+  aiNotes         String?
+  aiRawEncrypted  Json?
+  items           MealItem[]
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eatenAt         DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@index([userId, eatenAt])
+}
+
+model MealItem {
+  id              String   @id @default(cuid())
+  mealId          String
+  name            String
+  estimatedAmount String
+  calories        Int
+  protein         Decimal  @default(0) @db.Decimal(8, 2)
+  fat             Decimal  @default(0) @db.Decimal(8, 2)
+  carbs           Decimal  @default(0) @db.Decimal(8, 2)
+  aiRating        String   @default("MANUAL")
+  meal            Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SavedFood {
+  id              String   @id @default(cuid())
+  userId          String
+  name            String
+  estimatedAmount String
+  calories        Int
+  protein         Decimal  @default(0) @db.Decimal(8, 2)
+  fat             Decimal  @default(0) @db.Decimal(8, 2)
+  carbs           Decimal  @default(0) @db.Decimal(8, 2)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([userId, name])
+}
+
+model DailySummary {
+  id               String   @id @default(cuid())
+  userId           String
+  summaryDate      DateTime
+  totalCalories    Int
+  totalProtein     Decimal  @default(0) @db.Decimal(8, 2)
+  totalFat         Decimal  @default(0) @db.Decimal(8, 2)
+  totalCarbs       Decimal  @default(0) @db.Decimal(8, 2)
+  aiSummary        String
+  aiRecommendation String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([userId, summaryDate])
+}
+
+model DailyRecommendation {
+  id             String   @id @default(cuid())
+  userId         String
+  recommendationDate DateTime
+  advice         String
+  totalCalories  Int
+  totalProtein   Decimal  @default(0) @db.Decimal(8, 2)
+  totalFat       Decimal  @default(0) @db.Decimal(8, 2)
+  totalCarbs     Decimal  @default(0) @db.Decimal(8, 2)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, recommendationDate])
+}
+
+model HealthMetric {
+  id         String   @id @default(cuid())
+  userId     String
+  source     String
+  type       String
+  value      Float
+  unit       String
+  measuredAt DateTime
+  rawEncrypted Json?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, source, type, measuredAt])
+  @@index([userId, measuredAt])
+  @@index([userId, type, measuredAt])
+}
+
+model HealthConnection {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String   @default("HEALTH_CONNECT")
+  deviceName   String?
+  tokenHash    String   @unique
+  lastSyncedAt DateTime?
+  revokedAt    DateTime?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, revokedAt])
+}
