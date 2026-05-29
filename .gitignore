@@ -8,3 +8,4 @@ src/generated/prisma
 *.log
 postgres_data
 minio_data
+.gstack/

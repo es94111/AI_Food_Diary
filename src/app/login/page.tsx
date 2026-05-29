@@ -12,10 +12,10 @@ export default async function LoginPage() {
     <main className="flex min-h-dvh items-center justify-center px-6 py-12">
       <div className="glass iridescent w-full max-w-md rounded-[2rem] p-8">
         <h1 className="text-3xl font-black">登入</h1>
-        <p className="mt-2 text-slate-600">回到你的 AI 飲食紀錄。</p>
+        <p className="mt-2 text-stone-600">回到你的 AI 飲食紀錄。</p>
         <AuthForm mode="login" turnstileSiteKey={turnstileSiteKey} />
-        <p className="mt-6 text-sm text-slate-600">
-          還沒有帳號？ <Link className="font-semibold text-emerald-700" href="/register">註冊</Link>
+        <p className="mt-6 text-sm text-stone-600">
+          還沒有帳號？ <Link className="font-semibold text-amber-700" href="/register">註冊</Link>
         </p>
       </div>
     </main>

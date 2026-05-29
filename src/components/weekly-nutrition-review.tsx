@@ -16,7 +16,7 @@ export function WeeklyNutritionReview({ days }: { days: DayReview[] }) {
           <article className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.65)" }} key={day.date}>
             <div className="flex items-center justify-between gap-3">
               <p className="font-bold">{day.date}</p>
-              <p className="rounded-full bg-emerald-50 px-3 py-1 text-sm font-bold text-emerald-700">{day.calories} kcal</p>
+              <p className="rounded-full bg-amber-50 px-3 py-1 text-sm font-bold text-amber-700">{day.calories} kcal</p>
             </div>
             <div className="mt-3 grid grid-cols-4 gap-2 text-center text-xs">
               <Metric label="蛋白質" value={`${day.protein.toFixed(1)}g`} />
@@ -32,5 +32,5 @@ export function WeeklyNutritionReview({ days }: { days: DayReview[] }) {
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <div className="rounded-xl bg-slate-50 p-2"><p className="font-bold text-slate-900">{value}</p><p className="text-slate-500">{label}</p></div>;
+  return <div className="rounded-xl bg-stone-50 p-2"><p className="font-bold text-stone-900">{value}</p><p className="text-stone-500">{label}</p></div>;
 }

@@ -87,15 +87,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500 text-white">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-600 text-white">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
                 <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-2.625 6c-.54 0-.828.419-.936.634a1.96 1.96 0 0 0-.189.866c0 .298.059.605.189.866.108.215.395.634.936.634.54 0 .828-.419.936-.634.13-.26.189-.568.189-.866 0-.298-.059-.605-.189-.866-.108-.215-.395-.634-.936-.634Zm4.314.634c.108-.215.395-.634.936-.634.54 0 .828.419.936.634.13.26.189.568.189.866 0 .298-.059.605-.189.866-.108.215-.395.634-.936.634-.54 0-.828-.419-.936-.634a1.96 1.96 0 0 1-.189-.866c0-.298.059-.605.189-.866Zm2.023 6.828a.75.75 0 1 0-1.06-1.06 3.75 3.75 0 0 1-5.304 0 .75.75 0 0 0-1.06 1.06 5.25 5.25 0 0 0 7.424 0Z" clipRule="evenodd" />
               </svg>
             </span>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-emerald-600">AI Food Diary</p>
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-700">AI Food Diary</p>
           </div>
           <h1 className="mt-2 text-4xl font-black tracking-tight">{view === "week" ? "星期飲食" : "每日飲食"}</h1>
-          <p className="mt-1 text-sm text-slate-500">{title}</p>
+          <p className="mt-1 text-sm text-stone-500">{title}</p>
         </div>
         <UserHeaderActions profile={profile} />
       </header>
@@ -105,15 +105,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <section className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="space-y-5">
           <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
-            <p className="text-sm font-medium text-slate-400">{view === "week" ? "本週攝取" : "當日攝取"}</p>
+            <p className="text-sm font-medium text-stone-400">{view === "week" ? "本週攝取" : "當日攝取"}</p>
             <div className="mt-1 flex items-end gap-2">
               <p className="text-5xl font-black tracking-tight">{totals.calories}</p>
-              <p className="mb-1.5 text-lg font-semibold text-slate-400">kcal</p>
+              <p className="mb-1.5 text-lg font-semibold text-stone-400">kcal</p>
             </div>
-            <p className="mt-0.5 text-sm text-slate-500">目標 {target} kcal · {Math.min(Math.round((totals.calories / target) * 100), 100)}%</p>
+            <p className="mt-0.5 text-sm text-stone-500">目標 {target} kcal · {Math.min(Math.round((totals.calories / target) * 100), 100)}%</p>
             <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300 transition-all duration-700"
+                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-700"
                 style={{ width: `${Math.min((totals.calories / target) * 100, 100)}%` }}
               />
             </div>
@@ -129,7 +129,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <Metric label="BMR 基礎代謝" value={bmr ? `${bmr} kcal` : "資料不足"} />
               <Metric label="TDEE 每日消耗" value={tdee ? `${tdee} kcal` : "資料不足"} />
             </div>
-            <p className="mt-3 text-xs text-slate-400">使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。</p>
+            <p className="mt-3 text-xs text-stone-400">使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。</p>
           </div>
         </div>
         <MealCaptureForm initialNextMealAdvice={todayRecommendation?.advice ?? ""} />
@@ -161,7 +161,7 @@ function Macro({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl p-3.5" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)" }}>
       <p className="text-lg font-black">{value}</p>
-      <p className="mt-0.5 text-xs text-slate-300">{label}</p>
+      <p className="mt-0.5 text-xs text-stone-300">{label}</p>
     </div>
   );
 }
@@ -170,7 +170,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl p-4" style={{ background: "rgba(255,255,255,0.45)", border: "1px solid rgba(255,255,255,0.6)", backdropFilter: "blur(8px)" }}>
       <p className="text-xl font-black">{value}</p>
-      <p className="mt-0.5 text-xs font-medium text-slate-500">{label}</p>
+      <p className="mt-0.5 text-xs font-medium text-stone-500">{label}</p>
     </div>
   );
 }
