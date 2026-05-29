@@ -32,6 +32,7 @@ function emptyManualItem(): ManualItem {
 export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMealAdvice?: string }) {
   const router = useRouter();
   const [preview, setPreview] = useState<string>();
+  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [nextMealAdvice, setNextMealAdvice] = useState(initialNextMealAdvice);
@@ -64,8 +65,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     const formData = new FormData(form);
     setError("");
     const items = itemsForPayload(manualItems);
-    if (!preview && items.length === 0) {
-      setError("請先上傳圖片，或在下方手動輸入食物項目。");
+    const mealDescription = description.trim();
+    if (!preview && !mealDescription && items.length === 0) {
+      setError("請先上傳圖片、描述餐點，或在下方手動輸入食物項目。");
       return;
     }
     setLoading(true);
@@ -82,18 +84,24 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           return;
         }
         setConfirmMealType(String(formData.get("mealType") ?? "LUNCH"));
-        setConfirmItems(
-          data.analysis.foods.map((food: { name: string; estimatedAmount: string; calories: number; protein: number; fat: number; carbs: number; aiRating?: string }) => ({
-            id: crypto.randomUUID(),
-            name: food.name,
-            estimatedAmount: food.estimatedAmount,
-            calories: String(food.calories),
-            protein: String(food.protein),
-            fat: String(food.fat),
-            carbs: String(food.carbs),
-            aiRating: food.aiRating ?? "OK"
-          }))
-        );
+        setConfirmItems(itemsFromAnalysis(data.analysis.foods));
+        setShowConfirm(true);
+        return;
+      }
+
+      if (mealDescription) {
+        const response = await fetch("/api/meals/analyze-description", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mealType: formData.get("mealType"), description: mealDescription, eatenAt: new Date().toISOString() })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          setError(data.error ?? "分析失敗，請稍後再試");
+          return;
+        }
+        setConfirmMealType(String(formData.get("mealType") ?? "LUNCH"));
+        setConfirmItems(itemsFromAnalysis(data.analysis.foods));
         setShowConfirm(true);
         return;
       }
@@ -114,6 +122,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         return;
       }
       setPreview(undefined);
+      setDescription("");
       setManualItems([emptyManualItem()]);
       form.reset();
       router.refresh();
@@ -136,7 +145,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       const response = await fetch("/api/meals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mealType: confirmMealType, imageDataUrl: preview, manualItems: items, eatenAt: new Date().toISOString() })
+        body: JSON.stringify({ mealType: confirmMealType, imageDataUrl: preview, description: description.trim() || undefined, manualItems: items, eatenAt: new Date().toISOString() })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -144,6 +153,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         return;
       }
       setPreview(undefined);
+      setDescription("");
       setManualItems([emptyManualItem()]);
       setConfirmItems([]);
       setShowConfirm(false);
@@ -212,7 +222,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   return (
     <form onSubmit={onSubmit} className="glass glass-lift rounded-[2rem] p-6">
       <h2 className="text-2xl font-black">新增餐點</h2>
-      <p className="mt-2 text-sm text-slate-600">拍照或上傳圖片後可由 AI 估算；沒有圖片時也可手動輸入餐點。</p>
+      <p className="mt-2 text-sm text-slate-600">拍照、上傳圖片，或直接描述你吃了什麼，AI 會先估算營養數據供你確認。</p>
       <select className="mt-5 w-full rounded-2xl border border-slate-200 px-4 py-3" name="mealType" defaultValue="LUNCH">
         <option value="BREAKFAST">早餐</option>
         <option value="LUNCH">午餐</option>
@@ -221,9 +231,20 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       </select>
       <input accept="image/*" capture="environment" className="mt-4 w-full rounded-2xl border border-dashed border-slate-300 px-4 py-6" type="file" onChange={(event) => onFileChange(event.target.files?.[0])} />
       {preview ? <img alt="餐點預覽" className="mt-4 max-h-64 w-full rounded-2xl object-cover" src={preview} /> : null}
+      <div className="mt-5 rounded-2xl bg-emerald-50 p-4">
+        <h3 className="font-bold text-emerald-950">用文字描述餐點</h3>
+        <p className="mt-1 text-xs text-emerald-700">例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。</p>
+        <textarea
+          className="mt-3 min-h-24 w-full rounded-xl border border-emerald-100 bg-white px-3 py-2 outline-none focus:border-emerald-400"
+          maxLength={1200}
+          onChange={(event) => setDescription(event.target.value)}
+          placeholder="描述你吃了什麼、份量大概多少..."
+          value={description}
+        />
+      </div>
       <div className="mt-5 rounded-2xl bg-slate-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
-        <p className="mt-1 text-xs text-slate-500">沒有圖片或 AI 無法分析時，可以填寫以下欄位直接儲存。</p>
+        <p className="mt-1 text-xs text-slate-500">沒有圖片、文字描述，或 AI 無法分析時，可以填寫以下欄位直接儲存。</p>
         {savedFoods.length ? (
           <div className="mt-3 rounded-2xl bg-white p-3">
             <p className="text-sm font-bold">常用食物</p>
@@ -262,7 +283,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       </div>
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
       <button className="mt-5 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-semibold text-white disabled:opacity-60" disabled={loading} type="submit">
-        {loading ? "儲存中..." : preview ? "AI 分析並儲存" : "儲存餐點"}
+        {loading ? "儲存中..." : preview || description.trim() ? "AI 分析並確認" : "儲存餐點"}
       </button>
       <p className="mt-3 text-xs text-slate-500">AI 分析為估算值，請依實際份量修正。</p>
       {adviceLoading ? <p className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-800">正在產生下一餐建議...</p> : null}
@@ -278,7 +299,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           <div className="mx-auto max-w-2xl rounded-[2rem] bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-black">確認 AI 辨識品項</h2>
+                <h2 className="text-2xl font-black">確認 AI 分析品項</h2>
                 <p className="mt-1 text-sm text-slate-500">請確認食物是否正確，可先修正、刪除或新增後再儲存。</p>
               </div>
               <button className="rounded-full bg-slate-100 px-3 py-1 font-semibold" onClick={() => setShowConfirm(false)} type="button">關閉</button>
@@ -315,6 +336,19 @@ function itemsForPayload(items: ManualItem[]) {
       carbs: Number(item.carbs || 0),
       aiRating: item.aiRating
     }));
+}
+
+function itemsFromAnalysis(foods: Array<{ name: string; estimatedAmount: string; calories: number; protein: number; fat: number; carbs: number; aiRating?: string }>) {
+  return foods.map((food) => ({
+    id: crypto.randomUUID(),
+    name: food.name,
+    estimatedAmount: food.estimatedAmount,
+    calories: String(food.calories),
+    protein: String(food.protein),
+    fat: String(food.fat),
+    carbs: String(food.carbs),
+    aiRating: food.aiRating ?? "OK"
+  }));
 }
 
 function FoodEditor({ item, index, items, setItems }: { item: ManualItem; index: number; items: ManualItem[]; setItems: (items: ManualItem[] | ((items: ManualItem[]) => ManualItem[])) => void }) {

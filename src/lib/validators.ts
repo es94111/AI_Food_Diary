@@ -26,6 +26,7 @@ export const profileSchema = z.object({
 export const mealSchema = z.object({
   mealType: z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]),
   imageDataUrl: z.string().startsWith("data:image/").optional(),
+  description: z.string().min(2).max(1200).optional(),
   eatenAt: z.string().datetime().optional(),
   manualItems: z
     .array(

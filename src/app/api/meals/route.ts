@@ -36,8 +36,12 @@ export async function POST(request: Request) {
         fat: manualItems.reduce((total, item) => total + item.fat, 0),
         carbs: manualItems.reduce((total, item) => total + item.carbs, 0)
       },
-      confidence: body.imageDataUrl ? 0.8 : 1,
-      notes: body.imageDataUrl ? "使用者已確認 AI 分析結果。" : "手動新增餐點項目。"
+      confidence: body.imageDataUrl || body.description ? 0.8 : 1,
+      notes: body.imageDataUrl
+        ? "使用者已確認 AI 圖片分析結果。"
+        : body.description
+          ? `使用者已確認 AI 文字分析結果。原始描述：${body.description}`
+          : "手動新增餐點項目。"
     };
 
     // Upload image to object storage and store the key, not the raw data URL

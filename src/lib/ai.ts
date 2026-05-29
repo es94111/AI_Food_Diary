@@ -28,6 +28,9 @@ export type FoodAnalysis = z.infer<typeof foodAnalysisSchema>;
 const defaultMealAnalysisPrompt =
   '你是營養分析助手。請根據餐點照片估算食物、份量、熱量與三大營養素。每一種可辨識食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱。例如炸素排與玉米濃湯必須分成兩筆。請為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。';
 
+const defaultMealDescriptionAnalysisPrompt =
+  '你是營養分析助手。請根據使用者用文字描述的餐點估算食物、份量、熱量與三大營養素。每一種食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱。若描述含糊，請使用常見份量保守估算，並在 notes 說明假設。請為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.7,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者描述：{{description}}';
+
 const defaultNextMealAdvicePrompt =
   "請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。請包含建議餐點、避免事項與原因，避免醫療診斷。";
 
@@ -201,6 +204,24 @@ export async function analyzeMealImage(imageDataUrl?: string): Promise<FoodAnaly
           },
           { type: "image_url", image_url: { url: imageDataUrl, detail: "auto" } }
         ]
+      }
+    ]
+  });
+
+  return parseMealAnalysisText(completionText(response));
+}
+
+export async function analyzeMealDescription(description: string): Promise<FoodAnalysis> {
+  const prompt = renderPrompt(promptFromEnv("AI_MEAL_DESCRIPTION_ANALYSIS_PROMPT", defaultMealDescriptionAnalysisPrompt), {
+    description
+  });
+
+  const response = await openai().chat.completions.create({
+    model: process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini",
+    messages: [
+      {
+        role: "user",
+        content: prompt
       }
     ]
   });
