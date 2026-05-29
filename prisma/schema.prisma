@@ -31,6 +31,8 @@ model User {
   summaries    DailySummary[]
   savedFoods   SavedFood[]
   recommendations DailyRecommendation[]
+  healthConnections HealthConnection[]
+  healthMetrics HealthMetric[]
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 }
@@ -140,4 +142,37 @@ model DailyRecommendation {
   updatedAt      DateTime @updatedAt
 
   @@unique([userId, recommendationDate])
+}
+
+model HealthMetric {
+  id         String   @id @default(cuid())
+  userId     String
+  source     String
+  type       String
+  value      Float
+  unit       String
+  measuredAt DateTime
+  rawEncrypted Json?
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, source, type, measuredAt])
+  @@index([userId, measuredAt])
+  @@index([userId, type, measuredAt])
+}
+
+model HealthConnection {
+  id           String   @id @default(cuid())
+  userId       String
+  provider     String   @default("HEALTH_CONNECT")
+  deviceName   String?
+  tokenHash    String   @unique
+  lastSyncedAt DateTime?
+  revokedAt    DateTime?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId, revokedAt])
 }

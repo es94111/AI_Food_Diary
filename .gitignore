@@ -5,6 +5,7 @@ node_modules
 coverage
 dist
 src/generated/prisma
+flutter
 *.log
 postgres_data
 minio_data

@@ -29,6 +29,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const todayRecommendation = await prisma.dailyRecommendation.findUnique({
     where: { userId_recommendationDate: { userId: user.id, recommendationDate: startOfLocalDay(new Date()) } }
   });
+  const healthMetrics = await prisma.healthMetric.findMany({
+    where: { userId: user.id },
+    orderBy: { measuredAt: "desc" },
+    take: 100
+  });
+  const latestHealthMetrics = latestMetricsByType(healthMetrics);
   const totals = sumMeals(meals);
   const bmr = calculateBmr(user.profile ?? null);
   const tdee = calculateTdee(bmr, user.profile?.activityLevel);
@@ -131,6 +137,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             </div>
             <p className="mt-3 text-xs text-stone-400">使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。</p>
           </div>
+          <div className="glass glass-lift rounded-[2rem] p-6">
+            <h2 className="text-xl font-black">健康同步</h2>
+            <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、體重與活動熱量。</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <Metric label="最新步數" value={formatHealthMetric(latestHealthMetrics.STEPS, 0)} />
+              <Metric label="活動熱量" value={formatHealthMetric(latestHealthMetrics.ACTIVE_CALORIES, 0)} />
+              <Metric label="最新體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
+              <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 1)} />
+            </div>
+            <p className="mt-3 text-xs text-stone-400">同步 API：POST /api/health/sync。需使用登入後的 session cookie。</p>
+          </div>
         </div>
         <MealCaptureForm initialNextMealAdvice={todayRecommendation?.advice ?? ""} />
       </section>
@@ -173,4 +190,16 @@ function Metric({ label, value }: { label: string; value: string }) {
       <p className="mt-0.5 text-xs font-medium text-stone-500">{label}</p>
     </div>
   );
+}
+
+function latestMetricsByType(metrics: Array<{ type: string; value: number; unit: string; measuredAt: Date }>) {
+  return metrics.reduce<Record<string, { value: number; unit: string; measuredAt: Date }>>((latest, metric) => {
+    if (!latest[metric.type]) latest[metric.type] = metric;
+    return latest;
+  }, {});
+}
+
+function formatHealthMetric(metric: { value: number; unit: string } | undefined, digits: number) {
+  if (!metric) return "尚未同步";
+  return `${metric.value.toFixed(digits)} ${metric.unit}`;
 }

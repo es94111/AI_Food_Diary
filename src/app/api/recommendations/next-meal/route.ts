@@ -3,6 +3,7 @@ import { generateNextMealAdvice } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { addDays, startOfLocalDay } from "@/lib/dates";
+import { getHealthContext } from "@/lib/health-context";
 import { sumMeals } from "@/lib/totals";
 
 export async function GET() {
@@ -12,10 +13,12 @@ export async function GET() {
     where: { userId: user.id, eatenAt: { gte: start, lt: addDays(start, 1) } }
   });
   const today = sumMeals(meals);
+  const healthContext = await getHealthContext(user.id, start);
   const advice = await generateNextMealAdvice({
     today,
     calorieTarget: user.profile?.calorieTarget ?? 2000,
-    goal: user.profile?.goal ?? "MAINTAIN"
+    goal: user.profile?.goal ?? "MAINTAIN",
+    healthContext
   });
   await prisma.dailyRecommendation.upsert({
     where: { userId_recommendationDate: { userId: user.id, recommendationDate: start } },

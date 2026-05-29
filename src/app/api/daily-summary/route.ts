@@ -3,6 +3,7 @@ import { generateDailySummary } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { addDays, isoDate, startOfLocalDay } from "@/lib/dates";
+import { getHealthContext } from "@/lib/health-context";
 import { sumMeals } from "@/lib/totals";
 
 export async function GET(request: Request) {
@@ -22,10 +23,12 @@ export async function GET(request: Request) {
     where: { userId: user.id, eatenAt: { gte: summaryDate, lt: addDays(summaryDate, 1) } }
   });
   const totals = sumMeals(meals);
+  const healthContext = await getHealthContext(user.id, summaryDate);
   const ai = await generateDailySummary({
     date: isoDate(summaryDate),
     calorieTarget: user.profile?.calorieTarget ?? 2000,
-    totals
+    totals,
+    healthContext
   });
 
   const summary = await prisma.dailySummary.create({

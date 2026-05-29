@@ -38,10 +38,10 @@ const defaultNutritionLabelAnalysisPrompt =
   '你是營養標示辨識助手。請讀取圖片中的營養標示，建立一個 foods 項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
 
 const defaultNextMealAdvicePrompt =
-  "請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。請包含建議餐點、避免事項與原因，避免醫療診斷。";
+  "請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，包含建議餐點、避免事項與原因，避免醫療診斷。";
 
 const defaultDailySummaryPrompt =
-  "請用繁體中文產生 {{date}} 的飲食總結與今日建議。目標熱量 {{calorieTarget}} kcal。實際攝取 {{totalCalories}} kcal，蛋白質 {{totalProtein}}g，脂肪 {{totalFat}}g，碳水 {{totalCarbs}}g。請只用 JSON 輸出，欄位為 summary 與 recommendation。";
+  "請用繁體中文產生 {{date}} 的飲食總結與今日建議。目標熱量 {{calorieTarget}} kcal。實際攝取 {{totalCalories}} kcal，蛋白質 {{totalProtein}}g，脂肪 {{totalFat}}g，碳水 {{totalCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，避免醫療診斷。請只用 JSON 輸出，欄位為 summary 與 recommendation。";
 
 function openai() {
   if (!process.env.OPENAI_API_KEY) {
@@ -277,6 +277,7 @@ export async function generateNextMealAdvice(input: {
   calorieTarget: number;
   today: { calories: number; protein: number; fat: number; carbs: number };
   goal: string;
+  healthContext?: string;
 }) {
   const prompt = renderPrompt(promptFromEnv("AI_NEXT_MEAL_ADVICE_PROMPT", defaultNextMealAdvicePrompt), {
     goal: input.goal,
@@ -284,7 +285,8 @@ export async function generateNextMealAdvice(input: {
     todayCalories: input.today.calories,
     todayProtein: input.today.protein,
     todayFat: input.today.fat,
-    todayCarbs: input.today.carbs
+    todayCarbs: input.today.carbs,
+    healthContext: input.healthContext ?? "尚未同步"
   });
 
   const response = await openai().chat.completions.create({
@@ -304,6 +306,7 @@ export async function generateDailySummary(input: {
   date: string;
   calorieTarget: number;
   totals: { calories: number; protein: number; fat: number; carbs: number };
+  healthContext?: string;
 }) {
   const prompt = renderPrompt(promptFromEnv("AI_DAILY_SUMMARY_PROMPT", defaultDailySummaryPrompt), {
     date: input.date,
@@ -311,7 +314,8 @@ export async function generateDailySummary(input: {
     totalCalories: input.totals.calories,
     totalProtein: input.totals.protein,
     totalFat: input.totals.fat,
-    totalCarbs: input.totals.carbs
+    totalCarbs: input.totals.carbs,
+    healthContext: input.healthContext ?? "尚未同步"
   });
 
   const response = await openai().chat.completions.create({
