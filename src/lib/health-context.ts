@@ -34,6 +34,20 @@ export async function getHealthContext(userId: string, day = new Date()) {
   return parts.join("；");
 }
 
+export async function getLatestSyncedWeightKg(userId: string, day = new Date()) {
+  const metric = await prisma.healthMetric.findFirst({
+    where: {
+      userId,
+      type: "WEIGHT",
+      unit: { equals: "kg", mode: "insensitive" },
+      measuredAt: { lt: addDays(startOfLocalDay(day), 1) }
+    },
+    orderBy: { measuredAt: "desc" }
+  });
+
+  return metric?.value ?? null;
+}
+
 function latestByType(metrics: HealthMetric[]) {
   return metrics.reduce<Record<string, HealthMetric>>((latest, metric) => {
     if (!latest[metric.type]) latest[metric.type] = metric;

@@ -42,8 +42,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   });
   const latestHealthMetrics = latestMetricsByType(healthMetrics);
   const totals = sumMeals(meals);
-  const bmr = calculateBmr(user.profile ?? null);
-  const tdee = calculateTdee(bmr, user.profile?.activityLevel);
+  const syncedWeight = latestHealthMetrics.WEIGHT?.unit.toLowerCase() === "kg" ? latestHealthMetrics.WEIGHT.value : null;
+  const effectiveProfile = user.profile ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg } : null;
+  const bmr = calculateBmr(effectiveProfile);
+  const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);
   const target = user.profile?.calorieTarget ?? calorieTargetFromGoal(tdee, user.profile?.goal) ?? 2000;
   const macroTotal = totals.protein + totals.fat + totals.carbs;
   const proteinPercent = macroTotal ? Math.round((totals.protein / macroTotal) * 100) : 0;
@@ -141,7 +143,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <Metric label="BMR 基礎代謝" value={bmr ? `${bmr} kcal` : "資料不足"} />
               <Metric label="TDEE 每日消耗" value={tdee ? `${tdee} kcal` : "資料不足"} />
             </div>
-            <p className="mt-3 text-xs text-stone-400">使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。</p>
+            <p className="mt-3 text-xs text-stone-400">
+              使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。{syncedWeight ? "目前優先使用 Health Connect 最新體重。" : ""}
+            </p>
           </div>
           <div className="glass glass-lift rounded-[2rem] p-6">
             <h2 className="text-xl font-black">健康同步</h2>

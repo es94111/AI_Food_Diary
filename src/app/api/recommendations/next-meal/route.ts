@@ -3,7 +3,8 @@ import { generateNextMealAdvice } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { addDays, startOfLocalDay } from "@/lib/dates";
-import { getHealthContext } from "@/lib/health-context";
+import { getHealthContext, getLatestSyncedWeightKg } from "@/lib/health-context";
+import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { sumMeals } from "@/lib/totals";
 
 export async function GET() {
@@ -14,10 +15,13 @@ export async function GET() {
   });
   const today = sumMeals(meals);
   const healthContext = await getHealthContext(user.id, start);
+  const syncedWeight = await getLatestSyncedWeightKg(user.id, start);
+  const effectiveProfile = user.profile ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg } : null;
+  const calorieTarget = effectiveProfile?.calorieTarget ?? calorieTargetFromGoal(calculateTdee(calculateBmr(effectiveProfile), effectiveProfile?.activityLevel), effectiveProfile?.goal) ?? 2000;
   const advice = await generateNextMealAdvice({
     today,
-    calorieTarget: user.profile?.calorieTarget ?? 2000,
-    goal: user.profile?.goal ?? "MAINTAIN",
+    calorieTarget,
+    goal: effectiveProfile?.goal ?? "MAINTAIN",
     healthContext
   });
   await prisma.dailyRecommendation.upsert({
