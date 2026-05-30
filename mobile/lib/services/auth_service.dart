@@ -53,6 +53,22 @@ class AuthService {
     return AppUser.fromJson(res.data['user'] as Map<String, dynamic>);
   }
 
+  static Future<void> linkGoogle(String idToken) async {
+    final res = await _api.post('/api/auth/google/link', data: {'idToken': idToken});
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, 'Google 綁定失敗'),
+          statusCode: res.statusCode);
+    }
+  }
+
+  static Future<void> unlinkGoogle() async {
+    final res = await _api.delete('/api/auth/google/link');
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '解除綁定失敗'),
+          statusCode: res.statusCode);
+    }
+  }
+
   static Future<void> logout() async {
     try {
       await _api.post('/api/auth/logout');

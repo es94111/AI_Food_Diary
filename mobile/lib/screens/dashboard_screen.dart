@@ -238,6 +238,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _accountCard(),
         const SizedBox(height: 12),
         _bodyDataCard(metabolism),
+        if (GoogleAuth.isConfigured) ...[
+          const SizedBox(height: 12),
+          _GoogleLinkCard(
+            linked: _user?.googleLinked ?? false,
+            onChanged: _refreshUserAndMeals,
+          ),
+        ],
         const SizedBox(height: 12),
         const _NutritionWriteToggle(),
         const SizedBox(height: 12),
@@ -718,6 +725,108 @@ class _AdminPanelState extends State<_AdminPanel> {
               value: _open ?? true,
               onChanged: _busy || _open == null ? null : _toggle,
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Settings card: bind / unbind a Google account to the current user.
+class _GoogleLinkCard extends StatefulWidget {
+  const _GoogleLinkCard({required this.linked, required this.onChanged});
+  final bool linked;
+  final Future<void> Function() onChanged;
+
+  @override
+  State<_GoogleLinkCard> createState() => _GoogleLinkCardState();
+}
+
+class _GoogleLinkCardState extends State<_GoogleLinkCard> {
+  late bool _linked = widget.linked;
+  bool _busy = false;
+
+  Future<void> _bind() async {
+    setState(() => _busy = true);
+    try {
+      final idToken = await GoogleAuth.getIdToken();
+      if (idToken == null) return; // cancelled
+      await AuthService.linkGoogle(idToken);
+      await widget.onChanged();
+      if (!mounted) return;
+      setState(() => _linked = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已綁定 Google 帳號')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('綁定失敗：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _unbind() async {
+    setState(() => _busy = true);
+    try {
+      await AuthService.unlinkGoogle();
+      await GoogleAuth.signOut();
+      await widget.onChanged();
+      if (mounted) setState(() => _linked = false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('解除綁定失敗：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Google 帳號綁定',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            if (_linked)
+              Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green[600], size: 20),
+                  const SizedBox(width: 6),
+                  const Expanded(child: Text('已綁定 Google 帳號')),
+                  TextButton(
+                    onPressed: _busy ? null : _unbind,
+                    child: const Text('解除綁定',
+                        style: TextStyle(color: Colors.red)),
+                  ),
+                ],
+              )
+            else ...[
+              const Text('綁定後即可使用 Google 一鍵登入。',
+                  style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _bind,
+                  icon: _busy
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.link),
+                  label: const Text('綁定 Google 帳號'),
+                ),
+              ),
+            ],
           ],
         ),
       ),

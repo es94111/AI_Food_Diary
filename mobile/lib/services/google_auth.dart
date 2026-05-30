@@ -27,6 +27,19 @@ class GoogleAuth {
     return AuthService.loginWithGoogle(idToken);
   }
 
+  /// Runs Google sign-in and returns just the ID token (for account linking),
+  /// or null if the user cancelled.
+  static Future<String?> getIdToken() async {
+    final account = await _gsi.signIn();
+    if (account == null) return null;
+    final auth = await account.authentication;
+    final idToken = auth.idToken;
+    if (idToken == null || idToken.isEmpty) {
+      throw ApiException('無法取得 Google 憑證，請重試。');
+    }
+    return idToken;
+  }
+
   /// Sign out of Google so the account chooser shows next time.
   static Future<void> signOut() async {
     try {

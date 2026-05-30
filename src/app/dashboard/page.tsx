@@ -14,6 +14,7 @@ import { HealthConnectionsPanel } from "@/components/health-connections-panel";
 import { DashboardTabs } from "@/components/dashboard-tabs";
 import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
 import { LogoutButton } from "@/components/logout-button";
+import { GoogleLinkPanel } from "@/components/google-link-panel";
 import { WEB_VERSION } from "@/lib/version";
 import { getLatestAppRelease } from "@/lib/app-release";
 
@@ -205,6 +206,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <ProfileMetabolismForm profile={profile} />
         </div>
       </div>
+      <GoogleLinkPanel clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID} linked={!!user.googleId} />
       {user.isAdmin && <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />}
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">版本資訊</h2>

@@ -47,6 +47,7 @@ class AppUser {
   final String email;
   final String? name;
   final bool isAdmin;
+  final bool googleLinked;
   final UserProfile? profile;
 
   AppUser({
@@ -54,6 +55,7 @@ class AppUser {
     required this.email,
     this.name,
     this.isAdmin = false,
+    this.googleLinked = false,
     this.profile,
   });
 
@@ -62,6 +64,7 @@ class AppUser {
         email: j['email'] as String,
         name: j['name'] as String?,
         isAdmin: j['isAdmin'] == true,
+        googleLinked: j['googleId'] != null,
         profile: j['profile'] is Map<String, dynamic>
             ? UserProfile.fromJson(j['profile'] as Map<String, dynamic>)
             : null,
