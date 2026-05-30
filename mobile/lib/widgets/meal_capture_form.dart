@@ -71,10 +71,14 @@ class MealCaptureForm extends StatefulWidget {
     super.key,
     required this.onSaved,
     this.initialAdvice = '',
+    this.showAdvice = true,
   });
 
   final Future<void> Function() onSaved;
   final String initialAdvice;
+
+  /// The next-meal advice is for "today"; hide it when browsing other dates.
+  final bool showAdvice;
 
   @override
   State<MealCaptureForm> createState() => _MealCaptureFormState();
@@ -351,13 +355,13 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             const SizedBox(height: 6),
             const Text('AI 分析為估算值，請依實際份量修正。',
                 style: TextStyle(fontSize: 11, color: Colors.black45)),
-            if (_adviceLoading)
+            if (widget.showAdvice && _adviceLoading)
               const Padding(
                 padding: EdgeInsets.only(top: 12),
                 child: Text('正在產生下一餐建議...',
                     style: TextStyle(color: Color(0xFFB45309))),
               ),
-            if (_advice.isNotEmpty) _adviceCard(),
+            if (widget.showAdvice && _advice.isNotEmpty) _adviceCard(),
           ],
         ),
       ),

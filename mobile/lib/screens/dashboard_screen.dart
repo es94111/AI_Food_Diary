@@ -78,11 +78,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadMeals() async {
-    final meals = _weekView
-        ? await MealService.mealsForWeek(startOfLocalWeek(_selectedDate))
-        : await MealService.mealsForDay(_selectedDate);
-    meals.sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
-    if (mounted) setState(() => _meals = meals);
+    try {
+      final meals = _weekView
+          ? await MealService.mealsForWeek(startOfLocalWeek(_selectedDate))
+          : await MealService.mealsForDay(_selectedDate);
+      meals.sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
+      if (mounted) setState(() => _meals = meals);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
   }
 
   Future<void> _logout() async {
@@ -108,8 +112,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _weekdayZh(DateTime d) =>
       const ['一', '二', '三', '四', '五', '六', '日'][d.weekday - 1];
 
+  bool get _isToday =>
+      isoDate(_selectedDate) == isoDate(startOfLocalDay(DateTime.now()));
+
+  bool get _canGoForward {
+    final next =
+        startOfLocalDay(_selectedDate.add(Duration(days: _weekView ? 7 : 1)));
+    return !next.isAfter(startOfLocalDay(DateTime.now()));
+  }
+
+  /// Steps the selected date by [days] (already ±1 day or ±7 for week view).
+  /// Re-normalises to local midnight so repeated steps can't drift, and never
+  /// navigates into the future (no meals exist there).
   void _changeDate(int days) {
-    setState(() => _selectedDate = _selectedDate.add(Duration(days: days)));
+    final candidate = startOfLocalDay(_selectedDate.add(Duration(days: days)));
+    if (days > 0 && candidate.isAfter(startOfLocalDay(DateTime.now()))) return;
+    setState(() => _selectedDate = candidate);
     _loadMeals();
   }
 
@@ -179,7 +197,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           const SizedBox(height: 12),
           _calorieCard(totals, target),
           const SizedBox(height: 12),
-          MealCaptureForm(onSaved: _loadMeals, initialAdvice: _nextMealAdvice),
+          MealCaptureForm(
+              onSaved: _loadMeals,
+              initialAdvice: _nextMealAdvice,
+              showAdvice: !_weekView && _isToday),
           const SizedBox(height: 12),
           _mealsSection(),
           const SizedBox(height: 12),
@@ -356,7 +377,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: Text(label),
                 ),
                 IconButton(
-                    onPressed: () => _changeDate(_weekView ? 7 : 1),
+                    onPressed: _canGoForward
+                        ? () => _changeDate(_weekView ? 7 : 1)
+                        : null,
                     icon: const Icon(Icons.chevron_right)),
               ],
             ),
