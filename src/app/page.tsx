@@ -12,7 +12,7 @@ export default async function HomePage() {
         <div>
           <p className="mb-4 text-sm font-semibold uppercase tracking-[0.35em] text-amber-700">AI Food Diary</p>
           <h1 className="text-5xl font-black leading-tight text-stone-950 md:text-7xl">
-            拍下每一餐，讓 AI 幫你看懂營養。
+            拍下每一餐<br />讓 AI 幫你看懂營養
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-700">
             上傳餐點照片，自動估算熱量、蛋白質、脂肪與碳水，並依據今日攝取提供下一餐建議與昨日總結。
