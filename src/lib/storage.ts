@@ -1,5 +1,5 @@
 import "server-only";
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 
 function createClient() {
   const endpoint = process.env.S3_ENDPOINT;
@@ -34,6 +34,36 @@ export async function uploadImage(dataUrl: string, userId: string): Promise<stri
 }
 
 export async function getImageObject(key: string) {
+  return createClient().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+}
+
+/// Lists all object keys under [prefix] (handles pagination).
+export async function listKeys(prefix: string): Promise<string[]> {
+  const client = createClient();
+  const out: string[] = [];
+  let token: string | undefined;
+  do {
+    const res = await client.send(
+      new ListObjectsV2Command({ Bucket: bucket(), Prefix: prefix, ContinuationToken: token })
+    );
+    for (const o of res.Contents ?? []) if (o.Key) out.push(o.Key);
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+  return out;
+}
+
+/// Reads a text object (e.g. release notes). Returns null if missing.
+export async function getObjectText(key: string): Promise<string | null> {
+  try {
+    const res = await createClient().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+    return res.Body ? await res.Body.transformToString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/// Returns the raw object (for streaming a download).
+export async function getObject(key: string) {
   return createClient().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
 }
 

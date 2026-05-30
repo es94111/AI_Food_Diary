@@ -14,7 +14,8 @@ import { HealthConnectionsPanel } from "@/components/health-connections-panel";
 import { DashboardTabs } from "@/components/dashboard-tabs";
 import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
 import { LogoutButton } from "@/components/logout-button";
-import { WEB_VERSION, LATEST_APP_VERSION, APK_URL } from "@/lib/version";
+import { WEB_VERSION } from "@/lib/version";
+import { getLatestAppRelease } from "@/lib/app-release";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string }> }) {
   const user = await getCurrentUser();
@@ -104,6 +105,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const appConfig = user.isAdmin
     ? await prisma.appConfig.findUnique({ where: { id: "singleton" } })
     : null;
+  const appRelease = await getLatestAppRelease();
 
   const foodPanel = (
     <>
@@ -208,14 +210,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <h2 className="text-xl font-black">版本資訊</h2>
         <div className="mt-4 grid grid-cols-2 gap-3">
           <Metric label="網頁目前版本" value={`v${WEB_VERSION}`} />
-          <Metric label="App 最新版本" value={LATEST_APP_VERSION ? `v${LATEST_APP_VERSION}` : "—"} />
+          <Metric label="App 最新版本" value={appRelease.version ? `v${appRelease.version}` : "—"} />
         </div>
-        {APK_URL ? (
+        {appRelease.notes ? (
+          <p className="mt-3 whitespace-pre-line text-xs text-stone-500">{appRelease.notes}</p>
+        ) : null}
+        {appRelease.apkKey ? (
           <a
-            href={APK_URL}
+            href="/api/app/download"
             className="mt-4 inline-block rounded-full bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-80"
           >
-            下載 Android App (v{LATEST_APP_VERSION})
+            下載 Android App (v{appRelease.version})
           </a>
         ) : null}
       </div>
