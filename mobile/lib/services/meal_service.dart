@@ -133,8 +133,11 @@ class MealService {
   }
 
   /// Regenerates and returns today's next-meal advice (spends AI quota).
+  /// Sends the device's local date so the recommendation is keyed to the
+  /// user's day, not the server's timezone.
   static Future<String> nextMealAdvice() async {
-    final res = await _api.get('/api/recommendations/next-meal');
+    final res = await _api.get('/api/recommendations/next-meal',
+        query: {'date': isoDate(DateTime.now())});
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法產生下一餐建議'));
     }
@@ -143,8 +146,8 @@ class MealService {
 
   /// Returns today's stored next-meal advice without regenerating ('' if none).
   static Future<String> peekNextMealAdvice() async {
-    final res = await _api
-        .get('/api/recommendations/next-meal', query: {'peek': '1'});
+    final res = await _api.get('/api/recommendations/next-meal',
+        query: {'peek': '1', 'date': isoDate(DateTime.now())});
     if (!ApiClient.ok(res)) return '';
     return (res.data['advice'] as String?) ?? '';
   }

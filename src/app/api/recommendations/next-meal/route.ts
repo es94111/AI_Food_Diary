@@ -9,11 +9,18 @@ import { sumMeals } from "@/lib/totals";
 
 export async function GET(request: Request) {
   const user = await requireUser();
-  const start = startOfLocalDay(new Date());
+  const url = new URL(request.url);
+  // Key by the caller's local date when provided (clients live in other
+  // timezones than the server), so "today" matches the user's day and we don't
+  // surface yesterday's advice in their early morning hours.
+  const dateParam = url.searchParams.get("date");
+  const start = dateParam
+    ? startOfLocalDay(new Date(`${dateParam}T00:00:00`))
+    : startOfLocalDay(new Date());
 
   // Peek mode: return today's stored advice without regenerating (no AI spend).
   // Used by the app to re-display advice after a restart.
-  if (new URL(request.url).searchParams.get("peek") === "1") {
+  if (url.searchParams.get("peek") === "1") {
     const existing = await prisma.dailyRecommendation.findUnique({
       where: { userId_recommendationDate: { userId: user.id, recommendationDate: start } }
     });

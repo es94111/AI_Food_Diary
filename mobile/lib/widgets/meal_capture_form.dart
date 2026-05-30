@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/models.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_service.dart';
+import 'markdown_text.dart';
 
 const mealTypes = {
   'BREAKFAST': '早餐',
@@ -513,7 +514,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           const Text('此建議會保留到今天結束；新增下一餐後會自動更新。',
               style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
           const SizedBox(height: 6),
-          Text(_advice, style: const TextStyle(color: Color(0xFF78350F))),
+          MarkdownText(_advice, style: const TextStyle(color: Color(0xFF78350F))),
         ],
       ),
     );

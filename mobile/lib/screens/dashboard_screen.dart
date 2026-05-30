@@ -6,6 +6,7 @@ import '../services/health_service.dart';
 import '../services/meal_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/health_sync_card.dart';
+import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
 import '../widgets/profile_form.dart';
@@ -589,7 +590,7 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
               Text(_error!, style: const TextStyle(color: Colors.red)),
             if (_summary != null) ...[
               const SizedBox(height: 8),
-              Text(_summary!.aiSummary),
+              MarkdownText(_summary!.aiSummary),
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
@@ -606,7 +607,7 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
                             fontWeight: FontWeight.w900,
                             color: Color(0xFF92400E))),
                     const SizedBox(height: 4),
-                    Text(_summary!.aiRecommendation,
+                    MarkdownText(_summary!.aiRecommendation,
                         style: const TextStyle(color: Color(0xFF78350F))),
                   ],
                 ),
