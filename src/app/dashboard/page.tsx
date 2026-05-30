@@ -45,7 +45,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const latestHealthMetrics = latestMetricsByType(healthMetrics);
   const totals = sumMeals(meals);
   const syncedWeight = latestHealthMetrics.WEIGHT?.unit.toLowerCase() === "kg" ? latestHealthMetrics.WEIGHT.value : null;
-  const effectiveProfile = user.profile ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg } : null;
+  const syncedHeight = latestHealthMetrics.HEIGHT?.unit.toLowerCase() === "cm" ? latestHealthMetrics.HEIGHT.value : null;
+  const effectiveProfile = user.profile
+    ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg, heightCm: syncedHeight ?? user.profile.heightCm }
+    : null;
   const bmr = calculateBmr(effectiveProfile);
   const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);
   const target = user.profile?.calorieTarget ?? calorieTargetFromGoal(tdee, user.profile?.goal) ?? 2000;
@@ -136,12 +139,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <>
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">健康同步</h2>
-        <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、體重與活動熱量。</p>
+        <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、熱量、睡眠、運動、心率、體脂等資料。</p>
         <div className="mt-4 grid grid-cols-2 gap-3">
           <Metric label="最新步數" value={formatHealthMetric(latestHealthMetrics.STEPS, 0)} />
           <Metric label="活動熱量" value={formatHealthMetric(latestHealthMetrics.ACTIVE_CALORIES, 0)} />
+          <Metric label="每日總消耗" value={formatHealthMetric(latestHealthMetrics.TOTAL_CALORIES, 0)} />
           <Metric label="最新體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
-          <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 1)} />
+          <Metric label="身高" value={formatHealthMetric(latestHealthMetrics.HEIGHT, 0)} />
+          <Metric label="體脂率" value={formatHealthMetric(latestHealthMetrics.BODY_FAT, 1)} />
+          <Metric label="靜息心率" value={formatHealthMetric(latestHealthMetrics.RESTING_HEART_RATE, 0)} />
+          <Metric label="心率" value={formatHealthMetric(latestHealthMetrics.HEART_RATE, 0)} />
+          <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 0)} />
+          <Metric label="運動" value={formatHealthMetric(latestHealthMetrics.EXERCISE, 0)} />
+          <Metric label="喝水" value={formatHealthMetric(latestHealthMetrics.WATER, 1)} />
+          <Metric label="營養攝取" value={formatHealthMetric(latestHealthMetrics.NUTRITION, 0)} />
         </div>
         <p className="mt-3 text-xs text-stone-400">同步 API：POST /api/health/sync。Flutter app 建議使用 Bearer token。</p>
         <HealthConnectionsPanel initialConnections={healthConnections} />
@@ -153,7 +164,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Metric label="TDEE 每日消耗" value={tdee ? `${tdee} kcal` : "資料不足"} />
         </div>
         <p className="mt-3 text-xs text-stone-400">
-          使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。{syncedWeight ? "目前優先使用 Health Connect 最新體重。" : ""}
+          使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。{syncedWeight || syncedHeight ? "目前優先使用 Health Connect 同步的最新體重／身高。" : ""}
         </p>
       </div>
     </>

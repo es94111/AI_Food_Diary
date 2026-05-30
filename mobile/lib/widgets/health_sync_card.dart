@@ -4,6 +4,29 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/health_service.dart';
 
+class _MetricDef {
+  const _MetricDef(this.label, this.type, this.icon, this.digits);
+  final String label;
+  final String type;
+  final IconData icon;
+  final int digits;
+}
+
+const _displayMetrics = <_MetricDef>[
+  _MetricDef('步數', 'STEPS', Icons.directions_walk, 0),
+  _MetricDef('活動熱量', 'ACTIVE_CALORIES', Icons.local_fire_department, 0),
+  _MetricDef('總消耗', 'TOTAL_CALORIES', Icons.bolt, 0),
+  _MetricDef('體重', 'WEIGHT', Icons.monitor_weight, 1),
+  _MetricDef('身高', 'HEIGHT', Icons.height, 0),
+  _MetricDef('體脂', 'BODY_FAT', Icons.percent, 1),
+  _MetricDef('靜息心率', 'RESTING_HEART_RATE', Icons.favorite, 0),
+  _MetricDef('心率', 'HEART_RATE', Icons.monitor_heart, 0),
+  _MetricDef('睡眠', 'SLEEP', Icons.bedtime, 0),
+  _MetricDef('運動', 'EXERCISE', Icons.fitness_center, 0),
+  _MetricDef('喝水', 'WATER', Icons.water_drop, 1),
+  _MetricDef('營養攝取', 'NUTRITION', Icons.restaurant, 0),
+];
+
 class HealthSyncCard extends StatefulWidget {
   const HealthSyncCard({super.key, required this.onSynced});
 
@@ -82,7 +105,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
             const Text('健康同步',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             const SizedBox(height: 2),
-            const Text('透過 Health Connect 同步步數、體重與活動熱量。',
+            const Text('透過 Health Connect 同步步數、熱量、睡眠、運動、心率等資料。',
                 style: TextStyle(fontSize: 11, color: Colors.black54)),
             const SizedBox(height: 12),
             GridView.count(
@@ -93,11 +116,8 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
               children: [
-                _metric('最新步數', _fmt('STEPS', 0), Icons.directions_walk),
-                _metric('活動熱量', _fmt('ACTIVE_CALORIES', 0),
-                    Icons.local_fire_department),
-                _metric('最新體重', _fmt('WEIGHT', 1), Icons.monitor_weight),
-                _metric('睡眠', _fmt('SLEEP', 1), Icons.bedtime),
+                for (final m in _displayMetrics)
+                  _metric(m.label, _fmt(m.type, m.digits), m.icon),
               ],
             ),
             if (_status?.lastSyncedAt != null)

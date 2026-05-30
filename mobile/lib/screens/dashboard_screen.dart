@@ -25,6 +25,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime _selectedDate = startOfLocalDay(DateTime.now());
   List<Meal> _meals = [];
   double? _syncedWeight;
+  double? _syncedHeight;
   String _nextMealAdvice = '';
   int _tabIndex = 0;
   bool _loading = true;
@@ -56,9 +57,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final status = await HealthService.status();
       final weight = status.latestByType['WEIGHT'];
-      if (weight != null && weight.unit.toLowerCase() == 'kg' && mounted) {
-        setState(() => _syncedWeight = weight.value);
-      }
+      final height = status.latestByType['HEIGHT'];
+      if (!mounted) return;
+      setState(() {
+        if (weight != null && weight.unit.toLowerCase() == 'kg') {
+          _syncedWeight = weight.value;
+        }
+        if (height != null && height.value > 0) {
+          _syncedHeight = height.value; // already stored in cm
+        }
+      });
     } catch (_) {}
   }
 
@@ -118,7 +126,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     final totals = Totals.fromMeals(_meals);
     final metabolism =
-        metabolismFor(_user?.profile, syncedWeightKg: _syncedWeight);
+        metabolismFor(_user?.profile,
+            syncedWeightKg: _syncedWeight, syncedHeightCm: _syncedHeight);
     final target = metabolism.target;
 
     return Scaffold(
@@ -273,29 +282,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _persistSyncedWeightToProfile();
   }
 
-  /// After a sync, write the latest Health Connect weight back into the user's
-  /// profile (and recompute the calorie target) so the saved settings reflect it.
+  /// After a sync, write the latest Health Connect weight/height back into the
+  /// user's profile (and recompute the calorie target) so saved settings reflect it.
   Future<void> _persistSyncedWeightToProfile() async {
     final weight = _syncedWeight;
-    if (weight == null) return;
     final profile = _user?.profile;
-    // Skip if the profile already stores essentially the same weight.
-    if (profile?.weightKg != null && (profile!.weightKg! - weight).abs() < 0.05) {
-      return;
-    }
+    final height = _syncedHeight?.round();
+
+    final weightChanged = weight != null &&
+        (profile?.weightKg == null || (profile!.weightKg! - weight).abs() >= 0.05);
+    final heightChanged = height != null &&
+        height > 0 &&
+        profile?.heightCm != height;
+    if (!weightChanged && !heightChanged) return;
+
     try {
-      // Recompute the calorie target from the new weight, mirroring the
-      // profile form, when there is enough data; otherwise just save weight.
       final bmr = calculateBmr(
         gender: profile?.gender,
         birthDate: profile?.birthDate,
-        heightCm: profile?.heightCm,
-        weightKg: weight,
+        heightCm: height ?? profile?.heightCm,
+        weightKg: weight ?? profile?.weightKg,
       );
-      final target =
-          calorieTargetFromGoal(calculateTdee(bmr, profile?.activityLevel),
-              profile?.goal);
-      await AuthService.updateProfile(weightKg: weight, calorieTarget: target);
+      final target = calorieTargetFromGoal(
+          calculateTdee(bmr, profile?.activityLevel), profile?.goal);
+      await AuthService.updateProfile(
+        weightKg: weightChanged ? weight : null,
+        heightCm: heightChanged ? height : null,
+        calorieTarget: target,
+      );
       _user = await AuthService.fetchMe();
       if (mounted) setState(() {});
     } catch (_) {}

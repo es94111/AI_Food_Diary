@@ -6,7 +6,20 @@ import { encryptJson } from "@/lib/encryption";
 import { getHealthSyncUserId } from "@/lib/health-auth";
 
 const healthMetricSchema = z.object({
-  type: z.enum(["STEPS", "WEIGHT", "ACTIVE_CALORIES", "EXERCISE", "SLEEP"]),
+  type: z.enum([
+    "STEPS",
+    "WEIGHT",
+    "ACTIVE_CALORIES",
+    "TOTAL_CALORIES",
+    "EXERCISE",
+    "SLEEP",
+    "HEART_RATE",
+    "RESTING_HEART_RATE",
+    "BODY_FAT",
+    "HEIGHT",
+    "NUTRITION",
+    "WATER"
+  ]),
   value: z.coerce.number().finite().nonnegative(),
   unit: z.string().min(1).max(32),
   measuredAt: z.string().datetime(),

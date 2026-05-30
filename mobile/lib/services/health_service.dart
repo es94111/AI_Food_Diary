@@ -19,8 +19,46 @@ class HealthService {
   static const _types = [
     HealthDataType.STEPS,
     HealthDataType.WEIGHT,
+    HealthDataType.HEIGHT,
+    HealthDataType.BODY_FAT_PERCENTAGE,
     HealthDataType.ACTIVE_ENERGY_BURNED,
+    HealthDataType.TOTAL_CALORIES_BURNED,
+    HealthDataType.HEART_RATE,
+    HealthDataType.RESTING_HEART_RATE,
+    HealthDataType.SLEEP_SESSION,
+    HealthDataType.WORKOUT,
+    HealthDataType.WATER,
+    HealthDataType.NUTRITION,
   ];
+
+  /// Backend type id + unit + how to aggregate a day's worth of points.
+  static (String, String, _Agg)? _mapType(HealthDataType t) => switch (t) {
+        HealthDataType.STEPS => ('STEPS', 'count', _Agg.sum),
+        HealthDataType.ACTIVE_ENERGY_BURNED => ('ACTIVE_CALORIES', 'kcal', _Agg.sum),
+        HealthDataType.TOTAL_CALORIES_BURNED => ('TOTAL_CALORIES', 'kcal', _Agg.sum),
+        HealthDataType.WATER => ('WATER', 'L', _Agg.sum),
+        HealthDataType.NUTRITION => ('NUTRITION', 'kcal', _Agg.sum),
+        HealthDataType.SLEEP_SESSION => ('SLEEP', 'min', _Agg.duration),
+        HealthDataType.WORKOUT => ('EXERCISE', 'min', _Agg.duration),
+        HealthDataType.WEIGHT => ('WEIGHT', 'kg', _Agg.latest),
+        HealthDataType.HEIGHT => ('HEIGHT', 'cm', _Agg.latest),
+        HealthDataType.BODY_FAT_PERCENTAGE => ('BODY_FAT', '%', _Agg.latest),
+        HealthDataType.RESTING_HEART_RATE => ('RESTING_HEART_RATE', 'bpm', _Agg.latest),
+        HealthDataType.HEART_RATE => ('HEART_RATE', 'bpm', _Agg.average),
+        _ => null,
+      };
+
+  /// Types whose aggregated value should be reported as a whole number.
+  static const _integerTypes = {
+    'STEPS',
+    'ACTIVE_CALORIES',
+    'TOTAL_CALORIES',
+    'NUTRITION',
+    'SLEEP',
+    'EXERCISE',
+    'HEART_RATE',
+    'RESTING_HEART_RATE',
+  };
 
   static List<HealthDataAccess> get _perms =>
       List.filled(_types.length, HealthDataAccess.READ);
@@ -65,39 +103,47 @@ class HealthService {
       types: _types,
     );
 
-    // Health Connect stores steps/active-calories as thousands of fine-grained
-    // interval records (per minute / per source) and the backend caps each sync
-    // at 500 metrics. Roll up to one record per (type, local day): STEPS and
-    // ACTIVE_CALORIES summed per day, WEIGHT keeps the latest reading per day.
-    // This also makes "latest steps" mean today's total, not the last minute.
-    final stepsByDay = <DateTime, double>{};
-    final caloriesByDay = <DateTime, double>{};
-    final weightByDay = <DateTime, HealthDataPoint>{};
+    // Health Connect stores most metrics as thousands of fine-grained interval
+    // records, and the backend caps each sync at 500. Roll up to one record per
+    // (type, local day): cumulative metrics (steps, calories, water, nutrition,
+    // sleep/exercise minutes) are summed; instantaneous ones (weight, height,
+    // body fat, resting HR) keep the latest reading; heart rate is averaged.
+    final accs = <(String, DateTime), _Acc>{};
 
     for (final p in _health.removeDuplicates(data)) {
+      final mapping = _mapType(p.type);
+      if (mapping == null) continue;
+      final (backendType, unit, agg) = mapping;
       final day = _localDayStart(p.dateFrom);
-      switch (p.type) {
-        case HealthDataType.STEPS:
-          stepsByDay[day] = (stepsByDay[day] ?? 0) + _numericValue(p);
-        case HealthDataType.ACTIVE_ENERGY_BURNED:
-          caloriesByDay[day] = (caloriesByDay[day] ?? 0) + _numericValue(p);
-        case HealthDataType.WEIGHT:
-          final existing = weightByDay[day];
-          if (existing == null || p.dateTo.isAfter(existing.dateTo)) {
-            weightByDay[day] = p;
+      final acc = accs.putIfAbsent((backendType, day), () => _Acc(unit, agg));
+      final value = _valueFor(p, backendType, agg);
+      switch (agg) {
+        case _Agg.sum:
+        case _Agg.duration:
+          acc.sum += value;
+        case _Agg.average:
+          acc.sum += value;
+          acc.count += 1;
+        case _Agg.latest:
+          if (acc.lastAt == null || p.dateTo.isAfter(acc.lastAt!)) {
+            acc.lastValue = value;
+            acc.lastAt = p.dateTo;
           }
-        default:
-          break;
       }
     }
 
     final out = <Map<String, dynamic>>[];
-    stepsByDay.forEach((day, v) =>
-        out.add(_payload('STEPS', v.roundToDouble(), 'count', day)));
-    caloriesByDay.forEach((day, v) =>
-        out.add(_payload('ACTIVE_CALORIES', v.roundToDouble(), 'kcal', day)));
-    weightByDay.forEach(
-        (day, p) => out.add(_payload('WEIGHT', _numericValue(p), 'kg', day)));
+    accs.forEach((key, acc) {
+      final (backendType, day) = key;
+      var value = switch (acc.agg) {
+        _Agg.average => acc.count > 0 ? acc.sum / acc.count : 0.0,
+        _Agg.latest => acc.lastValue,
+        _ => acc.sum,
+      };
+      if (_integerTypes.contains(backendType)) value = value.roundToDouble();
+      if (value <= 0 && acc.agg != _Agg.latest) return; // skip empty days
+      out.add(_payload(backendType, value, acc.unit, day));
+    });
     return out;
   }
 
@@ -106,6 +152,23 @@ class HealthService {
   static DateTime _localDayStart(DateTime d) {
     final l = d.toLocal();
     return DateTime(l.year, l.month, l.day);
+  }
+
+  /// Extracts a numeric value from a point for the given backend type.
+  static double _valueFor(HealthDataPoint p, String backendType, _Agg agg) {
+    // Sleep/exercise: use the session length (value encoding varies by source).
+    if (agg == _Agg.duration) {
+      final minutes = p.dateTo.difference(p.dateFrom).inMinutes;
+      return minutes > 0 ? minutes.toDouble() : _numericValue(p);
+    }
+    final raw = p.value;
+    if (raw is NutritionHealthValue) return (raw.calories ?? 0).toDouble();
+    if (raw is NumericHealthValue) {
+      var v = raw.numericValue.toDouble();
+      if (backendType == 'HEIGHT') v *= 100; // package reports metres → cm
+      return v;
+    }
+    return double.tryParse(raw.toString()) ?? 0.0;
   }
 
   static double _numericValue(HealthDataPoint p) {
@@ -190,4 +253,18 @@ class HealthService {
   }
 
   static Future<void> clearToken() => _storage.delete(key: _tokenKey);
+}
+
+/// How a day's worth of points for a metric are reduced to a single value.
+enum _Agg { sum, duration, latest, average }
+
+/// Per-(type, day) accumulator used while aggregating Health Connect data.
+class _Acc {
+  _Acc(this.unit, this.agg);
+  final String unit;
+  final _Agg agg;
+  double sum = 0;
+  int count = 0;
+  double lastValue = 0;
+  DateTime? lastAt;
 }

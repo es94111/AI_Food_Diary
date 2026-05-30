@@ -69,13 +69,15 @@ class MetabolismResult {
   const MetabolismResult(this.bmr, this.tdee, this.target);
 }
 
-MetabolismResult metabolismFor(UserProfile? profile, {double? syncedWeightKg}) {
+MetabolismResult metabolismFor(UserProfile? profile,
+    {double? syncedWeightKg, double? syncedHeightCm}) {
   if (profile == null) return const MetabolismResult(null, null, 2000);
   final weight = syncedWeightKg ?? profile.weightKg;
+  final height = syncedHeightCm?.round() ?? profile.heightCm;
   final bmr = calculateBmr(
     gender: profile.gender,
     birthDate: profile.birthDate,
-    heightCm: profile.heightCm,
+    heightCm: height,
     weightKg: weight,
   );
   final tdee = calculateTdee(bmr, profile.activityLevel);
