@@ -106,12 +106,19 @@ class _MealCard extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
                 child: Image.network(
-                  MealService.imageUrl(meal.imageStorageKey!),
+                  MealService.mealImageUrl(meal),
                   headers: headers,
                   height: 160,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                  errorBuilder: (_, __, ___) => Container(
+                    height: 120,
+                    width: double.infinity,
+                    alignment: Alignment.center,
+                    color: const Color(0xFFF5F5F4),
+                    child: const Text('圖片載入失敗',
+                        style: TextStyle(color: Colors.black45)),
+                  ),
                 ),
               ),
             ],
@@ -134,6 +141,12 @@ class _MealCard extends StatelessWidget {
                 'F ${meal.totalFat.toStringAsFixed(1)}g · '
                 'C ${meal.totalCarbs.toStringAsFixed(1)}g',
                 style: const TextStyle(fontSize: 12, color: Colors.black54)),
+            const SizedBox(height: 8),
+            _MacroBars(
+              protein: meal.totalProtein,
+              fat: meal.totalFat,
+              carbs: meal.totalCarbs,
+            ),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
@@ -160,6 +173,53 @@ class _MealCard extends StatelessWidget {
         'LIMIT' => '❌',
         _ => '✎',
       };
+}
+
+class _MacroBars extends StatelessWidget {
+  const _MacroBars({
+    required this.protein,
+    required this.fat,
+    required this.carbs,
+  });
+
+  final double protein;
+  final double fat;
+  final double carbs;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = protein + fat + carbs;
+    int macroFlex(double value) =>
+        total == 0 ? 1 : (value / total * 1000).round().clamp(1, 1000).toInt();
+    final proteinFlex = macroFlex(protein);
+    final fatFlex = macroFlex(fat);
+    final carbsFlex = macroFlex(carbs);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: SizedBox(
+            height: 8,
+            child: Row(
+              children: [
+                Expanded(
+                    flex: proteinFlex,
+                    child: Container(color: const Color(0xFF0EA5E9))),
+                Expanded(
+                    flex: fatFlex,
+                    child: Container(color: const Color(0xFFF59E0B))),
+                Expanded(
+                    flex: carbsFlex,
+                    child: Container(color: const Color(0xFFE11D48))),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _EditMealSheet extends StatefulWidget {

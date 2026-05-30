@@ -58,10 +58,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // Connect data; fall back to the stored target only when TDEE is unknown.
   const target = calorieTargetFromGoal(tdee, effectiveProfile?.goal) ?? user.profile?.calorieTarget ?? 2000;
   const isTodayView = view === "day" && isoDate(start) === isoDate(new Date());
-  const macroTotal = totals.protein + totals.fat + totals.carbs;
-  const proteinPercent = macroTotal ? Math.round((totals.protein / macroTotal) * 100) : 0;
-  const fatPercent = macroTotal ? Math.round((totals.fat / macroTotal) * 100) : 0;
-  const carbsPercent = macroTotal ? Math.round((totals.carbs / macroTotal) * 100) : 0;
+  const canGenerateDailySummary = start < startOfLocalDay(new Date());
+  const displayTotals =
+    view === "week"
+      ? { calories: Math.round(totals.calories / 7), protein: totals.protein / 7, fat: totals.fat / 7, carbs: totals.carbs / 7 }
+      : totals;
+  const macroTotal = displayTotals.protein + displayTotals.fat + displayTotals.carbs;
+  const proteinPercent = macroTotal ? Math.round((displayTotals.protein / macroTotal) * 100) : 0;
+  const fatPercent = macroTotal ? Math.round((displayTotals.fat / macroTotal) * 100) : 0;
+  const carbsPercent = macroTotal ? Math.round((displayTotals.carbs / macroTotal) * 100) : 0;
   const mealList = await Promise.all(
     meals.map(async (meal) => ({
       ...meal,
@@ -112,22 +117,22 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <>
       <DateRangeSwitcher date={isoDate(selectedDate)} view={view} />
       <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
-        <p className="text-sm font-medium text-stone-400">{view === "week" ? "本週攝取" : "當日攝取"}</p>
+        <p className="text-sm font-medium text-stone-400">{view === "week" ? "本週平均攝取" : "當日攝取"}</p>
         <div className="mt-1 flex items-end gap-2">
-          <p className="text-5xl font-black tracking-tight">{totals.calories}</p>
+          <p className="text-5xl font-black tracking-tight">{displayTotals.calories}</p>
           <p className="mb-1.5 text-lg font-semibold text-stone-400">kcal</p>
         </div>
-        <p className="mt-0.5 text-sm text-stone-500">目標 {target} kcal · {Math.min(Math.round((totals.calories / target) * 100), 100)}%</p>
+        <p className="mt-0.5 text-sm text-stone-500">每日目標 {target} kcal · {Math.min(Math.round((displayTotals.calories / target) * 100), 100)}%</p>
         <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
           <div
             className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-700"
-            style={{ width: `${Math.min((totals.calories / target) * 100, 100)}%` }}
+            style={{ width: `${Math.min((displayTotals.calories / target) * 100, 100)}%` }}
           />
         </div>
         <div className="mt-5 grid grid-cols-3 gap-2.5 text-center">
-          <Macro label={`蛋白質 ${proteinPercent}%`} value={`${totals.protein.toFixed(1)}g`} />
-          <Macro label={`脂肪 ${fatPercent}%`} value={`${totals.fat.toFixed(1)}g`} />
-          <Macro label={`碳水 ${carbsPercent}%`} value={`${totals.carbs.toFixed(1)}g`} />
+          <Macro label={`蛋白質 ${proteinPercent}%`} value={`${displayTotals.protein.toFixed(1)}g`} />
+          <Macro label={`脂肪 ${fatPercent}%`} value={`${displayTotals.fat.toFixed(1)}g`} />
+          <Macro label={`碳水 ${carbsPercent}%`} value={`${displayTotals.carbs.toFixed(1)}g`} />
         </div>
       </div>
       <MealCaptureForm initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""} />
@@ -138,7 +143,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
       </div>
       {view === "week" ? <WeeklyNutritionReview days={weeklyDays} /> : null}
-      <AiInfoCard title="今日總結" endpoint={`/api/daily-summary?date=${isoDate(selectedDate)}`} type="summary" />
+      <AiInfoCard
+        title="今日總結"
+        endpoint={`/api/daily-summary?date=${isoDate(selectedDate)}`}
+        type="summary"
+        canGenerate={canGenerateDailySummary}
+        blockedMessage="今日總結需等今天結束後才能產生。"
+      />
     </>
   );
 

@@ -347,6 +347,21 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           value={description}
         />
       </div>
+      <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
+        <p className="text-sm font-bold">常用食物</p>
+        {savedFoods.length ? (
+          <div className="mt-2 grid gap-2">
+            {savedFoods.map((food) => (
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 p-2 text-sm" key={food.id}>
+                <button className="text-left font-semibold text-stone-800" onClick={() => addSavedFood(food)} type="button">+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</button>
+                <button className="shrink-0 text-red-600" onClick={() => deleteSavedFood(food.id)} type="button">刪除</button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-stone-500">尚無常用食物，可在下方手動食物列按「存常用」新增。</p>
+        )}
+      </div>
       <div className="mt-5 rounded-2xl bg-stone-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
         <p className="mt-1 text-xs text-stone-500">沒有圖片、文字描述，或 AI 無法分析時，可以填寫以下欄位，AI 會先判斷推薦評分再讓你確認。</p>
@@ -362,19 +377,6 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           </div>
           <input ref={nutritionLabelInputRef} accept="image/*" capture="environment" className="sr-only" type="file" onChange={(event) => analyzeNutritionLabel(event.target.files?.[0])} />
         </div>
-        {savedFoods.length ? (
-          <div className="mt-3 rounded-2xl bg-white p-3">
-            <p className="text-sm font-bold">常用食物</p>
-            <div className="mt-2 grid gap-2">
-              {savedFoods.map((food) => (
-                <div className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 p-2 text-sm" key={food.id}>
-                  <button className="text-left font-semibold text-stone-800" onClick={() => addSavedFood(food)} type="button">+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</button>
-                  <button className="shrink-0 text-red-600" onClick={() => deleteSavedFood(food.id)} type="button">刪除</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : null}
         <div className="mt-3 space-y-3">
           {manualItems.map((item, index) => (
             <div className="rounded-xl border border-stone-200 bg-white p-3" key={item.id}>

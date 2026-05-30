@@ -334,6 +334,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               ),
             ),
             const SizedBox(height: 4),
+            _savedFoodsSection(),
+            const SizedBox(height: 12),
             _manualSection(),
             if (_error != null) ...[
               const SizedBox(height: 10),
@@ -424,6 +426,43 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     );
   }
 
+  Widget _savedFoodsSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: const Color(0xFFE7E5E4)),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('常用食物', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          if (_savedFoods.isEmpty)
+            const Text('尚無常用食物，可在下方食物列按「存常用」新增。',
+                style: TextStyle(fontSize: 12, color: Colors.black54))
+          else
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _savedFoods
+                  .map((f) => InputChip(
+                        label: Text('${f.name} · ${f.calories}kcal'),
+                        onPressed: () => _addSavedFood(f),
+                        onDeleted: () async {
+                          await SavedFoodService.delete(f.id);
+                          await _loadSavedFoods();
+                        },
+                      ))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _manualSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -441,25 +480,6 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               : const Icon(Icons.document_scanner),
           label: Text(_labelLoading ? '辨識中...' : '上傳營養標示'),
         ),
-        if (_savedFoods.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          const Text('常用食物', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: _savedFoods
-                .map((f) => InputChip(
-                      label: Text('${f.name} · ${f.calories}kcal'),
-                      onPressed: () => _addSavedFood(f),
-                      onDeleted: () async {
-                        await SavedFoodService.delete(f.id);
-                        await _loadSavedFoods();
-                      },
-                    ))
-                .toList(),
-          ),
-        ],
         const SizedBox(height: 8),
         ..._manualItems.asMap().entries.map((entry) => _manualItemEditor(
             entry.value, entry.key,

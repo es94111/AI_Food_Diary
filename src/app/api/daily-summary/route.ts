@@ -26,6 +26,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ summary: null });
   }
 
+  if (summaryDate >= startOfLocalDay(new Date())) {
+    return NextResponse.json(
+      { error: "今日總結需等今天結束後才能產生。" },
+      { status: 400 }
+    );
+  }
+
   const meals = await prisma.meal.findMany({
     where: { userId: user.id, eatenAt: { gte: summaryDate, lt: addDays(summaryDate, 1) } }
   });

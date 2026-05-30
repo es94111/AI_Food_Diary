@@ -147,7 +147,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final totals = Totals.fromMeals(_meals);
+    final rawTotals = Totals.fromMeals(_meals);
+    final totals = _weekView
+        ? Totals(
+            (rawTotals.calories / 7).round(),
+            rawTotals.protein / 7,
+            rawTotals.fat / 7,
+            rawTotals.carbs / 7,
+          )
+        : rawTotals;
     final metabolism =
         metabolismFor(_user?.profile,
             syncedWeightKg: _syncedWeight, syncedHeightCm: _syncedHeight);
@@ -415,7 +423,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_weekView ? '本週攝取' : '當日攝取',
+            Text(_weekView ? '本週平均攝取' : '當日攝取',
                 style: const TextStyle(color: Colors.white60)),
             const SizedBox(height: 4),
             Row(
@@ -436,7 +444,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ],
             ),
-            Text('目標 $target kcal · ${(progress * 100).round()}%',
+            Text('每日目標 $target kcal · ${(progress * 100).round()}%',
                 style: const TextStyle(color: Colors.white38, fontSize: 13)),
             const SizedBox(height: 12),
             ClipRRect(
@@ -449,6 +457,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const AlwaysStoppedAnimation(Color(0xFFF59E0B)),
               ),
             ),
+            const SizedBox(height: 16),
+            _macroBar(totals.protein, totals.fat, totals.carbs),
             const SizedBox(height: 16),
             Row(
               children: [
@@ -485,6 +495,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 2),
             Text(label,
                 style: const TextStyle(color: Colors.white60, fontSize: 11)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _macroBar(double protein, double fat, double carbs) {
+    final total = protein + fat + carbs;
+    int macroFlex(double value) =>
+        total == 0 ? 1 : (value / total * 1000).round().clamp(1, 1000).toInt();
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(999),
+      child: SizedBox(
+        height: 8,
+        child: Row(
+          children: [
+            Expanded(
+                flex: macroFlex(protein),
+                child: Container(color: const Color(0xFF0EA5E9))),
+            Expanded(
+                flex: macroFlex(fat),
+                child: Container(color: const Color(0xFFF59E0B))),
+            Expanded(
+                flex: macroFlex(carbs),
+                child: Container(color: const Color(0xFFE11D48))),
           ],
         ),
       ),
@@ -614,6 +650,9 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
 
   @override
   Widget build(BuildContext context) {
+    final canGenerate =
+        startOfLocalDay(widget.date).isBefore(startOfLocalDay(DateTime.now()));
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -628,9 +667,16 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
                 const Spacer(),
                 if (_summary == null && !_loading)
                   TextButton(
-                      onPressed: _load, child: const Text('產生 AI 總結')),
+                      onPressed: canGenerate ? _load : null,
+                      child: const Text('產生 AI 總結')),
               ],
             ),
+            if (_summary == null && !_loading && !canGenerate)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: Text('今日總結需等今天結束後才能產生。',
+                    style: TextStyle(color: Colors.black54, fontSize: 13)),
+              ),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
@@ -831,4 +877,3 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
     );
   }
 }
-

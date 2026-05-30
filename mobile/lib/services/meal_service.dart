@@ -155,4 +155,8 @@ class MealService {
   /// Absolute URL for a meal image (the API returns a relative path).
   static String imageUrl(String storageKeyPath) =>
       '${ApiClient.baseUrl}$storageKeyPath';
+
+  /// Meal images are protected by the backend and should be loaded through the
+  /// authenticated image endpoint, not directly from the object-storage key.
+  static String mealImageUrl(Meal meal) => '${ApiClient.baseUrl}/api/meals/${meal.id}/image';
 }
