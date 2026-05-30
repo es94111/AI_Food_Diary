@@ -41,7 +41,7 @@ class UpdateService {
       return AppVersionInfo(
         currentVersion: current,
         latestVersion: (data['latestVersion'] as String?) ?? current,
-        apkUrl: (data['apkUrl'] as String?) ?? '',
+        apkUrl: _resolveApkUrl((data['apkUrl'] as String?) ?? ''),
         releaseNotes: (data['releaseNotes'] as String?) ?? '',
         webVersion: (data['webVersion'] as String?) ?? '',
       );
@@ -76,6 +76,16 @@ class UpdateService {
       throw ApiException('無法開啟安裝程式：${result.message}');
     }
   }
+}
+
+/// The backend builds the in-app download URL from its request origin, which
+/// behind a reverse proxy can be an internal address (e.g. localhost). Since
+/// that endpoint always lives on our own backend, pin it to the known base URL.
+String _resolveApkUrl(String raw) {
+  if (raw.isEmpty) return raw;
+  final i = raw.indexOf('/api/app/download');
+  if (i < 0) return raw; // external APP_APK_URL — leave untouched
+  return '${ApiClient.baseUrl}${raw.substring(i)}';
 }
 
 /// True when [latest] is a higher semantic version than [current].

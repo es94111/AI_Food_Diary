@@ -1,5 +1,5 @@
 import "server-only";
-import { createRemoteJWKSet, jwtVerify } from "jose";
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 
 // Google's public keys for verifying ID token signatures (cached by jose).
 const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
@@ -32,7 +32,25 @@ export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdenti
       audience: clientId
     });
     payload = verified.payload as typeof payload;
-  } catch {
+  } catch (error) {
+    // The verification failed (bad signature, wrong audience, expired, …).
+    // Log the precise reason plus the token's claimed aud/iss so an audience
+    // mismatch between GOOGLE_CLIENT_ID and the token can be spotted at a glance.
+    let tokenAud: unknown;
+    let tokenIss: unknown;
+    try {
+      const claims = decodeJwt(idToken);
+      tokenAud = claims.aud;
+      tokenIss = claims.iss;
+    } catch {
+      // idToken isn't a decodable JWT; nothing more to add.
+    }
+    console.error("[google] ID token verification failed", {
+      reason: error instanceof Error ? `${error.name}: ${error.message}` : String(error),
+      expectedAudience: clientId,
+      tokenAudience: tokenAud,
+      tokenIssuer: tokenIss
+    });
     throw new GoogleAuthError("Google 登入驗證失敗，請重試。", 401);
   }
 

@@ -6,11 +6,26 @@ import { WEB_VERSION } from "@/lib/version";
 // Version + notes are resolved dynamically from S3 (downloads/ and notes/).
 export async function GET(request: Request) {
   const release = await getLatestAppRelease();
-  const origin = new URL(request.url).origin;
   return NextResponse.json({
     webVersion: WEB_VERSION,
     latestVersion: release.version || WEB_VERSION,
-    apkUrl: release.apkKey ? `${origin}/api/app/download` : (process.env.APP_APK_URL ?? ""),
+    apkUrl: release.apkKey ? `${publicOrigin(request)}/api/app/download` : (process.env.APP_APK_URL ?? ""),
     releaseNotes: release.notes
   });
+}
+
+// Behind a reverse proxy `request.url` is the internal address (e.g.
+// http://localhost:<port>), which would hand the app an unreachable download
+// URL. Prefer an explicit public URL, then the proxy's forwarded host headers,
+// and only fall back to the request origin.
+function publicOrigin(request: Request): string {
+  const configured = process.env.APP_PUBLIC_URL?.replace(/\/+$/, "");
+  if (configured) return configured;
+
+  const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+  if (host) {
+    const proto = request.headers.get("x-forwarded-proto")?.split(",")[0].trim() ?? "https";
+    return `${proto}://${host}`;
+  }
+  return new URL(request.url).origin;
 }
