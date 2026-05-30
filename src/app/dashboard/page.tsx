@@ -5,13 +5,15 @@ import { addDays, isoDate, parseLocalDate, startOfLocalDay, startOfLocalWeek } f
 import { sumMeals } from "@/lib/totals";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
-import { UserHeaderActions } from "@/components/user-header-actions";
 import { AiInfoCard } from "@/components/ai-info-card";
 import { MealList } from "@/components/meal-list";
 import { DateRangeSwitcher } from "@/components/date-range-switcher";
 import { WeeklyNutritionReview } from "@/components/weekly-nutrition-review";
 import { AdminPanel } from "@/components/admin-panel";
 import { HealthConnectionsPanel } from "@/components/health-connections-panel";
+import { DashboardTabs } from "@/components/dashboard-tabs";
+import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
+import { LogoutButton } from "@/components/logout-button";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string }> }) {
   const user = await getCurrentUser();
@@ -96,91 +98,99 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     ? await prisma.appConfig.findUnique({ where: { id: "singleton" } })
     : null;
 
-  return (
-    <main className="mx-auto min-h-screen max-w-6xl px-5 py-8 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-600 text-white">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
-                <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-2.625 6c-.54 0-.828.419-.936.634a1.96 1.96 0 0 0-.189.866c0 .298.059.605.189.866.108.215.395.634.936.634.54 0 .828-.419.936-.634.13-.26.189-.568.189-.866 0-.298-.059-.605-.189-.866-.108-.215-.395-.634-.936-.634Zm4.314.634c.108-.215.395-.634.936-.634.54 0 .828.419.936.634.13.26.189.568.189.866 0 .298-.059.605-.189.866-.108.215-.395.634-.936.634-.54 0-.828-.419-.936-.634a1.96 1.96 0 0 1-.189-.866c0-.298.059-.605.189-.866Zm2.023 6.828a.75.75 0 1 0-1.06-1.06 3.75 3.75 0 0 1-5.304 0 .75.75 0 0 0-1.06 1.06 5.25 5.25 0 0 0 7.424 0Z" clipRule="evenodd" />
-              </svg>
-            </span>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-700">AI Food Diary</p>
-          </div>
-          <h1 className="mt-2 text-4xl font-black tracking-tight">{view === "week" ? "星期飲食" : "每日飲食"}</h1>
-          <p className="mt-1 text-sm text-stone-500">{title}</p>
+  const foodPanel = (
+    <>
+      <DateRangeSwitcher date={isoDate(selectedDate)} view={view} />
+      <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
+        <p className="text-sm font-medium text-stone-400">{view === "week" ? "本週攝取" : "當日攝取"}</p>
+        <div className="mt-1 flex items-end gap-2">
+          <p className="text-5xl font-black tracking-tight">{totals.calories}</p>
+          <p className="mb-1.5 text-lg font-semibold text-stone-400">kcal</p>
         </div>
-        <UserHeaderActions profile={profile} />
+        <p className="mt-0.5 text-sm text-stone-500">目標 {target} kcal · {Math.min(Math.round((totals.calories / target) * 100), 100)}%</p>
+        <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-700"
+            style={{ width: `${Math.min((totals.calories / target) * 100, 100)}%` }}
+          />
+        </div>
+        <div className="mt-5 grid grid-cols-3 gap-2.5 text-center">
+          <Macro label={`蛋白質 ${proteinPercent}%`} value={`${totals.protein.toFixed(1)}g`} />
+          <Macro label={`脂肪 ${fatPercent}%`} value={`${totals.fat.toFixed(1)}g`} />
+          <Macro label={`碳水 ${carbsPercent}%`} value={`${totals.carbs.toFixed(1)}g`} />
+        </div>
+      </div>
+      <MealCaptureForm initialNextMealAdvice={todayRecommendation?.advice ?? ""} />
+      <div className="glass glass-lift rounded-[2rem] p-6">
+        <h2 className="text-xl font-black">{view === "week" ? "本週餐點" : "當日餐點"}</h2>
+        <div className="mt-4">
+          <MealList meals={mealList} />
+        </div>
+      </div>
+      {view === "week" ? <WeeklyNutritionReview days={weeklyDays} /> : null}
+      <AiInfoCard title="今日總結" endpoint={`/api/daily-summary?date=${isoDate(selectedDate)}`} type="summary" />
+    </>
+  );
+
+  const healthPanel = (
+    <>
+      <div className="glass glass-lift rounded-[2rem] p-6">
+        <h2 className="text-xl font-black">健康同步</h2>
+        <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、體重與活動熱量。</p>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Metric label="最新步數" value={formatHealthMetric(latestHealthMetrics.STEPS, 0)} />
+          <Metric label="活動熱量" value={formatHealthMetric(latestHealthMetrics.ACTIVE_CALORIES, 0)} />
+          <Metric label="最新體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
+          <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 1)} />
+        </div>
+        <p className="mt-3 text-xs text-stone-400">同步 API：POST /api/health/sync。Flutter app 建議使用 Bearer token。</p>
+        <HealthConnectionsPanel initialConnections={healthConnections} />
+      </div>
+      <div className="glass glass-lift rounded-[2rem] p-6">
+        <h2 className="text-xl font-black">代謝估算</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Metric label="BMR 基礎代謝" value={bmr ? `${bmr} kcal` : "資料不足"} />
+          <Metric label="TDEE 每日消耗" value={tdee ? `${tdee} kcal` : "資料不足"} />
+        </div>
+        <p className="mt-3 text-xs text-stone-400">
+          使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。{syncedWeight ? "目前優先使用 Health Connect 最新體重。" : ""}
+        </p>
+      </div>
+    </>
+  );
+
+  const settingsPanel = (
+    <>
+      <div className="glass glass-lift rounded-[2rem] p-6">
+        <h2 className="text-xl font-black">使用者設定</h2>
+        <p className="mt-1 text-sm text-stone-500">{user.email}</p>
+        <div className="mt-5">
+          <ProfileMetabolismForm profile={profile} />
+        </div>
+      </div>
+      {user.isAdmin && <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />}
+      <div>
+        <LogoutButton />
+      </div>
+    </>
+  );
+
+  return (
+    <main className="mx-auto min-h-screen max-w-3xl px-5 py-8 sm:px-6">
+      <header>
+        <div className="flex items-center gap-2">
+          <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-600 text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+              <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm-2.625 6c-.54 0-.828.419-.936.634a1.96 1.96 0 0 0-.189.866c0 .298.059.605.189.866.108.215.395.634.936.634.54 0 .828-.419.936-.634.13-.26.189-.568.189-.866 0-.298-.059-.605-.189-.866-.108-.215-.395-.634-.936-.634Zm4.314.634c.108-.215.395-.634.936-.634.54 0 .828.419.936.634.13.26.189.568.189.866 0 .298-.059.605-.189.866-.108.215-.395.634-.936.634-.54 0-.828-.419-.936-.634a1.96 1.96 0 0 1-.189-.866c0-.298.059-.605.189-.866Zm2.023 6.828a.75.75 0 1 0-1.06-1.06 3.75 3.75 0 0 1-5.304 0 .75.75 0 0 0-1.06 1.06 5.25 5.25 0 0 0 7.424 0Z" clipRule="evenodd" />
+            </svg>
+          </span>
+          <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-700">AI Food Diary</p>
+        </div>
+        <h1 className="mt-2 text-4xl font-black tracking-tight">{view === "week" ? "星期飲食" : "每日飲食"}</h1>
+        <p className="mt-1 text-sm text-stone-500">{title}</p>
       </header>
 
-      <DateRangeSwitcher date={isoDate(selectedDate)} view={view} />
-
-      <section className="mt-8 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="space-y-5">
-          <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
-            <p className="text-sm font-medium text-stone-400">{view === "week" ? "本週攝取" : "當日攝取"}</p>
-            <div className="mt-1 flex items-end gap-2">
-              <p className="text-5xl font-black tracking-tight">{totals.calories}</p>
-              <p className="mb-1.5 text-lg font-semibold text-stone-400">kcal</p>
-            </div>
-            <p className="mt-0.5 text-sm text-stone-500">目標 {target} kcal · {Math.min(Math.round((totals.calories / target) * 100), 100)}%</p>
-            <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-700"
-                style={{ width: `${Math.min((totals.calories / target) * 100, 100)}%` }}
-              />
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-2.5 text-center">
-              <Macro label={`蛋白質 ${proteinPercent}%`} value={`${totals.protein.toFixed(1)}g`} />
-              <Macro label={`脂肪 ${fatPercent}%`} value={`${totals.fat.toFixed(1)}g`} />
-              <Macro label={`碳水 ${carbsPercent}%`} value={`${totals.carbs.toFixed(1)}g`} />
-            </div>
-          </div>
-          <div className="glass glass-lift rounded-[2rem] p-6">
-            <h2 className="text-xl font-black">代謝估算</h2>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <Metric label="BMR 基礎代謝" value={bmr ? `${bmr} kcal` : "資料不足"} />
-              <Metric label="TDEE 每日消耗" value={tdee ? `${tdee} kcal` : "資料不足"} />
-            </div>
-            <p className="mt-3 text-xs text-stone-400">
-              使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。{syncedWeight ? "目前優先使用 Health Connect 最新體重。" : ""}
-            </p>
-          </div>
-          <div className="glass glass-lift rounded-[2rem] p-6">
-            <h2 className="text-xl font-black">健康同步</h2>
-            <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、體重與活動熱量。</p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <Metric label="最新步數" value={formatHealthMetric(latestHealthMetrics.STEPS, 0)} />
-              <Metric label="活動熱量" value={formatHealthMetric(latestHealthMetrics.ACTIVE_CALORIES, 0)} />
-              <Metric label="最新體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
-              <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 1)} />
-            </div>
-            <p className="mt-3 text-xs text-stone-400">同步 API：POST /api/health/sync。Flutter app 建議使用 Bearer token。</p>
-            <HealthConnectionsPanel initialConnections={healthConnections} />
-          </div>
-        </div>
-        <MealCaptureForm initialNextMealAdvice={todayRecommendation?.advice ?? ""} />
-      </section>
-
-      <section className="mt-8 grid gap-6 lg:grid-cols-2">
-        <div className="glass glass-lift rounded-[2rem] p-6">
-          <h2 className="text-xl font-black">{view === "week" ? "本週餐點" : "當日餐點"}</h2>
-          <div className="mt-4">
-            <MealList meals={mealList} />
-          </div>
-        </div>
-        <div className="space-y-6">
-          {view === "week" ? <WeeklyNutritionReview days={weeklyDays} /> : null}
-          <AiInfoCard title="今日總結" endpoint={`/api/daily-summary?date=${isoDate(selectedDate)}`} type="summary" />
-        </div>
-      </section>
-
-      {user.isAdmin && (
-        <section className="mt-8">
-          <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />
-        </section>
-      )}
+      <DashboardTabs food={foodPanel} health={healthPanel} settings={settingsPanel} />
     </main>
   );
 }

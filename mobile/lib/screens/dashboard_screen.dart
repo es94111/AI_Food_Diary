@@ -25,8 +25,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Meal> _meals = [];
   double? _syncedWeight;
   String _nextMealAdvice = '';
+  int _tabIndex = 0;
   bool _loading = true;
   String? _error;
+
+  static const _tabTitles = ['飲食', '健康', '設定'];
 
   @override
   void initState() {
@@ -119,47 +122,145 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI Food Diary',
-            style: TextStyle(fontWeight: FontWeight.w900)),
-        actions: [
-          IconButton(
-              onPressed: _openProfile,
-              icon: const Icon(Icons.person),
-              tooltip: '身體資料'),
-          IconButton(
-              onPressed: _logout,
-              icon: const Icon(Icons.logout),
-              tooltip: '登出'),
+        title: Text('AI Food Diary · ${_tabTitles[_tabIndex]}',
+            style: const TextStyle(fontWeight: FontWeight.w900)),
+      ),
+      body: IndexedStack(
+        index: _tabIndex,
+        children: [
+          _foodTab(totals, target),
+          _healthTab(metabolism),
+          _settingsTab(metabolism),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshUserAndMeals,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.restaurant_menu_outlined),
+              selectedIcon: Icon(Icons.restaurant_menu),
+              label: '飲食'),
+          NavigationDestination(
+              icon: Icon(Icons.favorite_outline),
+              selectedIcon: Icon(Icons.favorite),
+              label: '健康'),
+          NavigationDestination(
+              icon: Icon(Icons.settings_outlined),
+              selectedIcon: Icon(Icons.settings),
+              label: '設定'),
+        ],
+      ),
+    );
+  }
+
+  Widget _foodTab(Totals totals, int target) {
+    return RefreshIndicator(
+      onRefresh: _refreshUserAndMeals,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            ),
+          _dateSwitcher(),
+          const SizedBox(height: 12),
+          _calorieCard(totals, target),
+          const SizedBox(height: 12),
+          MealCaptureForm(onSaved: _loadMeals, initialAdvice: _nextMealAdvice),
+          const SizedBox(height: 12),
+          _mealsSection(),
+          const SizedBox(height: 12),
+          _DailySummaryCard(date: _selectedDate, key: ValueKey(_selectedDate)),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _healthTab(MetabolismResult metabolism) {
+    return RefreshIndicator(
+      onRefresh: _refreshUserAndMeals,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          HealthSyncCard(onSynced: _onHealthSynced),
+          const SizedBox(height: 12),
+          _metabolismCard(metabolism),
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsTab(MetabolismResult metabolism) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _accountCard(),
+        const SizedBox(height: 12),
+        _bodyDataCard(metabolism),
+        if (_user?.isAdmin == true) ...[
+          const SizedBox(height: 12),
+          const _AdminPanel(),
+        ],
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _logout,
+          icon: const Icon(Icons.logout),
+          label: const Text('登出'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.red,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Widget _accountCard() {
+    return Card(
+      child: ListTile(
+        leading: const CircleAvatar(child: Icon(Icons.person)),
+        title: Text(_user?.name?.isNotEmpty == true ? _user!.name! : '使用者'),
+        subtitle: Text(_user?.email ?? ''),
+        trailing: _user?.isAdmin == true
+            ? const Chip(label: Text('管理員'), visualDensity: VisualDensity.compact)
+            : null,
+      ),
+    );
+  }
+
+  Widget _bodyDataCard(MetabolismResult metabolism) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+            const Text('身體資料 / 代謝',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                _metricBox('BMR 基礎代謝',
+                    metabolism.bmr != null ? '${metabolism.bmr} kcal' : '資料不足'),
+                const SizedBox(width: 10),
+                _metricBox('熱量目標', '${metabolism.target} kcal'),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _openProfile,
+                icon: const Icon(Icons.edit),
+                label: const Text('編輯身體資料'),
               ),
-            _dateSwitcher(),
-            const SizedBox(height: 12),
-            _calorieCard(totals, target),
-            const SizedBox(height: 12),
-            _metabolismCard(metabolism),
-            const SizedBox(height: 12),
-            HealthSyncCard(onSynced: _onHealthSynced),
-            const SizedBox(height: 12),
-            MealCaptureForm(onSaved: _loadMeals, initialAdvice: _nextMealAdvice),
-            const SizedBox(height: 12),
-            _mealsSection(),
-            const SizedBox(height: 12),
-            _DailySummaryCard(date: _selectedDate, key: ValueKey(_selectedDate)),
-            if (_user?.isAdmin == true) ...[
-              const SizedBox(height: 12),
-              const _AdminPanel(),
-            ],
-            const SizedBox(height: 24),
+            ),
           ],
         ),
       ),
