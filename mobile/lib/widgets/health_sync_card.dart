@@ -13,16 +13,41 @@ class _MetricDef {
 }
 
 const _displayMetrics = <_MetricDef>[
+  // activity / energy
   _MetricDef('步數', 'STEPS', Icons.directions_walk, 0),
+  _MetricDef('距離', 'DISTANCE', Icons.straighten, 0),
+  _MetricDef('速度', 'SPEED', Icons.speed, 1),
+  _MetricDef('爬樓層', 'FLIGHTS_CLIMBED', Icons.stairs, 0),
+  _MetricDef('活動強度', 'ACTIVITY_INTENSITY', Icons.timer, 0),
   _MetricDef('活動熱量', 'ACTIVE_CALORIES', Icons.local_fire_department, 0),
+  _MetricDef('基礎消耗', 'BASAL_CALORIES', Icons.whatshot, 0),
   _MetricDef('總消耗', 'TOTAL_CALORIES', Icons.bolt, 0),
+  _MetricDef('運動', 'EXERCISE', Icons.fitness_center, 0),
+  // body
   _MetricDef('體重', 'WEIGHT', Icons.monitor_weight, 1),
   _MetricDef('身高', 'HEIGHT', Icons.height, 0),
+  _MetricDef('BMI', 'BMI', Icons.calculate, 1),
   _MetricDef('體脂', 'BODY_FAT', Icons.percent, 1),
-  _MetricDef('靜息心率', 'RESTING_HEART_RATE', Icons.favorite, 0),
+  _MetricDef('瘦體重', 'LEAN_BODY_MASS', Icons.fitness_center, 1),
+  _MetricDef('體水分', 'BODY_WATER_MASS', Icons.opacity, 1),
+  _MetricDef('體溫', 'BODY_TEMPERATURE', Icons.thermostat, 1),
+  _MetricDef('皮膚溫度', 'SKIN_TEMPERATURE', Icons.device_thermostat, 1),
+  // vitals
   _MetricDef('心率', 'HEART_RATE', Icons.monitor_heart, 0),
+  _MetricDef('靜息心率', 'RESTING_HEART_RATE', Icons.favorite, 0),
+  _MetricDef('HRV', 'HRV', Icons.show_chart, 0),
+  _MetricDef('呼吸率', 'RESPIRATORY_RATE', Icons.air, 0),
+  _MetricDef('血氧', 'BLOOD_OXYGEN', Icons.bloodtype, 0),
+  _MetricDef('收縮壓', 'BLOOD_PRESSURE_SYSTOLIC', Icons.favorite_border, 0),
+  _MetricDef('舒張壓', 'BLOOD_PRESSURE_DIASTOLIC', Icons.favorite_border, 0),
+  _MetricDef('血糖', 'BLOOD_GLUCOSE', Icons.water_drop_outlined, 0),
+  // sleep
   _MetricDef('睡眠', 'SLEEP', Icons.bedtime, 0),
-  _MetricDef('運動', 'EXERCISE', Icons.fitness_center, 0),
+  _MetricDef('深睡', 'SLEEP_DEEP', Icons.nightlight, 0),
+  _MetricDef('淺睡', 'SLEEP_LIGHT', Icons.nights_stay, 0),
+  _MetricDef('REM', 'SLEEP_REM', Icons.bedtime_outlined, 0),
+  _MetricDef('清醒', 'SLEEP_AWAKE', Icons.wb_sunny, 0),
+  // nutrition / hydration
   _MetricDef('喝水', 'WATER', Icons.water_drop, 1),
   _MetricDef('營養攝取', 'NUTRITION', Icons.restaurant, 0),
 ];

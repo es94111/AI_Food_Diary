@@ -140,17 +140,37 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">健康同步</h2>
         <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、熱量、睡眠、運動、心率、體脂等資料。</p>
-        <div className="mt-4 grid grid-cols-2 gap-3">
-          <Metric label="最新步數" value={formatHealthMetric(latestHealthMetrics.STEPS, 0)} />
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <Metric label="步數" value={formatHealthMetric(latestHealthMetrics.STEPS, 0)} />
+          <Metric label="距離" value={formatHealthMetric(latestHealthMetrics.DISTANCE, 0)} />
+          <Metric label="速度" value={formatHealthMetric(latestHealthMetrics.SPEED, 1)} />
+          <Metric label="爬樓層" value={formatHealthMetric(latestHealthMetrics.FLIGHTS_CLIMBED, 0)} />
+          <Metric label="活動強度" value={formatHealthMetric(latestHealthMetrics.ACTIVITY_INTENSITY, 0)} />
           <Metric label="活動熱量" value={formatHealthMetric(latestHealthMetrics.ACTIVE_CALORIES, 0)} />
+          <Metric label="基礎消耗" value={formatHealthMetric(latestHealthMetrics.BASAL_CALORIES, 0)} />
           <Metric label="每日總消耗" value={formatHealthMetric(latestHealthMetrics.TOTAL_CALORIES, 0)} />
-          <Metric label="最新體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
-          <Metric label="身高" value={formatHealthMetric(latestHealthMetrics.HEIGHT, 0)} />
-          <Metric label="體脂率" value={formatHealthMetric(latestHealthMetrics.BODY_FAT, 1)} />
-          <Metric label="靜息心率" value={formatHealthMetric(latestHealthMetrics.RESTING_HEART_RATE, 0)} />
-          <Metric label="心率" value={formatHealthMetric(latestHealthMetrics.HEART_RATE, 0)} />
-          <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 0)} />
           <Metric label="運動" value={formatHealthMetric(latestHealthMetrics.EXERCISE, 0)} />
+          <Metric label="體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
+          <Metric label="身高" value={formatHealthMetric(latestHealthMetrics.HEIGHT, 0)} />
+          <Metric label="BMI" value={formatHealthMetric(latestHealthMetrics.BMI, 1)} />
+          <Metric label="體脂率" value={formatHealthMetric(latestHealthMetrics.BODY_FAT, 1)} />
+          <Metric label="瘦體重" value={formatHealthMetric(latestHealthMetrics.LEAN_BODY_MASS, 1)} />
+          <Metric label="體水分" value={formatHealthMetric(latestHealthMetrics.BODY_WATER_MASS, 1)} />
+          <Metric label="體溫" value={formatHealthMetric(latestHealthMetrics.BODY_TEMPERATURE, 1)} />
+          <Metric label="皮膚溫度" value={formatHealthMetric(latestHealthMetrics.SKIN_TEMPERATURE, 1)} />
+          <Metric label="心率" value={formatHealthMetric(latestHealthMetrics.HEART_RATE, 0)} />
+          <Metric label="靜息心率" value={formatHealthMetric(latestHealthMetrics.RESTING_HEART_RATE, 0)} />
+          <Metric label="HRV" value={formatHealthMetric(latestHealthMetrics.HRV, 0)} />
+          <Metric label="呼吸率" value={formatHealthMetric(latestHealthMetrics.RESPIRATORY_RATE, 0)} />
+          <Metric label="血氧" value={formatHealthMetric(latestHealthMetrics.BLOOD_OXYGEN, 0)} />
+          <Metric label="收縮壓" value={formatHealthMetric(latestHealthMetrics.BLOOD_PRESSURE_SYSTOLIC, 0)} />
+          <Metric label="舒張壓" value={formatHealthMetric(latestHealthMetrics.BLOOD_PRESSURE_DIASTOLIC, 0)} />
+          <Metric label="血糖" value={formatHealthMetric(latestHealthMetrics.BLOOD_GLUCOSE, 0)} />
+          <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 0)} />
+          <Metric label="深睡" value={formatHealthMetric(latestHealthMetrics.SLEEP_DEEP, 0)} />
+          <Metric label="淺睡" value={formatHealthMetric(latestHealthMetrics.SLEEP_LIGHT, 0)} />
+          <Metric label="REM" value={formatHealthMetric(latestHealthMetrics.SLEEP_REM, 0)} />
+          <Metric label="清醒" value={formatHealthMetric(latestHealthMetrics.SLEEP_AWAKE, 0)} />
           <Metric label="喝水" value={formatHealthMetric(latestHealthMetrics.WATER, 1)} />
           <Metric label="營養攝取" value={formatHealthMetric(latestHealthMetrics.NUTRITION, 0)} />
         </div>

@@ -17,47 +17,109 @@ class HealthService {
   static const _tokenKey = 'hcs_token';
 
   static const _types = [
+    // activity / energy
     HealthDataType.STEPS,
+    HealthDataType.DISTANCE_DELTA,
+    HealthDataType.SPEED,
+    HealthDataType.FLIGHTS_CLIMBED,
+    HealthDataType.ACTIVITY_INTENSITY,
+    HealthDataType.ACTIVE_ENERGY_BURNED,
+    HealthDataType.BASAL_ENERGY_BURNED,
+    HealthDataType.TOTAL_CALORIES_BURNED,
+    HealthDataType.WORKOUT,
+    // body measurements
     HealthDataType.WEIGHT,
     HealthDataType.HEIGHT,
     HealthDataType.BODY_FAT_PERCENTAGE,
-    HealthDataType.ACTIVE_ENERGY_BURNED,
-    HealthDataType.TOTAL_CALORIES_BURNED,
+    HealthDataType.LEAN_BODY_MASS,
+    HealthDataType.BODY_WATER_MASS,
+    HealthDataType.BODY_TEMPERATURE,
+    HealthDataType.SKIN_TEMPERATURE,
+    // vitals
     HealthDataType.HEART_RATE,
     HealthDataType.RESTING_HEART_RATE,
+    HealthDataType.HEART_RATE_VARIABILITY_RMSSD,
+    HealthDataType.RESPIRATORY_RATE,
+    HealthDataType.BLOOD_OXYGEN,
+    HealthDataType.BLOOD_PRESSURE_SYSTOLIC,
+    HealthDataType.BLOOD_PRESSURE_DIASTOLIC,
+    HealthDataType.BLOOD_GLUCOSE,
+    // sleep (whole session + stages)
     HealthDataType.SLEEP_SESSION,
-    HealthDataType.WORKOUT,
+    HealthDataType.SLEEP_DEEP,
+    HealthDataType.SLEEP_LIGHT,
+    HealthDataType.SLEEP_REM,
+    HealthDataType.SLEEP_AWAKE,
+    // nutrition / hydration
     HealthDataType.WATER,
     HealthDataType.NUTRITION,
   ];
 
   /// Backend type id + unit + how to aggregate a day's worth of points.
   static (String, String, _Agg)? _mapType(HealthDataType t) => switch (t) {
+        // activity / energy
         HealthDataType.STEPS => ('STEPS', 'count', _Agg.sum),
+        HealthDataType.DISTANCE_DELTA => ('DISTANCE', 'm', _Agg.sum),
+        HealthDataType.SPEED => ('SPEED', 'm/s', _Agg.average),
+        HealthDataType.FLIGHTS_CLIMBED => ('FLIGHTS_CLIMBED', 'count', _Agg.sum),
+        HealthDataType.ACTIVITY_INTENSITY => ('ACTIVITY_INTENSITY', 'min', _Agg.sum),
         HealthDataType.ACTIVE_ENERGY_BURNED => ('ACTIVE_CALORIES', 'kcal', _Agg.sum),
+        HealthDataType.BASAL_ENERGY_BURNED => ('BASAL_CALORIES', 'kcal', _Agg.sum),
         HealthDataType.TOTAL_CALORIES_BURNED => ('TOTAL_CALORIES', 'kcal', _Agg.sum),
-        HealthDataType.WATER => ('WATER', 'L', _Agg.sum),
-        HealthDataType.NUTRITION => ('NUTRITION', 'kcal', _Agg.sum),
-        HealthDataType.SLEEP_SESSION => ('SLEEP', 'min', _Agg.duration),
         HealthDataType.WORKOUT => ('EXERCISE', 'min', _Agg.duration),
+        // body measurements
         HealthDataType.WEIGHT => ('WEIGHT', 'kg', _Agg.latest),
         HealthDataType.HEIGHT => ('HEIGHT', 'cm', _Agg.latest),
         HealthDataType.BODY_FAT_PERCENTAGE => ('BODY_FAT', '%', _Agg.latest),
-        HealthDataType.RESTING_HEART_RATE => ('RESTING_HEART_RATE', 'bpm', _Agg.latest),
+        HealthDataType.LEAN_BODY_MASS => ('LEAN_BODY_MASS', 'kg', _Agg.latest),
+        HealthDataType.BODY_WATER_MASS => ('BODY_WATER_MASS', 'kg', _Agg.latest),
+        HealthDataType.BODY_TEMPERATURE => ('BODY_TEMPERATURE', '°C', _Agg.latest),
+        HealthDataType.SKIN_TEMPERATURE => ('SKIN_TEMPERATURE', '°C', _Agg.latest),
+        // vitals
         HealthDataType.HEART_RATE => ('HEART_RATE', 'bpm', _Agg.average),
+        HealthDataType.RESTING_HEART_RATE => ('RESTING_HEART_RATE', 'bpm', _Agg.latest),
+        HealthDataType.HEART_RATE_VARIABILITY_RMSSD => ('HRV', 'ms', _Agg.average),
+        HealthDataType.RESPIRATORY_RATE => ('RESPIRATORY_RATE', 'rpm', _Agg.average),
+        HealthDataType.BLOOD_OXYGEN => ('BLOOD_OXYGEN', '%', _Agg.average),
+        HealthDataType.BLOOD_PRESSURE_SYSTOLIC => ('BLOOD_PRESSURE_SYSTOLIC', 'mmHg', _Agg.latest),
+        HealthDataType.BLOOD_PRESSURE_DIASTOLIC => ('BLOOD_PRESSURE_DIASTOLIC', 'mmHg', _Agg.latest),
+        HealthDataType.BLOOD_GLUCOSE => ('BLOOD_GLUCOSE', 'mg/dL', _Agg.latest),
+        // sleep
+        HealthDataType.SLEEP_SESSION => ('SLEEP', 'min', _Agg.duration),
+        HealthDataType.SLEEP_DEEP => ('SLEEP_DEEP', 'min', _Agg.duration),
+        HealthDataType.SLEEP_LIGHT => ('SLEEP_LIGHT', 'min', _Agg.duration),
+        HealthDataType.SLEEP_REM => ('SLEEP_REM', 'min', _Agg.duration),
+        HealthDataType.SLEEP_AWAKE => ('SLEEP_AWAKE', 'min', _Agg.duration),
+        // nutrition / hydration
+        HealthDataType.WATER => ('WATER', 'L', _Agg.sum),
+        HealthDataType.NUTRITION => ('NUTRITION', 'kcal', _Agg.sum),
         _ => null,
       };
 
   /// Types whose aggregated value should be reported as a whole number.
   static const _integerTypes = {
     'STEPS',
+    'DISTANCE',
+    'FLIGHTS_CLIMBED',
+    'ACTIVITY_INTENSITY',
     'ACTIVE_CALORIES',
+    'BASAL_CALORIES',
     'TOTAL_CALORIES',
     'NUTRITION',
     'SLEEP',
+    'SLEEP_DEEP',
+    'SLEEP_LIGHT',
+    'SLEEP_REM',
+    'SLEEP_AWAKE',
     'EXERCISE',
     'HEART_RATE',
     'RESTING_HEART_RATE',
+    'HRV',
+    'RESPIRATORY_RATE',
+    'BLOOD_OXYGEN',
+    'BLOOD_PRESSURE_SYSTOLIC',
+    'BLOOD_PRESSURE_DIASTOLIC',
+    'BLOOD_GLUCOSE',
   };
 
   static List<HealthDataAccess> get _perms =>
@@ -144,6 +206,20 @@ class HealthService {
       if (value <= 0 && acc.agg != _Agg.latest) return; // skip empty days
       out.add(_payload(backendType, value, acc.unit, day));
     });
+
+    // Health Connect has no BMI record — derive it from the latest weight and
+    // height (kg / m²) and emit one BMI metric per day that has a weight.
+    final latestHeight = _latestLatestValue(accs, 'HEIGHT'); // cm
+    if (latestHeight != null && latestHeight > 0) {
+      final metres = latestHeight / 100;
+      accs.forEach((key, acc) {
+        if (key.$1 == 'WEIGHT' && acc.lastValue > 0) {
+          final bmi = acc.lastValue / (metres * metres);
+          out.add(_payload(
+              'BMI', double.parse(bmi.toStringAsFixed(1)), '', key.$2));
+        }
+      });
+    }
     return out;
   }
 
@@ -152,6 +228,22 @@ class HealthService {
   static DateTime _localDayStart(DateTime d) {
     final l = d.toLocal();
     return DateTime(l.year, l.month, l.day);
+  }
+
+  /// Most recent `latest`-aggregated value across all days for [backendType].
+  static double? _latestLatestValue(
+      Map<(String, DateTime), _Acc> accs, String backendType) {
+    double? value;
+    DateTime? at;
+    accs.forEach((key, acc) {
+      if (key.$1 == backendType && acc.lastAt != null) {
+        if (at == null || acc.lastAt!.isAfter(at!)) {
+          value = acc.lastValue;
+          at = acc.lastAt;
+        }
+      }
+    });
+    return value;
   }
 
   /// Extracts a numeric value from a point for the given backend type.
