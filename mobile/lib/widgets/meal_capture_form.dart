@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/models.dart';
-import '../services/health_service.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_service.dart';
 import 'markdown_text.dart';
@@ -201,6 +200,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         imageDataUrl: _imageDataUrl,
         onSave: (confirmedItems) async {
           final items = confirmedItems.map((e) => e.toMealItem()).toList();
+          // Nutrition is mirrored into Health Connect later, during the
+          // "健康同步" flow (HealthService.syncNow), not at save time.
           await MealService.createMeal(
             mealType: _mealType,
             imageDataUrl: _imageDataUrl,
@@ -209,36 +210,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                 : _descriptionCtrl.text.trim(),
             items: items,
           );
-          await _writeMealToHealthConnect(items);
         },
-      ),
-    );
-  }
-
-  /// Write the saved meal's nutrition to Health Connect when the user has
-  /// enabled it in settings. Shows the result so failures aren't silent.
-  Future<void> _writeMealToHealthConnect(List<MealItem> items) async {
-    if (!await HealthService.isNutritionWriteEnabled()) return;
-    final calories = items.fold<int>(0, (s, e) => s + e.calories);
-    final protein = items.fold<double>(0, (s, e) => s + e.protein);
-    final fat = items.fold<double>(0, (s, e) => s + e.fat);
-    final carbs = items.fold<double>(0, (s, e) => s + e.carbs);
-    final name = items.map((e) => e.name).where((n) => n.isNotEmpty).join('、');
-    final wrote = await HealthService.writeMealNutrition(
-      mealType: _mealType,
-      eatenAt: DateTime.now(),
-      calories: calories,
-      protein: protein,
-      fat: fat,
-      carbs: carbs,
-      name: name,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(wrote
-            ? '已寫入 Health Connect 營養紀錄'
-            : '寫入 Health Connect 失敗，請確認已在「設定」開啟並授予寫入權限'),
       ),
     );
   }

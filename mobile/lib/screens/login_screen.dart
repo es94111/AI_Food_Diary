@@ -23,6 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _siteKey;
   bool _siteKeyChecked = false;
   String? _turnstileToken;
+  final _turnstile = TurnstileController();
 
   @override
   void initState() {
@@ -65,11 +66,14 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
       );
     } catch (e) {
-      // A used/expired Turnstile token can't be reused — force re-verify.
+      // A used/expired Turnstile token can't be reused — re-run the challenge
+      // so the next attempt gets a fresh token instead of staying stuck on
+      // "請先完成下方人機驗證".
       setState(() {
         _error = e.toString();
         _turnstileToken = null;
       });
+      if (_needsTurnstile) await _turnstile.reset();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -150,6 +154,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 6),
                     TurnstileWebView(
                       siteKey: _siteKey!,
+                      controller: _turnstile,
                       onToken: (t) => setState(() {
                         _turnstileToken = t;
                         if (_error == '請先完成下方人機驗證') _error = null;

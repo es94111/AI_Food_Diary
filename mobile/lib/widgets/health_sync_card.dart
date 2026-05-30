@@ -95,11 +95,14 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     });
     try {
       final count = await HealthService.syncNow();
+      final meals = await HealthService.writeRecentMealsToHealth();
       await _load();
       await widget.onSynced();
       setState(() {
         _isError = false;
-        _message = count == 0 ? '近 7 天無健康資料' : '同步成功！已上傳 $count 筆資料';
+        final base = count == 0 ? '近 7 天無健康資料' : '同步成功！已上傳 $count 筆資料';
+        _message =
+            meals > 0 ? '$base，並寫入 $meals 筆營養紀錄至 Health Connect' : base;
       });
     } catch (e, stack) {
       debugPrint('HealthSync: ERROR $e');

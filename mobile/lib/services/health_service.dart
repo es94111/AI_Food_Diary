@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import 'api_client.dart';
+import 'meal_service.dart';
 
 /// Reads health data from Health Connect and syncs it to the backend.
 ///
@@ -349,30 +350,6 @@ class HealthService {
 
   // ---- write nutrition (logged meals) back to Health Connect ----
 
-  static const _writeNutritionKey = 'write_nutrition_hc';
-
-  static Future<bool> isNutritionWriteEnabled() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_writeNutritionKey) ?? false;
-  }
-
-  /// Enables/disables writing logged meals to Health Connect. When enabling,
-  /// requests WRITE_NUTRITION permission and only persists on success.
-  static Future<bool> setNutritionWriteEnabled(bool enabled) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!enabled) {
-      await prefs.setBool(_writeNutritionKey, false);
-      return false;
-    }
-    await _health.configure();
-    final granted = await _health.requestAuthorization(
-      [HealthDataType.NUTRITION],
-      permissions: [HealthDataAccess.WRITE],
-    );
-    await prefs.setBool(_writeNutritionKey, granted);
-    return granted;
-  }
-
   static MealType _mealTypeOf(String type) => switch (type) {
         'BREAKFAST' => MealType.BREAKFAST,
         'LUNCH' => MealType.LUNCH,
@@ -422,6 +399,67 @@ class HealthService {
       debugPrint('HealthWrite: writeMeal failed $e');
       return false;
     }
+  }
+
+  // Meal ids already mirrored into Health Connect, so repeated syncs don't
+  // create duplicate nutrition records.
+  static const _writtenMealsKey = 'written_meal_hc_ids';
+
+  /// Mirrors recently logged meals' nutrition into Health Connect, skipping any
+  /// meal already written in a previous sync (tracked by id). Returns the
+  /// number newly written.
+  ///
+  /// Called as part of the health-data sync so meals always flow into Health
+  /// Connect during sync (no opt-in switch); requests the NUTRITION write
+  /// permission once up front and silently no-ops if it isn't granted.
+  static Future<int> writeRecentMealsToHealth({int days = 7}) async {
+    await _health.configure();
+    final granted = await _health.requestAuthorization(
+      [HealthDataType.NUTRITION],
+      permissions: [HealthDataAccess.WRITE],
+    );
+    if (!granted) {
+      debugPrint('HealthWrite: NUTRITION write permission not granted');
+      return 0;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final written =
+        (prefs.getStringList(_writtenMealsKey) ?? const <String>[]).toSet();
+
+    final now = DateTime.now();
+    final meals = <Meal>[];
+    for (var i = 0; i < days; i++) {
+      try {
+        meals.addAll(await MealService.mealsForDay(now.subtract(Duration(days: i))));
+      } catch (_) {
+        // Skip days that fail to load; keep writing the rest.
+      }
+    }
+
+    var count = 0;
+    for (final meal in meals) {
+      if (written.contains(meal.id)) continue;
+      final name =
+          meal.items.map((e) => e.name).where((n) => n.isNotEmpty).join('、');
+      final ok = await writeMealNutrition(
+        mealType: meal.mealType,
+        eatenAt: meal.eatenAt,
+        calories: meal.totalCalories,
+        protein: meal.totalProtein,
+        fat: meal.totalFat,
+        carbs: meal.totalCarbs,
+        name: name,
+      );
+      if (ok) {
+        written.add(meal.id);
+        count++;
+      }
+    }
+
+    await prefs.setStringList(_writtenMealsKey, written.toList());
+    debugPrint('HealthWrite: mirrored $count meals to Health Connect');
+    return count;
   }
 }
 
