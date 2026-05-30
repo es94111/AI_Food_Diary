@@ -10,6 +10,7 @@ import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
 import '../widgets/profile_form.dart';
+import '../widgets/update_card.dart';
 import 'login_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -51,6 +52,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+    // After the dashboard is up, check for a newer app version and prompt.
+    if (mounted) UpdateCard.checkAndPrompt(context);
   }
 
   Future<void> _loadSyncedWeight() async {
@@ -233,6 +236,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _accountCard(),
         const SizedBox(height: 12),
         _bodyDataCard(metabolism),
+        const SizedBox(height: 12),
+        const UpdateCard(),
         if (_user?.isAdmin == true) ...[
           const SizedBox(height: 12),
           const _AdminPanel(),

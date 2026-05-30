@@ -14,6 +14,7 @@ import { HealthConnectionsPanel } from "@/components/health-connections-panel";
 import { DashboardTabs } from "@/components/dashboard-tabs";
 import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
 import { LogoutButton } from "@/components/logout-button";
+import { WEB_VERSION, LATEST_APP_VERSION, APK_URL } from "@/lib/version";
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string }> }) {
   const user = await getCurrentUser();
@@ -203,6 +204,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </div>
       </div>
       {user.isAdmin && <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />}
+      <div className="glass glass-lift rounded-[2rem] p-6">
+        <h2 className="text-xl font-black">版本資訊</h2>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <Metric label="網頁目前版本" value={`v${WEB_VERSION}`} />
+          <Metric label="App 最新版本" value={LATEST_APP_VERSION ? `v${LATEST_APP_VERSION}` : "—"} />
+        </div>
+        {APK_URL ? (
+          <a
+            href={APK_URL}
+            className="mt-4 inline-block rounded-full bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-80"
+          >
+            下載 Android App (v{LATEST_APP_VERSION})
+          </a>
+        ) : null}
+      </div>
       <div>
         <LogoutButton />
       </div>
