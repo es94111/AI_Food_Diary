@@ -122,11 +122,9 @@ class _UpdateCardState extends State<UpdateCard> {
                     Center(child: CircularProgressIndicator(strokeWidth: 2)),
               )
             else ...[
-              _row('目前版本', 'v${_info!.currentVersion}'),
               _row('最新版本',
                   _info!.latestVersion.isEmpty ? '—' : 'v${_info!.latestVersion}'),
-              if (_info!.webVersion.isNotEmpty)
-                _row('網頁版本', 'v${_info!.webVersion}'),
+              _row('目前版本', 'v${_info!.currentVersion}'),
               const SizedBox(height: 12),
               if (_info!.updateAvailable) ...[
                 if (_info!.releaseNotes.isNotEmpty) ...[

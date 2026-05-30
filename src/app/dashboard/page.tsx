@@ -211,8 +211,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">版本資訊</h2>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <Metric label="網頁目前版本" value={`v${WEB_VERSION}`} />
-          <Metric label="App 最新版本" value={appRelease.version ? `v${appRelease.version}` : "—"} />
+          <Metric label="最新版本" value={appRelease.version ? `v${appRelease.version}` : "—"} />
+          <Metric label="目前版本" value={`v${WEB_VERSION}`} />
         </div>
         {appRelease.notes ? (
           <p className="mt-3 whitespace-pre-line text-xs text-stone-500">{appRelease.notes}</p>
