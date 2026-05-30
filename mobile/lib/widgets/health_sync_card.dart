@@ -116,7 +116,16 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   String _fmt(String type, int digits) {
     final m = _status?.latestByType[type];
     if (m == null) return '尚未同步';
+    // Sleep durations read better as H:MM than raw minutes.
+    if (type.startsWith('SLEEP')) return _hhmm(m.value);
     return '${m.value.toStringAsFixed(digits)} ${m.unit}';
+  }
+
+  String _hhmm(double minutes) {
+    final total = minutes.round();
+    final h = total ~/ 60;
+    final mm = (total % 60).toString().padLeft(2, '0');
+    return '$h:$mm';
   }
 
   @override

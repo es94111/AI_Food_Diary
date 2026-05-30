@@ -81,9 +81,10 @@ MetabolismResult metabolismFor(UserProfile? profile,
     weightKg: weight,
   );
   final tdee = calculateTdee(bmr, profile.activityLevel);
-  final target = profile.calorieTarget != 0
-      ? profile.calorieTarget
-      : (calorieTargetFromGoal(tdee, profile.goal) ?? 2000);
+  // Prefer the target derived from the (synced) TDEE so it auto-updates with
+  // Health Connect data; fall back to the stored target when TDEE is unknown.
+  final target = calorieTargetFromGoal(tdee, profile.goal) ??
+      (profile.calorieTarget != 0 ? profile.calorieTarget : 2000);
   return MetabolismResult(bmr, tdee, target);
 }
 

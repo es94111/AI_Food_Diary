@@ -3,7 +3,7 @@ import { generateNextMealAdvice } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { addDays, startOfLocalDay } from "@/lib/dates";
-import { getHealthContext, getLatestSyncedWeightKg } from "@/lib/health-context";
+import { getHealthContext, getLatestSyncedWeightKg, getLatestSyncedHeightCm } from "@/lib/health-context";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { sumMeals } from "@/lib/totals";
 
@@ -33,8 +33,12 @@ export async function GET(request: Request) {
   const today = sumMeals(meals);
   const healthContext = await getHealthContext(user.id, start);
   const syncedWeight = await getLatestSyncedWeightKg(user.id, start);
-  const effectiveProfile = user.profile ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg } : null;
-  const calorieTarget = effectiveProfile?.calorieTarget ?? calorieTargetFromGoal(calculateTdee(calculateBmr(effectiveProfile), effectiveProfile?.activityLevel), effectiveProfile?.goal) ?? 2000;
+  const syncedHeight = await getLatestSyncedHeightCm(user.id, start);
+  const effectiveProfile = user.profile
+    ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg, heightCm: syncedHeight ?? user.profile.heightCm }
+    : null;
+  // Prefer the target derived from the (synced) TDEE so it auto-updates.
+  const calorieTarget = calorieTargetFromGoal(calculateTdee(calculateBmr(effectiveProfile), effectiveProfile?.activityLevel), effectiveProfile?.goal) ?? effectiveProfile?.calorieTarget ?? 2000;
   const advice = await generateNextMealAdvice({
     today,
     calorieTarget,

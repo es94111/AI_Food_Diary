@@ -51,7 +51,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     : null;
   const bmr = calculateBmr(effectiveProfile);
   const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);
-  const target = user.profile?.calorieTarget ?? calorieTargetFromGoal(tdee, user.profile?.goal) ?? 2000;
+  // Auto-derive the target from the (synced) TDEE so it updates with Health
+  // Connect data; fall back to the stored target only when TDEE is unknown.
+  const target = calorieTargetFromGoal(tdee, effectiveProfile?.goal) ?? user.profile?.calorieTarget ?? 2000;
   const isTodayView = view === "day" && isoDate(start) === isoDate(new Date());
   const macroTotal = totals.protein + totals.fat + totals.carbs;
   const proteinPercent = macroTotal ? Math.round((totals.protein / macroTotal) * 100) : 0;
@@ -167,11 +169,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Metric label="收縮壓" value={formatHealthMetric(latestHealthMetrics.BLOOD_PRESSURE_SYSTOLIC, 0)} />
           <Metric label="舒張壓" value={formatHealthMetric(latestHealthMetrics.BLOOD_PRESSURE_DIASTOLIC, 0)} />
           <Metric label="血糖" value={formatHealthMetric(latestHealthMetrics.BLOOD_GLUCOSE, 0)} />
-          <Metric label="睡眠" value={formatHealthMetric(latestHealthMetrics.SLEEP, 0)} />
-          <Metric label="深睡" value={formatHealthMetric(latestHealthMetrics.SLEEP_DEEP, 0)} />
-          <Metric label="淺睡" value={formatHealthMetric(latestHealthMetrics.SLEEP_LIGHT, 0)} />
-          <Metric label="REM" value={formatHealthMetric(latestHealthMetrics.SLEEP_REM, 0)} />
-          <Metric label="清醒" value={formatHealthMetric(latestHealthMetrics.SLEEP_AWAKE, 0)} />
+          <Metric label="睡眠" value={formatSleep(latestHealthMetrics.SLEEP)} />
+          <Metric label="深睡" value={formatSleep(latestHealthMetrics.SLEEP_DEEP)} />
+          <Metric label="淺睡" value={formatSleep(latestHealthMetrics.SLEEP_LIGHT)} />
+          <Metric label="REM" value={formatSleep(latestHealthMetrics.SLEEP_REM)} />
+          <Metric label="清醒" value={formatSleep(latestHealthMetrics.SLEEP_AWAKE)} />
           <Metric label="喝水" value={formatHealthMetric(latestHealthMetrics.WATER, 1)} />
           <Metric label="營養攝取" value={formatHealthMetric(latestHealthMetrics.NUTRITION, 0)} />
         </div>
@@ -255,4 +257,13 @@ function latestMetricsByType(metrics: Array<{ type: string; value: number; unit:
 function formatHealthMetric(metric: { value: number; unit: string } | undefined, digits: number) {
   if (!metric) return "尚未同步";
   return `${metric.value.toFixed(digits)} ${metric.unit}`;
+}
+
+// Sleep durations (stored in minutes) read better as H:MM.
+function formatSleep(metric: { value: number } | undefined) {
+  if (!metric) return "尚未同步";
+  const total = Math.round(metric.value);
+  const h = Math.floor(total / 60);
+  const m = String(total % 60).padStart(2, "0");
+  return `${h}:${m}`;
 }
