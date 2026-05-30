@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
-import 'services/api_service.dart';
 
-void main() async {
+import 'screens/login_screen.dart';
+import 'screens/dashboard_screen.dart';
+import 'services/auth_service.dart';
+
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const AiFoodApp());
 }
@@ -15,9 +16,14 @@ class AiFoodApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'AI Food Diary',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFB45309), // amber-700, matches web
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
+        scaffoldBackgroundColor: const Color(0xFFFAF8F5),
       ),
       home: const AppEntry(),
     );
@@ -38,13 +44,14 @@ class _AppEntryState extends State<AppEntry> {
   @override
   void initState() {
     super.initState();
-    _checkToken();
+    _check();
   }
 
-  Future<void> _checkToken() async {
-    final token = await ApiService.getToken();
+  Future<void> _check() async {
+    final has = await AuthService.hasSession();
+    if (!mounted) return;
     setState(() {
-      _loggedIn = token != null;
+      _loggedIn = has;
       _loading = false;
     });
   }
@@ -54,6 +61,6 @@ class _AppEntryState extends State<AppEntry> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    return _loggedIn ? const HomeScreen() : const LoginScreen();
+    return _loggedIn ? const DashboardScreen() : const LoginScreen();
   }
 }
