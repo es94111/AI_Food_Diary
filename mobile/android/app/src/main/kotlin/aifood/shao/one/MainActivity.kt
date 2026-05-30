@@ -1,4 +1,4 @@
-package com.aifood.mobile
+package aifood.shao.one
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 

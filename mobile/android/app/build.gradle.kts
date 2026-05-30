@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.aifood.mobile"
+    namespace = "aifood.shao.one"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.aifood.mobile"
+        applicationId = "aifood.shao.one"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 26 // Health Connect requires API 26+
