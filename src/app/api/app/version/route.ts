@@ -10,7 +10,11 @@ export async function GET(request: Request) {
     webVersion: WEB_VERSION,
     latestVersion: release.version || WEB_VERSION,
     apkUrl: release.apkKey ? `${publicOrigin(request)}/api/app/download` : (process.env.APP_APK_URL ?? ""),
-    releaseNotes: release.notes
+    releaseNotes: release.notes,
+    // The Google web client id (same one the backend verifies tokens against),
+    // so the app can enable Google sign-in at runtime without baking the id in
+    // at build time. Empty when Google sign-in isn't configured.
+    googleClientId: process.env.GOOGLE_CLIENT_ID ?? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""
   });
 }
 

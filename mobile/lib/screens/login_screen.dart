@@ -29,6 +29,14 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     _loadSiteKey();
+    _loadGoogleConfig();
+  }
+
+  /// Resolve the Google client id from the backend so the sign-in button shows
+  /// even if the APK was built without the GOOGLE_SERVER_CLIENT_ID dart-define.
+  Future<void> _loadGoogleConfig() async {
+    await GoogleAuth.ensureConfigured();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadSiteKey() async {

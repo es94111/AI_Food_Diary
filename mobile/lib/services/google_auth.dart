@@ -7,13 +7,38 @@ import 'auth_service.dart';
 
 /// Native Google Sign-In → backend ID-token verification → cookie session.
 class GoogleAuth {
-  static bool get isConfigured => googleServerClientId.isNotEmpty;
+  // The Google web client id. Defaults to the build-time dart-define, but is
+  // overridden at runtime by [ensureConfigured] using the value the backend
+  // reports — so a CI build with an empty GOOGLE_SERVER_CLIENT_ID secret still
+  // shows the button once the app talks to the server.
+  static String _clientId = googleServerClientId;
+  static GoogleSignIn? _gsiInstance;
 
-  static final GoogleSignIn _gsi = GoogleSignIn(
-    // The web client id, so the issued ID token's audience matches the backend.
-    serverClientId: googleServerClientId,
-    scopes: const ['email', 'profile'],
-  );
+  static bool get isConfigured => _clientId.isNotEmpty;
+
+  static GoogleSignIn get _gsi => _gsiInstance ??= GoogleSignIn(
+        // The web client id, so the ID token's audience matches the backend.
+        serverClientId: _clientId,
+        scopes: const ['email', 'profile'],
+      );
+
+  /// Ensures a Google web client id is available, fetching it from the backend
+  /// (`/api/app/version`) when not provided at build time. Returns whether
+  /// Google sign-in is configured. Safe to call repeatedly.
+  static Future<bool> ensureConfigured() async {
+    if (isConfigured) return true;
+    try {
+      final res = await ApiClient.instance.get('/api/app/version');
+      final id = res.data is Map ? res.data['googleClientId'] as String? : null;
+      if (id != null && id.isNotEmpty) {
+        _clientId = id;
+        _gsiInstance = null; // rebuild with the resolved id on next use
+      }
+    } catch (_) {
+      // Offline / endpoint unavailable — leave unconfigured; button stays hidden.
+    }
+    return isConfigured;
+  }
 
   /// Returns the logged-in user, or null if the user cancelled.
   static Future<AppUser?> signIn() async {
