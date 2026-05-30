@@ -52,6 +52,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const bmr = calculateBmr(effectiveProfile);
   const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);
   const target = user.profile?.calorieTarget ?? calorieTargetFromGoal(tdee, user.profile?.goal) ?? 2000;
+  const isTodayView = view === "day" && isoDate(start) === isoDate(new Date());
   const macroTotal = totals.protein + totals.fat + totals.carbs;
   const proteinPercent = macroTotal ? Math.round((totals.protein / macroTotal) * 100) : 0;
   const fatPercent = macroTotal ? Math.round((totals.fat / macroTotal) * 100) : 0;
@@ -123,7 +124,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <Macro label={`碳水 ${carbsPercent}%`} value={`${totals.carbs.toFixed(1)}g`} />
         </div>
       </div>
-      <MealCaptureForm initialNextMealAdvice={todayRecommendation?.advice ?? ""} />
+      <MealCaptureForm initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""} />
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">{view === "week" ? "本週餐點" : "當日餐點"}</h2>
         <div className="mt-4">

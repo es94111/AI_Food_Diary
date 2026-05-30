@@ -51,6 +51,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     loadSavedFoods();
   }, []);
 
+  useEffect(() => {
+    setNextMealAdvice(initialNextMealAdvice);
+  }, [initialNextMealAdvice]);
+
   async function onFileChange(file?: File) {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
