@@ -1,0 +1,57 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Brand logo (AI Food Diary) drawn in the original 64x64 space, scaled and
+         centred into the adaptive-icon safe zone. -->
+    <group
+        android:scaleX="1.4"
+        android:scaleY="1.4"
+        android:translateX="9"
+        android:translateY="6">
+        <!-- cream plate -->
+        <path
+            android:pathData="M13,35a19,19 0 1,0 38,0a19,19 0 1,0 -38,0Z"
+            android:fillColor="#FFFFFAF2" />
+        <!-- leaf -->
+        <path android:pathData="M41,14c-9,1 -15,7 -16,16c9,-1 15,-7 16,-16Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="31"
+                    android:startY="14"
+                    android:endX="49"
+                    android:endY="32">
+                    <item android:offset="0" android:color="#FFFFF7ED" />
+                    <item android:offset="1" android:color="#FFFCD34D" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <!-- leaf stem -->
+        <path
+            android:pathData="M25,31c5,-4 9,-8 15,-16"
+            android:strokeColor="#FFB45309"
+            android:strokeWidth="2"
+            android:strokeLineCap="round" />
+        <!-- smile / cutlery lines -->
+        <path
+            android:pathData="M20,36h24"
+            android:strokeColor="#FF292524"
+            android:strokeWidth="3"
+            android:strokeLineCap="round" />
+        <path
+            android:pathData="M24,44h16"
+            android:strokeColor="#FF292524"
+            android:strokeWidth="3"
+            android:strokeLineCap="round" />
+        <!-- sparkle -->
+        <path
+            android:pathData="M16,24l3,3 3,-3 3,3 3,-3"
+            android:strokeColor="#FFFFF7ED"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>
