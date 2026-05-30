@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/auth_service.dart';
+import '../services/google_auth.dart';
 import '../services/health_service.dart';
 import '../services/meal_service.dart';
 import '../utils/metabolism.dart';
@@ -93,6 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _logout() async {
+    await GoogleAuth.signOut();
     await AuthService.logout();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(

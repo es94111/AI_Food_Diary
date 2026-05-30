@@ -382,7 +382,8 @@ class HealthService {
       };
 
   /// Writes one logged meal's nutrition to Health Connect as a NutritionRecord.
-  /// Best-effort: returns false (no throw) when disabled or not permitted.
+  /// Best-effort: returns false (no throw) on any failure. Re-requests the
+  /// WRITE permission once if the first attempt is rejected.
   static Future<bool> writeMealNutrition({
     required String mealType,
     required DateTime eatenAt,
@@ -392,21 +393,33 @@ class HealthService {
     required double carbs,
     String? name,
   }) async {
-    if (!await isNutritionWriteEnabled()) return false;
     try {
       await _health.configure();
-      return await _health.writeMeal(
-        mealType: _mealTypeOf(mealType),
-        startTime: eatenAt,
-        endTime: eatenAt,
-        caloriesConsumed: calories.toDouble(),
-        carbohydrates: carbs,
-        protein: protein,
-        fatTotal: fat,
-        name: (name != null && name.isNotEmpty) ? name : null,
-      );
+      Future<bool> doWrite() => _health.writeMeal(
+            mealType: _mealTypeOf(mealType),
+            startTime: eatenAt,
+            endTime: eatenAt,
+            caloriesConsumed: calories.toDouble(),
+            carbohydrates: carbs,
+            protein: protein,
+            fatTotal: fat,
+            name: (name != null && name.isNotEmpty) ? name : null,
+          );
+
+      var ok = await doWrite();
+      debugPrint('HealthWrite: writeMeal -> $ok (cal=$calories)');
+      if (!ok) {
+        // Permission may have been revoked — ask once and retry.
+        final granted = await _health.requestAuthorization(
+          [HealthDataType.NUTRITION],
+          permissions: [HealthDataAccess.WRITE],
+        );
+        debugPrint('HealthWrite: re-auth granted=$granted');
+        if (granted) ok = await doWrite();
+      }
+      return ok;
     } catch (e) {
-      debugPrint('HealthSync: writeMeal failed $e');
+      debugPrint('HealthWrite: writeMeal failed $e');
       return false;
     }
   }

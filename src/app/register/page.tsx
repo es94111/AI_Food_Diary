@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AuthForm } from "@/components/auth-form";
+import { GoogleSignInButton } from "@/components/google-sign-in-button";
 
 export default async function RegisterPage() {
   const user = await getCurrentUser();
@@ -48,6 +49,7 @@ export default async function RegisterPage() {
           {isFirstUser ? "您將成為第一位使用者（管理員）。" : "開始用照片追蹤營養與熱量。"}
         </p>
         <AuthForm mode="register" />
+        <GoogleSignInButton clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID} />
         <p className="mt-6 text-sm text-stone-600">
           已經有帳號？ <Link className="font-semibold text-amber-700" href="/login">登入</Link>
         </p>

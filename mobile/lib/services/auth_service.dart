@@ -35,6 +35,15 @@ class AuthService {
     return fetchMe();
   }
 
+  static Future<AppUser> loginWithGoogle(String idToken) async {
+    final res = await _api.post('/api/auth/google', data: {'idToken': idToken});
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, 'Google 登入失敗'),
+          statusCode: res.statusCode);
+    }
+    return fetchMe();
+  }
+
   static Future<AppUser> fetchMe() async {
     final res = await _api.get('/api/me');
     if (!ApiClient.ok(res)) {

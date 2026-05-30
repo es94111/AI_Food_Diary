@@ -215,9 +215,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     );
   }
 
-  /// Best-effort: write the saved meal's nutrition to Health Connect when the
-  /// user has enabled it in settings.
+  /// Write the saved meal's nutrition to Health Connect when the user has
+  /// enabled it in settings. Shows the result so failures aren't silent.
   Future<void> _writeMealToHealthConnect(List<MealItem> items) async {
+    if (!await HealthService.isNutritionWriteEnabled()) return;
     final calories = items.fold<int>(0, (s, e) => s + e.calories);
     final protein = items.fold<double>(0, (s, e) => s + e.protein);
     final fat = items.fold<double>(0, (s, e) => s + e.fat);
@@ -232,11 +233,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       carbs: carbs,
       name: name,
     );
-    if (wrote && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已寫入 Health Connect')),
-      );
-    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(wrote
+            ? '已寫入 Health Connect 營養紀錄'
+            : '寫入 Health Connect 失敗，請確認已在「設定」開啟並授予寫入權限'),
+      ),
+    );
   }
 
   Future<void> _afterSave() async {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/google_auth.dart';
 import '../services/turnstile_service.dart';
 import '../widgets/turnstile_webview.dart';
 import 'dashboard_screen.dart';
@@ -69,6 +70,25 @@ class _LoginScreenState extends State<LoginScreen> {
         _error = e.toString();
         _turnstileToken = null;
       });
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _googleLogin() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final user = await GoogleAuth.signIn();
+      if (user == null) return; // cancelled
+      if (!mounted) return;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+      );
+    } catch (e) {
+      setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -154,6 +174,27 @@ class _LoginScreenState extends State<LoginScreen> {
                                 strokeWidth: 2, color: Colors.white))
                         : const Text('登入'),
                   ),
+                  if (GoogleAuth.isConfigured) ...[
+                    const SizedBox(height: 12),
+                    Row(
+                      children: const [
+                        Expanded(child: Divider()),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Text('或', style: TextStyle(color: Colors.black45)),
+                        ),
+                        Expanded(child: Divider()),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: _loading ? null : _googleLogin,
+                      style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14)),
+                      icon: const Icon(Icons.login),
+                      label: const Text('使用 Google 登入'),
+                    ),
+                  ],
                   const SizedBox(height: 14),
                   TextButton(
                     onPressed: _loading
