@@ -23,4 +23,4 @@ COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/src ./src
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma db push && npm run start"]
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm run start"]
