@@ -74,7 +74,11 @@ jobs:
           --build-number=${{ github.run_number }}
           --dart-define=GOOGLE_SERVER_CLIENT_ID=${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
 
+      # Only needed as a fallback when S3 isn't configured — the APK is normally
+      # distributed via S3 below. Skipping it on configured runs also avoids the
+      # upload-artifact@v5 Node 20 deprecation warning (no Node 24 release yet).
       - name: Upload APK artifact
+        if: ${{ env.S3_ENDPOINT == '' || env.S3_BUCKET == '' }}
         uses: actions/upload-artifact@v5
         with:
           name: ai-food-mobile-apk
