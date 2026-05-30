@@ -14,6 +14,8 @@ jobs:
     env:
       S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      # Gate for the signing step (secrets can't be read directly in `if`).
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       # upload-artifact@v5 still declares Node 20; force the Node 24 runtime so
       # the deprecation warning goes away (per GitHub's guidance).
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -43,6 +45,26 @@ jobs:
       - name: Install dependencies
         working-directory: mobile
         run: flutter pub get
+
+      # Decode the fixed release keystore from secrets so every build is signed
+      # with the same key (stable SHA-1 for Google Sign-In + cross-version OTA
+      # updates). When the secret is absent the build falls back to the debug
+      # key (see android/app/build.gradle.kts), so forks/PRs still build.
+      - name: Configure release signing
+        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.jks
+          cat > key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
 
       - name: Build release APK
         working-directory: mobile
