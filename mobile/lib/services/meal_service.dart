@@ -115,19 +115,37 @@ class MealService {
 
   // ---- AI summary & recommendation ----
 
-  static Future<DailySummary> dailySummary(DateTime day) async {
-    final res = await _api.get('/api/daily-summary', query: {'date': isoDate(day)});
+  /// Daily summary. With [generate] false (default) it only returns an already
+  /// stored summary (null if none), spending no AI quota; with true it
+  /// generates one if missing.
+  static Future<DailySummary?> dailySummary(DateTime day,
+      {bool generate = false}) async {
+    final res = await _api.get('/api/daily-summary', query: {
+      'date': isoDate(day),
+      if (generate) 'generate': '1',
+    });
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法產生今日總結'));
     }
-    return DailySummary.fromJson(res.data['summary'] as Map<String, dynamic>);
+    final summary = res.data['summary'];
+    if (summary == null) return null;
+    return DailySummary.fromJson(summary as Map<String, dynamic>);
   }
 
+  /// Regenerates and returns today's next-meal advice (spends AI quota).
   static Future<String> nextMealAdvice() async {
     final res = await _api.get('/api/recommendations/next-meal');
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法產生下一餐建議'));
     }
+    return (res.data['advice'] as String?) ?? '';
+  }
+
+  /// Returns today's stored next-meal advice without regenerating ('' if none).
+  static Future<String> peekNextMealAdvice() async {
+    final res = await _api
+        .get('/api/recommendations/next-meal', query: {'peek': '1'});
+    if (!ApiClient.ok(res)) return '';
     return (res.data['advice'] as String?) ?? '';
   }
 

@@ -24,6 +24,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   DateTime _selectedDate = startOfLocalDay(DateTime.now());
   List<Meal> _meals = [];
   double? _syncedWeight;
+  String _nextMealAdvice = '';
   bool _loading = true;
   String? _error;
 
@@ -38,6 +39,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _user = await AuthService.fetchMe();
       await _loadMeals();
       await _loadSyncedWeight();
+      // Re-display today's stored next-meal advice (persists across restarts).
+      _nextMealAdvice = await MealService.peekNextMealAdvice();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -147,7 +150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 12),
             HealthSyncCard(onSynced: _onHealthSynced),
             const SizedBox(height: 12),
-            MealCaptureForm(onSaved: _loadMeals),
+            MealCaptureForm(onSaved: _loadMeals, initialAdvice: _nextMealAdvice),
             const SizedBox(height: 12),
             _mealsSection(),
             const SizedBox(height: 12),
@@ -163,7 +166,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Future<void> _onHealthSynced() => _loadSyncedWeight();
+  Future<void> _onHealthSynced() async {
+    await _loadSyncedWeight();
+    await _persistSyncedWeightToProfile();
+  }
+
+  /// After a sync, write the latest Health Connect weight back into the user's
+  /// profile (and recompute the calorie target) so the saved settings reflect it.
+  Future<void> _persistSyncedWeightToProfile() async {
+    final weight = _syncedWeight;
+    if (weight == null) return;
+    final profile = _user?.profile;
+    // Skip if the profile already stores essentially the same weight.
+    if (profile?.weightKg != null && (profile!.weightKg! - weight).abs() < 0.05) {
+      return;
+    }
+    try {
+      // Recompute the calorie target from the new weight, mirroring the
+      // profile form, when there is enough data; otherwise just save weight.
+      final bmr = calculateBmr(
+        gender: profile?.gender,
+        birthDate: profile?.birthDate,
+        heightCm: profile?.heightCm,
+        weightKg: weight,
+      );
+      final target =
+          calorieTargetFromGoal(calculateTdee(bmr, profile?.activityLevel),
+              profile?.goal);
+      await AuthService.updateProfile(weightKg: weight, calorieTarget: target);
+      _user = await AuthService.fetchMe();
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
 
   Widget _dateSwitcher() {
     final label = _weekView
@@ -396,13 +430,27 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
   bool _loading = false;
   String? _error;
 
+  @override
+  void initState() {
+    super.initState();
+    _peek();
+  }
+
+  // Auto-display an already-stored summary on open (no AI spend).
+  Future<void> _peek() async {
+    try {
+      final s = await MealService.dailySummary(widget.date);
+      if (mounted && s != null) setState(() => _summary = s);
+    } catch (_) {}
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final s = await MealService.dailySummary(widget.date);
+      final s = await MealService.dailySummary(widget.date, generate: true);
       setState(() => _summary = s);
     } catch (e) {
       setState(() => _error = e.toString());

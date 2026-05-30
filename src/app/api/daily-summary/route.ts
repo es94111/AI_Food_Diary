@@ -20,6 +20,12 @@ export async function GET(request: Request) {
   });
   if (existing) return NextResponse.json({ summary: existing });
 
+  // Peek mode: return the stored summary only, without spending AI quota to
+  // generate one. Used by the web/app to auto-display an existing summary on load.
+  if (url.searchParams.get("generate") !== "1") {
+    return NextResponse.json({ summary: null });
+  }
+
   const meals = await prisma.meal.findMany({
     where: { userId: user.id, eatenAt: { gte: summaryDate, lt: addDays(summaryDate, 1) } }
   });

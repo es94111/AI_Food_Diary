@@ -7,9 +7,19 @@ import { getHealthContext, getLatestSyncedWeightKg } from "@/lib/health-context"
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { sumMeals } from "@/lib/totals";
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await requireUser();
   const start = startOfLocalDay(new Date());
+
+  // Peek mode: return today's stored advice without regenerating (no AI spend).
+  // Used by the app to re-display advice after a restart.
+  if (new URL(request.url).searchParams.get("peek") === "1") {
+    const existing = await prisma.dailyRecommendation.findUnique({
+      where: { userId_recommendationDate: { userId: user.id, recommendationDate: start } }
+    });
+    return NextResponse.json({ advice: existing?.advice ?? "", today: null });
+  }
+
   const meals = await prisma.meal.findMany({
     where: { userId: user.id, eatenAt: { gte: start, lt: addDays(start, 1) } }
   });

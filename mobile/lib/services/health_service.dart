@@ -65,41 +65,63 @@ class HealthService {
       types: _types,
     );
 
-    // Collapse to one record per (type, measuredAt) — the backend's unique key
-    // is (userId, source, type, measuredAt), and a batch with duplicate keys
-    // makes its transactional upsert fail with a 500. Health Connect can emit
-    // several points sharing the same start time, so keep the last value.
-    final byKey = <String, Map<String, dynamic>>{};
-    for (final point in _health.removeDuplicates(data)) {
-      final payload = _toPayload(point);
-      byKey['${payload['type']}|${payload['measuredAt']}'] = payload;
+    // Health Connect stores steps/active-calories as thousands of fine-grained
+    // interval records (per minute / per source) and the backend caps each sync
+    // at 500 metrics. Roll up to one record per (type, local day): STEPS and
+    // ACTIVE_CALORIES summed per day, WEIGHT keeps the latest reading per day.
+    // This also makes "latest steps" mean today's total, not the last minute.
+    final stepsByDay = <DateTime, double>{};
+    final caloriesByDay = <DateTime, double>{};
+    final weightByDay = <DateTime, HealthDataPoint>{};
+
+    for (final p in _health.removeDuplicates(data)) {
+      final day = _localDayStart(p.dateFrom);
+      switch (p.type) {
+        case HealthDataType.STEPS:
+          stepsByDay[day] = (stepsByDay[day] ?? 0) + _numericValue(p);
+        case HealthDataType.ACTIVE_ENERGY_BURNED:
+          caloriesByDay[day] = (caloriesByDay[day] ?? 0) + _numericValue(p);
+        case HealthDataType.WEIGHT:
+          final existing = weightByDay[day];
+          if (existing == null || p.dateTo.isAfter(existing.dateTo)) {
+            weightByDay[day] = p;
+          }
+        default:
+          break;
+      }
     }
-    return byKey.values.toList();
+
+    final out = <Map<String, dynamic>>[];
+    stepsByDay.forEach((day, v) =>
+        out.add(_payload('STEPS', v.roundToDouble(), 'count', day)));
+    caloriesByDay.forEach((day, v) =>
+        out.add(_payload('ACTIVE_CALORIES', v.roundToDouble(), 'kcal', day)));
+    weightByDay.forEach(
+        (day, p) => out.add(_payload('WEIGHT', _numericValue(p), 'kg', day)));
+    return out;
   }
 
-  static Map<String, dynamic> _toPayload(HealthDataPoint p) {
-    final type = switch (p.type) {
-      HealthDataType.STEPS => 'STEPS',
-      HealthDataType.WEIGHT => 'WEIGHT',
-      HealthDataType.ACTIVE_ENERGY_BURNED => 'ACTIVE_CALORIES',
-      _ => p.type.name,
-    };
-    final unit = switch (p.type) {
-      HealthDataType.STEPS => 'count',
-      HealthDataType.WEIGHT => 'kg',
-      HealthDataType.ACTIVE_ENERGY_BURNED => 'kcal',
-      _ => '',
-    };
+  static final _isoUtc = DateFormat("yyyy-MM-dd'T'HH:mm:ss.000'Z'");
+
+  static DateTime _localDayStart(DateTime d) {
+    final l = d.toLocal();
+    return DateTime(l.year, l.month, l.day);
+  }
+
+  static double _numericValue(HealthDataPoint p) {
     final raw = p.value;
-    final value = raw is NumericHealthValue
+    return raw is NumericHealthValue
         ? raw.numericValue.toDouble()
         : double.tryParse(raw.toString()) ?? 0.0;
+  }
+
+  static Map<String, dynamic> _payload(
+      String type, double value, String unit, DateTime localDay) {
     return {
       'type': type,
       'value': value,
       'unit': unit,
-      'measuredAt':
-          DateFormat("yyyy-MM-dd'T'HH:mm:ss.000'Z'").format(p.dateFrom.toUtc()),
+      'measuredAt': _isoUtc.format(localDay.toUtc()),
     };
   }
 
