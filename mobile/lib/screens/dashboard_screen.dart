@@ -237,6 +237,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         _bodyDataCard(metabolism),
         const SizedBox(height: 12),
+        const _NutritionWriteToggle(),
+        const SizedBox(height: 12),
         const UpdateCard(),
         if (_user?.isAdmin == true) ...[
           const SizedBox(height: 12),
@@ -713,6 +715,68 @@ class _AdminPanelState extends State<_AdminPanel> {
               subtitle: const Text('關閉後僅管理員可建立新帳號'),
               value: _open ?? true,
               onChanged: _busy || _open == null ? null : _toggle,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Settings toggle: write logged meals' nutrition into Health Connect.
+class _NutritionWriteToggle extends StatefulWidget {
+  const _NutritionWriteToggle();
+
+  @override
+  State<_NutritionWriteToggle> createState() => _NutritionWriteToggleState();
+}
+
+class _NutritionWriteToggleState extends State<_NutritionWriteToggle> {
+  bool _enabled = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final v = await HealthService.isNutritionWriteEnabled();
+    if (mounted) setState(() => _enabled = v);
+  }
+
+  Future<void> _toggle(bool value) async {
+    setState(() => _busy = true);
+    final result = await HealthService.setNutritionWriteEnabled(value);
+    if (!mounted) return;
+    setState(() {
+      _enabled = result;
+      _busy = false;
+    });
+    if (value && !result) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('需要在 Health Connect 授予寫入營養的權限')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Health Connect 寫入',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('新增餐點時寫入 Health Connect'),
+              subtitle: const Text('將攝取的熱量與三大營養素寫入 Health Connect 的營養紀錄'),
+              value: _enabled,
+              onChanged: _busy ? null : _toggle,
             ),
           ],
         ),

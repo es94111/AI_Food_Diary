@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:health/health.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import 'api_client.dart';
@@ -345,6 +346,70 @@ class HealthService {
   }
 
   static Future<void> clearToken() => _storage.delete(key: _tokenKey);
+
+  // ---- write nutrition (logged meals) back to Health Connect ----
+
+  static const _writeNutritionKey = 'write_nutrition_hc';
+
+  static Future<bool> isNutritionWriteEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_writeNutritionKey) ?? false;
+  }
+
+  /// Enables/disables writing logged meals to Health Connect. When enabling,
+  /// requests WRITE_NUTRITION permission and only persists on success.
+  static Future<bool> setNutritionWriteEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!enabled) {
+      await prefs.setBool(_writeNutritionKey, false);
+      return false;
+    }
+    await _health.configure();
+    final granted = await _health.requestAuthorization(
+      [HealthDataType.NUTRITION],
+      permissions: [HealthDataAccess.WRITE],
+    );
+    await prefs.setBool(_writeNutritionKey, granted);
+    return granted;
+  }
+
+  static MealType _mealTypeOf(String type) => switch (type) {
+        'BREAKFAST' => MealType.BREAKFAST,
+        'LUNCH' => MealType.LUNCH,
+        'DINNER' => MealType.DINNER,
+        'SNACK' => MealType.SNACK,
+        _ => MealType.UNKNOWN,
+      };
+
+  /// Writes one logged meal's nutrition to Health Connect as a NutritionRecord.
+  /// Best-effort: returns false (no throw) when disabled or not permitted.
+  static Future<bool> writeMealNutrition({
+    required String mealType,
+    required DateTime eatenAt,
+    required int calories,
+    required double protein,
+    required double fat,
+    required double carbs,
+    String? name,
+  }) async {
+    if (!await isNutritionWriteEnabled()) return false;
+    try {
+      await _health.configure();
+      return await _health.writeMeal(
+        mealType: _mealTypeOf(mealType),
+        startTime: eatenAt,
+        endTime: eatenAt,
+        caloriesConsumed: calories.toDouble(),
+        carbohydrates: carbs,
+        protein: protein,
+        fatTotal: fat,
+        name: (name != null && name.isNotEmpty) ? name : null,
+      );
+    } catch (e) {
+      debugPrint('HealthSync: writeMeal failed $e');
+      return false;
+    }
+  }
 }
 
 /// How a day's worth of points for a metric are reduced to a single value.

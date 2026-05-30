@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/models.dart';
+import '../services/health_service.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_service.dart';
 import 'markdown_text.dart';
@@ -199,17 +200,43 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         items: items,
         imageDataUrl: _imageDataUrl,
         onSave: (confirmedItems) async {
+          final items = confirmedItems.map((e) => e.toMealItem()).toList();
           await MealService.createMeal(
             mealType: _mealType,
             imageDataUrl: _imageDataUrl,
             description: _descriptionCtrl.text.trim().isEmpty
                 ? null
                 : _descriptionCtrl.text.trim(),
-            items: confirmedItems.map((e) => e.toMealItem()).toList(),
+            items: items,
           );
+          await _writeMealToHealthConnect(items);
         },
       ),
     );
+  }
+
+  /// Best-effort: write the saved meal's nutrition to Health Connect when the
+  /// user has enabled it in settings.
+  Future<void> _writeMealToHealthConnect(List<MealItem> items) async {
+    final calories = items.fold<int>(0, (s, e) => s + e.calories);
+    final protein = items.fold<double>(0, (s, e) => s + e.protein);
+    final fat = items.fold<double>(0, (s, e) => s + e.fat);
+    final carbs = items.fold<double>(0, (s, e) => s + e.carbs);
+    final name = items.map((e) => e.name).where((n) => n.isNotEmpty).join('、');
+    final wrote = await HealthService.writeMealNutrition(
+      mealType: _mealType,
+      eatenAt: DateTime.now(),
+      calories: calories,
+      protein: protein,
+      fat: fat,
+      carbs: carbs,
+      name: name,
+    );
+    if (wrote && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('已寫入 Health Connect')),
+      );
+    }
   }
 
   Future<void> _afterSave() async {

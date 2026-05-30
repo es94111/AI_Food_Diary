@@ -24,6 +24,7 @@
     <uses-permission android:name="android.permission.health.READ_FLOORS_CLIMBED"/>
     <uses-permission android:name="android.permission.health.READ_ACTIVITY_INTENSITY"/>
     <uses-permission android:name="android.permission.health.READ_NUTRITION"/>
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION"/>
     <uses-permission android:name="android.permission.health.READ_HYDRATION"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Required to install the downloaded APK for in-app one-tap update. -->
