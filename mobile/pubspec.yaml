@@ -36,9 +36,12 @@ dependencies:
   cupertino_icons: ^1.0.8
   health: ^13.3.1
   dio: ^5.8.0
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^10.3.1
   shared_preferences: ^2.5.3
   intl: ^0.20.2
+
+dependency_overrides:
+  device_info_plus: ^13.1.0
 
 dev_dependencies:
   flutter_test:
