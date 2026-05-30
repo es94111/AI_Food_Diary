@@ -147,43 +147,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">健康同步</h2>
         <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、熱量、睡眠、運動、心率、體脂等資料。</p>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Metric label="步數" value={formatHealthMetric(latestHealthMetrics.STEPS, 0)} />
-          <Metric label="距離" value={formatHealthMetric(latestHealthMetrics.DISTANCE, 0)} />
-          <Metric label="速度" value={formatHealthMetric(latestHealthMetrics.SPEED, 1)} />
-          <Metric label="爬樓層" value={formatHealthMetric(latestHealthMetrics.FLIGHTS_CLIMBED, 0)} />
-          <Metric label="活動強度" value={formatHealthMetric(latestHealthMetrics.ACTIVITY_INTENSITY, 0)} />
-          <Metric label="活動熱量" value={formatHealthMetric(latestHealthMetrics.ACTIVE_CALORIES, 0)} />
-          <Metric label="基礎消耗" value={formatHealthMetric(latestHealthMetrics.BASAL_CALORIES, 0)} />
-          <Metric label="每日總消耗" value={formatHealthMetric(latestHealthMetrics.TOTAL_CALORIES, 0)} />
-          <Metric label="運動" value={formatHealthMetric(latestHealthMetrics.EXERCISE, 0)} />
-          <Metric label="體重" value={formatHealthMetric(latestHealthMetrics.WEIGHT, 1)} />
-          <Metric label="身高" value={formatHealthMetric(latestHealthMetrics.HEIGHT, 0)} />
-          <Metric label="BMI" value={formatHealthMetric(latestHealthMetrics.BMI, 1)} />
-          <Metric label="體脂率" value={formatHealthMetric(latestHealthMetrics.BODY_FAT, 1)} />
-          <Metric label="瘦體重" value={formatHealthMetric(latestHealthMetrics.LEAN_BODY_MASS, 1)} />
-          <Metric label="體水分" value={formatHealthMetric(latestHealthMetrics.BODY_WATER_MASS, 1)} />
-          <Metric label="體溫" value={formatHealthMetric(latestHealthMetrics.BODY_TEMPERATURE, 1)} />
-          <Metric label="皮膚溫度" value={formatHealthMetric(latestHealthMetrics.SKIN_TEMPERATURE, 1)} />
-          <Metric label="心率" value={formatHealthMetric(latestHealthMetrics.HEART_RATE, 0)} />
-          <Metric label="靜息心率" value={formatHealthMetric(latestHealthMetrics.RESTING_HEART_RATE, 0)} />
-          <Metric label="HRV" value={formatHealthMetric(latestHealthMetrics.HRV, 0)} />
-          <Metric label="呼吸率" value={formatHealthMetric(latestHealthMetrics.RESPIRATORY_RATE, 0)} />
-          <Metric label="血氧" value={formatHealthMetric(latestHealthMetrics.BLOOD_OXYGEN, 0)} />
-          <Metric label="收縮壓" value={formatHealthMetric(latestHealthMetrics.BLOOD_PRESSURE_SYSTOLIC, 0)} />
-          <Metric label="舒張壓" value={formatHealthMetric(latestHealthMetrics.BLOOD_PRESSURE_DIASTOLIC, 0)} />
-          <Metric label="血糖" value={formatHealthMetric(latestHealthMetrics.BLOOD_GLUCOSE, 0)} />
-          <Metric label="睡眠" value={formatSleep(latestHealthMetrics.SLEEP)} />
-          <Metric label="深睡" value={formatSleep(latestHealthMetrics.SLEEP_DEEP)} />
-          <Metric label="淺睡" value={formatSleep(latestHealthMetrics.SLEEP_LIGHT)} />
-          <Metric label="REM" value={formatSleep(latestHealthMetrics.SLEEP_REM)} />
-          <Metric label="清醒" value={formatSleep(latestHealthMetrics.SLEEP_AWAKE)} />
-          <Metric label="喝水" value={formatHealthMetric(latestHealthMetrics.WATER, 1)} />
-          <Metric label="營養攝取" value={formatHealthMetric(latestHealthMetrics.NUTRITION, 0)} />
-        </div>
-        <p className="mt-3 text-xs text-stone-400">同步 API：POST /api/health/sync。Flutter app 建議使用 Bearer token。</p>
         <HealthConnectionsPanel initialConnections={healthConnections} />
       </div>
+      {HEALTH_GROUPS.map((group) => (
+        <HealthGroupCard key={group.title} group={group} metrics={latestHealthMetrics} />
+      ))}
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">代謝估算</h2>
         <div className="mt-4 grid grid-cols-2 gap-3">
@@ -289,4 +257,120 @@ function formatSleep(metric: { value: number } | undefined) {
   const h = Math.floor(total / 60);
   const m = String(total % 60).padStart(2, "0");
   return `${h}:${m}`;
+}
+
+// ---- Health metrics, grouped by category for the infographic layout ----
+
+type HealthMetricDef = { type: string; label: string; emoji: string; digits?: number; sleep?: boolean };
+type HealthAccent = "amber" | "sky" | "rose" | "indigo" | "emerald";
+type HealthGroup = { title: string; emoji: string; accent: HealthAccent; metrics: HealthMetricDef[] };
+
+// Static class strings so Tailwind's JIT keeps them.
+const HEALTH_ACCENTS: Record<HealthAccent, { badge: string; tile: string; value: string }> = {
+  amber: { badge: "bg-amber-100 text-amber-700", tile: "bg-amber-50/70", value: "text-amber-900" },
+  sky: { badge: "bg-sky-100 text-sky-700", tile: "bg-sky-50/70", value: "text-sky-900" },
+  rose: { badge: "bg-rose-100 text-rose-700", tile: "bg-rose-50/70", value: "text-rose-900" },
+  indigo: { badge: "bg-indigo-100 text-indigo-700", tile: "bg-indigo-50/70", value: "text-indigo-900" },
+  emerald: { badge: "bg-emerald-100 text-emerald-700", tile: "bg-emerald-50/70", value: "text-emerald-900" }
+};
+
+const HEALTH_GROUPS: HealthGroup[] = [
+  {
+    title: "活動與能量",
+    emoji: "🏃",
+    accent: "amber",
+    metrics: [
+      { type: "STEPS", label: "步數", emoji: "👣", digits: 0 },
+      { type: "DISTANCE", label: "距離", emoji: "📏", digits: 0 },
+      { type: "SPEED", label: "速度", emoji: "⚡", digits: 1 },
+      { type: "FLIGHTS_CLIMBED", label: "爬樓層", emoji: "🪜", digits: 0 },
+      { type: "ACTIVITY_INTENSITY", label: "活動強度", emoji: "⏱️", digits: 0 },
+      { type: "ACTIVE_CALORIES", label: "活動熱量", emoji: "🔥", digits: 0 },
+      { type: "BASAL_CALORIES", label: "基礎消耗", emoji: "🌡️", digits: 0 },
+      { type: "TOTAL_CALORIES", label: "每日總消耗", emoji: "⚡", digits: 0 },
+      { type: "EXERCISE", label: "運動", emoji: "🏋️", digits: 0 }
+    ]
+  },
+  {
+    title: "身體組成",
+    emoji: "🧍",
+    accent: "sky",
+    metrics: [
+      { type: "WEIGHT", label: "體重", emoji: "⚖️", digits: 1 },
+      { type: "HEIGHT", label: "身高", emoji: "📐", digits: 0 },
+      { type: "BMI", label: "BMI", emoji: "🧮", digits: 1 },
+      { type: "BODY_FAT", label: "體脂率", emoji: "📊", digits: 1 },
+      { type: "LEAN_BODY_MASS", label: "瘦體重", emoji: "💪", digits: 1 },
+      { type: "BODY_WATER_MASS", label: "體水分", emoji: "💧", digits: 1 },
+      { type: "BODY_TEMPERATURE", label: "體溫", emoji: "🌡️", digits: 1 },
+      { type: "SKIN_TEMPERATURE", label: "皮膚溫度", emoji: "🌡️", digits: 1 }
+    ]
+  },
+  {
+    title: "生命徵象",
+    emoji: "❤️",
+    accent: "rose",
+    metrics: [
+      { type: "HEART_RATE", label: "心率", emoji: "❤️", digits: 0 },
+      { type: "RESTING_HEART_RATE", label: "靜息心率", emoji: "💗", digits: 0 },
+      { type: "HRV", label: "HRV", emoji: "📈", digits: 0 },
+      { type: "RESPIRATORY_RATE", label: "呼吸率", emoji: "🫁", digits: 0 },
+      { type: "BLOOD_OXYGEN", label: "血氧", emoji: "🩸", digits: 0 },
+      { type: "BLOOD_PRESSURE_SYSTOLIC", label: "收縮壓", emoji: "🩺", digits: 0 },
+      { type: "BLOOD_PRESSURE_DIASTOLIC", label: "舒張壓", emoji: "🩺", digits: 0 },
+      { type: "BLOOD_GLUCOSE", label: "血糖", emoji: "🍬", digits: 0 }
+    ]
+  },
+  {
+    title: "睡眠",
+    emoji: "🌙",
+    accent: "indigo",
+    metrics: [
+      { type: "SLEEP", label: "睡眠", emoji: "😴", sleep: true },
+      { type: "SLEEP_DEEP", label: "深睡", emoji: "🌑", sleep: true },
+      { type: "SLEEP_LIGHT", label: "淺睡", emoji: "🌙", sleep: true },
+      { type: "SLEEP_REM", label: "REM", emoji: "💤", sleep: true },
+      { type: "SLEEP_AWAKE", label: "清醒", emoji: "☀️", sleep: true }
+    ]
+  },
+  {
+    title: "飲食與水分",
+    emoji: "🍽️",
+    accent: "emerald",
+    metrics: [
+      { type: "WATER", label: "喝水", emoji: "🥤", digits: 1 },
+      { type: "NUTRITION", label: "營養攝取", emoji: "🍽️", digits: 0 }
+    ]
+  }
+];
+
+function HealthGroupCard({
+  group,
+  metrics
+}: {
+  group: HealthGroup;
+  metrics: Record<string, { value: number; unit: string } | undefined>;
+}) {
+  const accent = HEALTH_ACCENTS[group.accent];
+  return (
+    <div className="glass glass-lift rounded-[2rem] p-6">
+      <div className="flex items-center gap-2">
+        <span className={`inline-flex h-8 w-8 items-center justify-center rounded-xl text-lg ${accent.badge}`}>{group.emoji}</span>
+        <h3 className="text-lg font-black">{group.title}</h3>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+        {group.metrics.map((m) => (
+          <div className={`rounded-2xl p-3 ${accent.tile}`} key={m.type}>
+            <div className="flex items-center gap-1.5">
+              <span className="text-sm">{m.emoji}</span>
+              <p className="text-xs text-stone-500">{m.label}</p>
+            </div>
+            <p className={`mt-1 text-lg font-black ${accent.value}`}>
+              {m.sleep ? formatSleep(metrics[m.type]) : formatHealthMetric(metrics[m.type], m.digits ?? 0)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
