@@ -9,6 +9,7 @@ import { TimezoneReporter } from "@/components/timezone-reporter";
 import { sumMeals } from "@/lib/totals";
 import { decryptProfile } from "@/lib/profile-crypto";
 import { decryptMetricValue } from "@/lib/field-crypto";
+import { decryptMeal } from "@/lib/b2-crypto";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { AiInfoCard } from "@/components/ai-info-card";
@@ -79,21 +80,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const proteinPercent = macroTotal ? Math.round((displayTotals.protein / macroTotal) * 100) : 0;
   const fatPercent = macroTotal ? Math.round((displayTotals.fat / macroTotal) * 100) : 0;
   const carbsPercent = macroTotal ? Math.round((displayTotals.carbs / macroTotal) * 100) : 0;
-  const mealList = await Promise.all(
-    meals.map(async (meal) => ({
-      ...meal,
-      totalProtein: Number(meal.totalProtein),
-      totalFat: Number(meal.totalFat),
-      totalCarbs: Number(meal.totalCarbs),
-      imageStorageKey: meal.imageStorageKey ? `/api/meals/${meal.id}/image` : null,
-      items: meal.items.map((item) => ({
-        ...item,
-        protein: Number(item.protein),
-        fat: Number(item.fat),
-        carbs: Number(item.carbs)
-      }))
-    }))
-  );
+  const mealList = meals.map((meal) => ({
+    ...decryptMeal(meal),
+    imageStorageKey: meal.imageStorageKey ? `/api/meals/${meal.id}/image` : null
+  }));
   const profile = decProfile
     ? {
         gender: decProfile.gender,

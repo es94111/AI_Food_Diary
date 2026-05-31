@@ -3,6 +3,7 @@ import { analyzeMealImage } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptJson } from "@/lib/encryption";
+import { decryptMeal, encryptMealItemWrite, encryptMealNotesWrite } from "@/lib/b2-crypto";
 import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
 import { resolveRequestTz } from "@/lib/timezone";
 import { mealSchema } from "@/lib/validators";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     orderBy: { eatenAt: "desc" }
   });
 
-  return NextResponse.json({ meals });
+  return NextResponse.json({ meals: meals.map(decryptMeal) });
 }
 
 export async function POST(request: Request) {
@@ -62,24 +63,16 @@ export async function POST(request: Request) {
         totalFat: analysis.total.fat,
         totalCarbs: analysis.total.carbs,
         aiConfidence: analysis.confidence,
-        aiNotes: analysis.notes,
+        ...encryptMealNotesWrite(analysis.notes),
         aiRawEncrypted: encryptJson(analysis),
         items: {
-          create: analysis.foods.map((food) => ({
-            name: food.name,
-            estimatedAmount: food.estimatedAmount,
-            calories: food.calories,
-            protein: food.protein,
-            fat: food.fat,
-            carbs: food.carbs,
-            aiRating: food.aiRating ?? "MANUAL"
-          }))
+          create: analysis.foods.map((food) => encryptMealItemWrite(food))
         }
       },
       include: { items: true }
     });
 
-    return NextResponse.json({ meal });
+    return NextResponse.json({ meal: decryptMeal(meal) });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Meal save failed", error);

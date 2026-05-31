@@ -12,6 +12,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "encryption:rotate": "tsx scripts/rotate-encryption.ts",
     "encryption:backfill:b1": "tsx scripts/backfill-encryption-b1.ts",
+    "encryption:backfill:b2": "tsx scripts/backfill-encryption-b2.ts",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {

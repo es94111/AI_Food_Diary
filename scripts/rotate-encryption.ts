@@ -75,16 +75,77 @@ async function rotateUserProfiles() {
 }
 
 async function rotateMeals() {
-  const rows = await prisma.meal.findMany({ select: { id: true, aiRawEncrypted: true } });
+  const rows = await prisma.meal.findMany({ select: { id: true, aiNotes: true, encAiNotes: true, aiRawEncrypted: true } });
   let changed = 0;
   for (const row of rows) {
-    const next = rotateField(row.aiRawEncrypted);
-    if (next) {
-      await prisma.meal.update({ where: { id: row.id }, data: { aiRawEncrypted: next } });
+    const data: Record<string, EncryptedPayload> = {};
+    const notes = rotateField(row.encAiNotes);
+    if (notes) data.encAiNotes = notes;
+    const raw = rotateField(row.aiRawEncrypted);
+    if (raw) data.aiRawEncrypted = raw;
+    if (Object.keys(data).length > 0) {
+      await prisma.meal.update({ where: { id: row.id }, data });
       changed += 1;
     }
   }
   return { table: "Meal", scanned: rows.length, changed };
+}
+
+async function rotateMealItems() {
+  const rows = await prisma.mealItem.findMany({
+    select: { id: true, encName: true, encEstimatedAmount: true }
+  });
+  let changed = 0;
+  for (const row of rows) {
+    const data: Record<string, EncryptedPayload> = {};
+    const name = rotateField(row.encName);
+    if (name) data.encName = name;
+    const amount = rotateField(row.encEstimatedAmount);
+    if (amount) data.encEstimatedAmount = amount;
+    if (Object.keys(data).length > 0) {
+      await prisma.mealItem.update({ where: { id: row.id }, data });
+      changed += 1;
+    }
+  }
+  return { table: "MealItem", scanned: rows.length, changed };
+}
+
+async function rotateSavedFoods() {
+  const rows = await prisma.savedFood.findMany({
+    select: { id: true, encName: true, encEstimatedAmount: true }
+  });
+  let changed = 0;
+  for (const row of rows) {
+    const data: Record<string, EncryptedPayload> = {};
+    const name = rotateField(row.encName);
+    if (name) data.encName = name;
+    const amount = rotateField(row.encEstimatedAmount);
+    if (amount) data.encEstimatedAmount = amount;
+    if (Object.keys(data).length > 0) {
+      await prisma.savedFood.update({ where: { id: row.id }, data });
+      changed += 1;
+    }
+  }
+  return { table: "SavedFood", scanned: rows.length, changed };
+}
+
+async function rotateDailySummaries() {
+  const rows = await prisma.dailySummary.findMany({
+    select: { id: true, encAiSummary: true, encAiRecommendation: true }
+  });
+  let changed = 0;
+  for (const row of rows) {
+    const data: Record<string, EncryptedPayload> = {};
+    const summary = rotateField(row.encAiSummary);
+    if (summary) data.encAiSummary = summary;
+    const recommendation = rotateField(row.encAiRecommendation);
+    if (recommendation) data.encAiRecommendation = recommendation;
+    if (Object.keys(data).length > 0) {
+      await prisma.dailySummary.update({ where: { id: row.id }, data });
+      changed += 1;
+    }
+  }
+  return { table: "DailySummary", scanned: rows.length, changed };
 }
 
 async function rotateHealthMetrics() {
@@ -106,7 +167,14 @@ async function rotateHealthMetrics() {
 
 async function main() {
   console.log(`Rotating all ciphertext onto active key "${activeEncryptionKeyId()}"...`);
-  const results = [await rotateUserProfiles(), await rotateMeals(), await rotateHealthMetrics()];
+  const results = [
+    await rotateUserProfiles(),
+    await rotateMeals(),
+    await rotateMealItems(),
+    await rotateSavedFoods(),
+    await rotateDailySummaries(),
+    await rotateHealthMetrics()
+  ];
   for (const r of results) {
     console.log(`  ${r.table}: ${r.changed} re-encrypted / ${r.scanned} scanned`);
   }

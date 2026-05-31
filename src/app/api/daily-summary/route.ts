@@ -3,6 +3,7 @@ import { generateDailySummary } from "@/lib/ai";
 import { resolveUserAiConfig } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
 import { decryptProfile } from "@/lib/profile-crypto";
+import { decryptDailySummary, encryptDailySummaryWrite } from "@/lib/b2-crypto";
 import { prisma } from "@/lib/db";
 import { dayRangeUtc, normalizeDateStr, todayStr } from "@/lib/dates";
 import { resolveRequestTz } from "@/lib/timezone";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   const existing = await prisma.dailySummary.findUnique({
     where: { userId_summaryDate: { userId: user.id, summaryDate } }
   });
-  if (existing) return NextResponse.json({ summary: existing });
+  if (existing) return NextResponse.json({ summary: decryptDailySummary(existing) });
 
   // Peek mode: return the stored summary only, without spending AI quota to
   // generate one. Used by the web/app to auto-display an existing summary on load.
@@ -71,10 +72,12 @@ export async function GET(request: Request) {
       totalProtein: totals.protein,
       totalFat: totals.fat,
       totalCarbs: totals.carbs,
-      aiSummary: ai.summary,
-      aiRecommendation: ai.recommendation
+      ...encryptDailySummaryWrite({
+        aiSummary: ai.summary,
+        aiRecommendation: ai.recommendation
+      })
     }
   });
 
-  return NextResponse.json({ summary });
+  return NextResponse.json({ summary: decryptDailySummary(summary) });
 }

@@ -84,7 +84,9 @@ model Meal {
   totalFat        Decimal    @default(0) @db.Decimal(8, 2)
   totalCarbs      Decimal    @default(0) @db.Decimal(8, 2)
   aiConfidence    Decimal?   @db.Decimal(4, 3)
+  // Legacy plaintext AI notes. Kept nullable while B2 rows are backfilled.
   aiNotes         String?
+  encAiNotes      Json?
   aiRawEncrypted  Json?
   items           MealItem[]
   user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -98,8 +100,11 @@ model Meal {
 model MealItem {
   id              String   @id @default(cuid())
   mealId          String
-  name            String
-  estimatedAmount String
+  // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
+  name            String?
+  estimatedAmount String?
+  encName         Json?
+  encEstimatedAmount Json?
   calories        Int
   protein         Decimal  @default(0) @db.Decimal(8, 2)
   fat             Decimal  @default(0) @db.Decimal(8, 2)
@@ -113,8 +118,11 @@ model MealItem {
 model SavedFood {
   id              String   @id @default(cuid())
   userId          String
-  name            String
-  estimatedAmount String
+  // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
+  name            String?
+  estimatedAmount String?
+  encName         Json?
+  encEstimatedAmount Json?
   calories        Int
   protein         Decimal  @default(0) @db.Decimal(8, 2)
   fat             Decimal  @default(0) @db.Decimal(8, 2)
@@ -134,8 +142,11 @@ model DailySummary {
   totalProtein     Decimal  @default(0) @db.Decimal(8, 2)
   totalFat         Decimal  @default(0) @db.Decimal(8, 2)
   totalCarbs       Decimal  @default(0) @db.Decimal(8, 2)
-  aiSummary        String
-  aiRecommendation String
+  // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
+  aiSummary        String?
+  aiRecommendation String?
+  encAiSummary     Json?
+  encAiRecommendation Json?
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

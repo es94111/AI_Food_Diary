@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { decryptMeal, encryptMealItemWrite, encryptMealNotesWrite } from "@/lib/b2-crypto";
 import { mealUpdateSchema } from "@/lib/validators";
 import { deleteImage, isStorageKey } from "@/lib/storage";
 
@@ -13,7 +14,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
   });
 
   if (!meal) return NextResponse.json({ error: "找不到餐點" }, { status: 404 });
-  return NextResponse.json({ meal });
+  return NextResponse.json({ meal: decryptMeal(meal) });
 }
 
 export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
@@ -59,22 +60,14 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
         totalProtein: totals.protein,
         totalFat: totals.fat,
         totalCarbs: totals.carbs,
-        aiNotes: "使用者已修正餐點項目。",
+        ...encryptMealNotesWrite("使用者已修正餐點項目。"),
         items: {
-          create: body.items.map((item) => ({
-            name: item.name,
-            estimatedAmount: item.estimatedAmount,
-            calories: item.calories,
-            protein: item.protein,
-            fat: item.fat,
-            carbs: item.carbs,
-            aiRating: item.aiRating ?? "MANUAL"
-          }))
+          create: body.items.map((item) => encryptMealItemWrite(item))
         }
       },
       include: { items: true }
     });
   });
 
-  return NextResponse.json({ meal });
+  return NextResponse.json({ meal: decryptMeal(meal) });
 }

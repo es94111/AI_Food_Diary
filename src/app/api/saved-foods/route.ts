@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
 import { savedFoodSchema } from "@/lib/validators";
 
 export async function GET() {
@@ -10,12 +11,7 @@ export async function GET() {
     orderBy: { updatedAt: "desc" }
   });
   return NextResponse.json({
-    foods: foods.map((food) => ({
-      ...food,
-      protein: Number(food.protein),
-      fat: Number(food.fat),
-      carbs: Number(food.carbs)
-    }))
+    foods: foods.map(decryptSavedFood)
   });
 }
 
@@ -25,13 +21,8 @@ export async function POST(request: Request) {
   const food = await prisma.savedFood.create({
     data: {
       userId: user.id,
-      name: body.name,
-      estimatedAmount: body.estimatedAmount,
-      calories: body.calories,
-      protein: body.protein,
-      fat: body.fat,
-      carbs: body.carbs
+      ...encryptSavedFoodWrite(body)
     }
   });
-  return NextResponse.json({ food: { ...food, protein: Number(food.protein), fat: Number(food.fat), carbs: Number(food.carbs) } });
+  return NextResponse.json({ food: decryptSavedFood(food) });
 }
