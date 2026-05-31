@@ -20,6 +20,7 @@ import { AdminPanel } from "@/components/admin-panel";
 import { HealthConnectionsPanel } from "@/components/health-connections-panel";
 import { DashboardTabs } from "@/components/dashboard-tabs";
 import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
+import { AiSettingsForm } from "@/components/ai-settings-form";
 import { LogoutButton } from "@/components/logout-button";
 import { GoogleLinkPanel } from "@/components/google-link-panel";
 import { WEB_VERSION } from "@/lib/version";
@@ -207,6 +208,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <div className="mt-5">
           <ProfileMetabolismForm profile={profile} />
         </div>
+      </div>
+      <div className="glass glass-lift rounded-[2rem] p-6">
+        <AiSettingsForm />
       </div>
       <GoogleLinkPanel clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID} linked={!!user.googleId} />
       {user.isAdmin && <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />}
