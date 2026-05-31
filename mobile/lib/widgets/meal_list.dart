@@ -287,7 +287,7 @@ class _EditMealSheetState extends State<_EditMealSheet> {
             DropdownButtonFormField<String>(
               initialValue: _mealType,
               decoration: const InputDecoration(
-                  labelText: '餐別', border: OutlineInputBorder()),
+                  labelText: '餐期', border: OutlineInputBorder()),
               items: mealTypes.entries
                   .map((e) =>
                       DropdownMenuItem(value: e.key, child: Text(e.value)))
@@ -331,7 +331,7 @@ class _EditMealSheetState extends State<_EditMealSheet> {
                       width: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Text('儲存修改'),
+                  : const Text('儲存餐期與餐點'),
             ),
             const SizedBox(height: 8),
           ],

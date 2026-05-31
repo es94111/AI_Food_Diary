@@ -41,6 +41,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   const [draggingImage, setDraggingImage] = useState(false);
   const [nextMealAdvice, setNextMealAdvice] = useState(initialNextMealAdvice);
   const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceExpanded, setAdviceExpanded] = useState(false);
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
   const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
@@ -245,7 +246,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     const response = await fetch(`/api/recommendations/next-meal?tz=${encodeURIComponent(tz)}`);
     const data = await response.json().catch(() => ({}));
     setAdviceLoading(false);
-    if (response.ok) setNextMealAdvice(data.advice ?? "");
+    if (response.ok) {
+      setNextMealAdvice(data.advice ?? "");
+      setAdviceExpanded(true);
+    }
   }
 
   async function loadSavedFoods() {
@@ -409,9 +413,21 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       {adviceLoading ? <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">正在產生下一餐建議...</p> : null}
       {nextMealAdvice ? (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4">
-          <h3 className="font-black text-amber-900">下一餐建議</h3>
-          <p className="mt-1 text-xs text-amber-700">此建議會保留到今天結束；新增下一餐後會自動更新。</p>
-          <MarkdownContent className="mt-2 text-amber-900" content={nextMealAdvice} />
+          <button
+            aria-expanded={adviceExpanded}
+            className="flex w-full cursor-pointer items-center justify-between gap-2 text-left"
+            onClick={() => setAdviceExpanded((value) => !value)}
+            type="button"
+          >
+            <h3 className="font-black text-amber-900">下一餐建議</h3>
+            <span className={`text-amber-700 transition-transform ${adviceExpanded ? "rotate-180" : ""}`} aria-hidden>▾</span>
+          </button>
+          {adviceExpanded ? (
+            <>
+              <p className="mt-1 text-xs text-amber-700">此建議會保留到今天結束；新增下一餐後會自動更新。</p>
+              <MarkdownContent className="mt-2 text-amber-900" content={nextMealAdvice} />
+            </>
+          ) : null}
         </div>
       ) : null}
       {showConfirm ? (

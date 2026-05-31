@@ -38,6 +38,13 @@ type Meal = {
   items: MealItem[];
 };
 
+const MEAL_TYPE_LABELS: Record<string, string> = {
+  BREAKFAST: "早餐",
+  LUNCH: "午餐",
+  DINNER: "晚餐",
+  SNACK: "點心"
+};
+
 export function MealList({ meals }: { meals: Meal[] }) {
   if (meals.length === 0) return <p className="text-stone-500">今天還沒有紀錄。</p>;
   return <div className="space-y-4">{meals.map((meal) => <MealCard key={meal.id} meal={meal} />)}</div>;
@@ -102,7 +109,7 @@ function MealCard({ meal }: { meal: Meal }) {
     <article className="glass glass-lift rounded-2xl p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="font-bold">{meal.mealType}</p>
+          <p className="font-bold">{MEAL_TYPE_LABELS[meal.mealType] ?? meal.mealType}</p>
           <p className="text-sm text-stone-500">{meal.totalCalories} kcal</p>
         </div>
         <div className="flex gap-2 text-sm">
@@ -117,12 +124,14 @@ function MealCard({ meal }: { meal: Meal }) {
       {meal.imageStorageKey ? <img alt="餐點照片" className="mt-3 max-h-72 w-full rounded-2xl object-cover" src={meal.imageStorageKey} /> : null}
       {editing ? (
         <form className="mt-4 space-y-3" onSubmit={onSave}>
-          <select className="w-full rounded-xl border border-stone-200 px-3 py-2" name="mealType" defaultValue={meal.mealType}>
-            <option value="BREAKFAST">早餐</option>
-            <option value="LUNCH">午餐</option>
-            <option value="DINNER">晚餐</option>
-            <option value="SNACK">點心</option>
-          </select>
+          <label className="block">
+            <span className="text-xs font-semibold text-stone-500">餐期</span>
+            <select className="mt-1 w-full rounded-xl border border-stone-200 px-3 py-2" name="mealType" defaultValue={meal.mealType}>
+              {Object.entries(MEAL_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
           {items.map((item, index) => (
             <div className="rounded-xl bg-stone-50 p-3" key={item.clientId}>
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -142,7 +151,7 @@ function MealCard({ meal }: { meal: Meal }) {
           <button className="w-full rounded-xl border border-dashed border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setItems((values) => [...values, emptyEditableItem()])} type="button">新增食物品項</button>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button className="w-full rounded-xl bg-amber-700 px-4 py-2 font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={loading} type="submit">
-            儲存修正
+            儲存餐期與餐點
           </button>
         </form>
       ) : (
