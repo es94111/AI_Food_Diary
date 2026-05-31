@@ -13,6 +13,12 @@
     "encryption:rotate": "tsx scripts/rotate-encryption.ts",
     "encryption:backfill:b1": "tsx scripts/backfill-encryption-b1.ts",
     "encryption:backfill:b2": "tsx scripts/backfill-encryption-b2.ts",
+    "encryption:migrate:status": "tsx scripts/encryption-migration.ts status",
+    "encryption:migrate:verify": "tsx scripts/encryption-migration.ts verify",
+    "encryption:migrate:apply": "tsx scripts/encryption-migration.ts apply",
+    "encryption:stage-d:status": "tsx scripts/encryption-stage-d.ts status",
+    "encryption:stage-d:apply": "tsx scripts/encryption-stage-d.ts apply",
+    "encryption:stage-d:rollback": "tsx scripts/encryption-stage-d.ts rollback",
     "worker": "tsx src/worker.ts"
   },
   "dependencies": {
