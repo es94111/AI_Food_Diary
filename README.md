@@ -58,6 +58,7 @@ npm run dev
 - AI 營養分析是估算值，正式產品應加入使用者修正餐點項目的 UI。
 - 目前圖片以 data URL 送到 AI，不會保存到 MinIO；MinIO 已在部署環境預留，下一步可改成 private bucket + signed URL。
 - Docker runtime 使用 `prisma db push` 方便 MVP 啟動；正式環境建議改為 migration 流程。
+- 磁碟加密屬於基礎設施控制；部署 PostgreSQL、MinIO/S3、Docker volume、備份與 VM 磁碟時請依 `docs/disk-encryption.md` 驗證。
 
 ## Docker Image CI
 
