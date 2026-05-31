@@ -4,6 +4,7 @@ import argon2 from "argon2";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
+import { forbidden, unauthorized } from "@/lib/http";
 
 const cookieName = "food_diary_session";
 
@@ -23,8 +24,10 @@ export async function verifyPassword(hash: string, password: string) {
   return argon2.verify(hash, password);
 }
 
-export async function createSession(userId: string) {
-  const token = await new SignJWT({ userId })
+export async function createSession(userId: string, tokenVersion: number) {
+  // `tv` lets us revoke outstanding tokens by bumping the user's tokenVersion
+  // (see invalidateUserSessions) without server-side session storage.
+  const token = await new SignJWT({ userId, tv: tokenVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("30d")
@@ -45,6 +48,27 @@ export async function clearSession() {
   cookieStore.delete(cookieName);
 }
 
+// Revokes every outstanding token for the current user by bumping tokenVersion.
+// This is the "sign out of all devices" / compromised-account escape hatch (and
+// the hook for a future password-change flow) — normal per-device logout does
+// NOT call this. Returns the userId, or null if no valid session was present.
+export async function invalidateUserSessions(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(cookieName)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getJwtSecret());
+    if (typeof payload.userId !== "string") return null;
+    await prisma.user.update({
+      where: { id: payload.userId },
+      data: { tokenVersion: { increment: 1 } }
+    });
+    return payload.userId;
+  } catch {
+    return null;
+  }
+}
+
 export async function getCurrentUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(cookieName)?.value;
@@ -54,10 +78,26 @@ export async function getCurrentUser() {
     const { payload } = await jwtVerify(token, getJwtSecret());
     if (typeof payload.userId !== "string") return null;
 
-    return prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true, name: true, isAdmin: true, googleId: true, profile: true }
+      select: { id: true, email: true, name: true, isAdmin: true, googleId: true, tokenVersion: true, profile: true }
     });
+    if (!user) return null;
+
+    // Reject tokens issued before the current tokenVersion. Tokens minted before
+    // this field existed carry no `tv`; treat them as 0 so existing logins survive.
+    const tokenVersion = typeof payload.tv === "number" ? payload.tv : 0;
+    if (tokenVersion !== user.tokenVersion) return null;
+
+    // Drop tokenVersion (internal) from the object handed to callers/responses.
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      isAdmin: user.isAdmin,
+      googleId: user.googleId,
+      profile: user.profile
+    };
   } catch {
     return null;
   }
@@ -65,13 +105,13 @@ export async function getCurrentUser() {
 
 export async function requireUser() {
   const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
+  if (!user) throw unauthorized();
   return user;
 }
 
 export async function requireAdmin() {
   const user = await getCurrentUser();
-  if (!user) throw new Error("Unauthorized");
-  if (!user.isAdmin) throw new Error("Forbidden");
+  if (!user) throw unauthorized();
+  if (!user.isAdmin) throw forbidden();
   return user;
 }

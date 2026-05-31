@@ -3,6 +3,8 @@ import { z } from "zod";
 import { analyzeNutritionLabelImage } from "@/lib/ai";
 import { resolveUserAiConfig } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
+import { apiError, HttpError } from "@/lib/http";
+import { enforceAiRateLimit } from "@/lib/rate-limit";
 
 const nutritionLabelSchema = z.object({
   imageDataUrl: z.string().startsWith("data:image/")
@@ -11,10 +13,13 @@ const nutritionLabelSchema = z.object({
 export async function POST(request: Request) {
   try {
     const user = await requireUser();
+    const limited = await enforceAiRateLimit(user.id);
+    if (limited) return limited;
     const body = nutritionLabelSchema.parse(await request.json());
     const analysis = await analyzeNutritionLabelImage(resolveUserAiConfig(user), body.imageDataUrl);
     return NextResponse.json({ analysis });
   } catch (error) {
+    if (error instanceof HttpError) return apiError(error);
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Nutrition label analysis failed", error);
     if (message === "AI_NOT_CONFIGURED") {

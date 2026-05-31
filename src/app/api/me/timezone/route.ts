@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isValidTimeZone } from "@/lib/dates";
+import { apiRoute } from "@/lib/http";
 
 // Lightweight endpoint for clients to report their device timezone. Kept
 // separate from the profile PATCH so reporting the zone never clobbers other
 // profile fields, and so it can be called cheaply on every app load.
-export async function POST(request: Request) {
+export const POST = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const body = await request.json().catch(() => ({}));
   const timezone = typeof body?.timezone === "string" ? body.timezone : "";
@@ -21,4 +22,4 @@ export async function POST(request: Request) {
   });
 
   return NextResponse.json({ ok: true });
-}
+});

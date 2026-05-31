@@ -1,6 +1,6 @@
 {
   "name": "ai-food-diary",
-  "version": "0.14.0",
+  "version": "0.15.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -30,6 +30,7 @@
     "argon2": "^0.44.0",
     "bullmq": "^5.77.6",
     "dotenv": "^17.4.2",
+    "ioredis": "^5.10.1",
     "jose": "^6.2.3",
     "next": "^16.2.6",
     "openai": "^6.39.1",

@@ -5,12 +5,14 @@ import { requireUser } from "@/lib/auth";
 import { decryptProfile } from "@/lib/profile-crypto";
 import { prisma } from "@/lib/db";
 import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
+import { apiRoute } from "@/lib/http";
+import { enforceAiRateLimit } from "@/lib/rate-limit";
 import { resolveRequestTz } from "@/lib/timezone";
 import { getHealthContext, getLatestSyncedWeightKg, getLatestSyncedHeightCm } from "@/lib/health-context";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { sumMeals } from "@/lib/totals";
 
-export async function GET(request: Request) {
+export const GET = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const url = new URL(request.url);
   // Key by the caller's local date and zone (clients live in other timezones
@@ -28,6 +30,10 @@ export async function GET(request: Request) {
     });
     return NextResponse.json({ advice: existing?.advice ?? "", today: null });
   }
+
+  // Generating fresh advice spends AI quota — apply the shared per-user budget.
+  const limited = await enforceAiRateLimit(user.id);
+  if (limited) return limited;
 
   const meals = await prisma.meal.findMany({
     where: { userId: user.id, eatenAt: { gte: start, lt: end } }
@@ -75,4 +81,4 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({ advice, today });
-}
+});

@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { encryptJson } from "@/lib/encryption";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { apiRoute } from "@/lib/http";
+import { assertSafeCompatibleBaseUrl } from "@/lib/url-guard";
 import { aiSettingsSchema } from "@/lib/validators";
 
 // Returns the user's saved AI settings. The API key itself is never returned —
 // only whether one is set — so it can't be exfiltrated from the client.
-export async function GET() {
+export const GET = apiRoute(async () => {
   const user = await requireUser();
   const profile = user.profile;
   return NextResponse.json({
@@ -18,16 +20,17 @@ export async function GET() {
       hasKey: Boolean(profile?.encryptedAiApiKey)
     }
   });
-}
+});
 
-export async function PATCH(request: Request) {
+export const PATCH = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const body = aiSettingsSchema.parse(await request.json());
 
   const isCompatible = body.provider === "compatible";
   // For hosted providers the base URL is fixed by the catalog; only "compatible"
-  // stores a user-supplied endpoint.
-  const baseUrl = isCompatible ? body.baseUrl?.trim() || null : null;
+  // stores a user-supplied endpoint — which we SSRF-check before trusting it.
+  const rawBaseUrl = isCompatible ? body.baseUrl?.trim() || null : null;
+  const baseUrl = rawBaseUrl ? assertSafeCompatibleBaseUrl(rawBaseUrl) : null;
   const visionModel = body.visionModel?.trim() || null;
   // Fall back the text model to the vision model so compatible setups need only one field.
   const textModel = body.textModel?.trim() || visionModel;
@@ -51,4 +54,4 @@ export async function PATCH(request: Request) {
   });
 
   return NextResponse.json({ ok: true });
-}
+});

@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptMeal, encryptMealItemWrite, encryptMealNotesWrite } from "@/lib/b2-crypto";
+import { apiRoute } from "@/lib/http";
 import { mealUpdateSchema } from "@/lib/validators";
 import { deleteImage, isStorageKey } from "@/lib/storage";
 
-export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+export const GET = apiRoute(async (_request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
   const meal = await prisma.meal.findFirst({
@@ -15,9 +16,9 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
 
   if (!meal) return NextResponse.json({ error: "找不到餐點" }, { status: 404 });
   return NextResponse.json({ meal: decryptMeal(meal) });
-}
+});
 
-export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+export const DELETE = apiRoute(async (_request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
   const meal = await prisma.meal.findFirst({ where: { id, userId: user.id }, select: { imageStorageKey: true } });
@@ -31,9 +32,9 @@ export async function DELETE(_request: Request, context: { params: Promise<{ id:
   }
 
   return NextResponse.json({ ok: true });
-}
+});
 
-export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+export const PATCH = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
   const body = mealUpdateSchema.parse(await request.json());
@@ -70,4 +71,4 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   });
 
   return NextResponse.json({ meal: decryptMeal(meal) });
-}
+});

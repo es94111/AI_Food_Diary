@@ -6,12 +6,14 @@ import { decryptProfile } from "@/lib/profile-crypto";
 import { decryptDailySummary, encryptDailySummaryWrite } from "@/lib/b2-crypto";
 import { prisma } from "@/lib/db";
 import { dayRangeUtc, normalizeDateStr, todayStr } from "@/lib/dates";
+import { apiRoute } from "@/lib/http";
+import { enforceAiRateLimit } from "@/lib/rate-limit";
 import { resolveRequestTz } from "@/lib/timezone";
 import { getHealthContext, getLatestSyncedWeightKg, getLatestSyncedHeightCm } from "@/lib/health-context";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { sumMeals } from "@/lib/totals";
 
-export async function GET(request: Request) {
+export const GET = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const url = new URL(request.url);
   const tz = resolveRequestTz(request, user.profile?.timezone);
@@ -36,6 +38,10 @@ export async function GET(request: Request) {
       { status: 400 }
     );
   }
+
+  // Past this point we spend AI quota — apply the shared per-user budget.
+  const limited = await enforceAiRateLimit(user.id);
+  if (limited) return limited;
 
   const meals = await prisma.meal.findMany({
     where: { userId: user.id, eatenAt: { gte: start, lt: end } }
@@ -80,4 +86,4 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({ summary: decryptDailySummary(summary) });
-}
+});

@@ -22,11 +22,13 @@ class AuthService {
   }
 
   static Future<AppUser> register(
-      String email, String password, String? name) async {
+      String email, String password, String? name,
+      {String? turnstileToken}) async {
     final res = await _api.post('/api/auth/register', data: {
       'email': email.trim(),
       'password': password,
       if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+      if (turnstileToken != null) 'cf-turnstile-response': turnstileToken,
     });
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '註冊失敗'),

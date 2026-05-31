@@ -5,11 +5,12 @@ import { prisma } from "@/lib/db";
 import { encryptJson } from "@/lib/encryption";
 import { decryptMeal, encryptMealItemWrite, encryptMealNotesWrite } from "@/lib/b2-crypto";
 import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
+import { apiError, apiRoute, HttpError } from "@/lib/http";
 import { resolveRequestTz } from "@/lib/timezone";
 import { mealSchema } from "@/lib/validators";
 import { uploadImage } from "@/lib/storage";
 
-export async function GET(request: Request) {
+export const GET = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const url = new URL(request.url);
   const tz = resolveRequestTz(request, user.profile?.timezone);
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
   });
 
   return NextResponse.json({ meals: meals.map(decryptMeal) });
-}
+});
 
 export async function POST(request: Request) {
   try {
@@ -74,6 +75,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ meal: decryptMeal(meal) });
   } catch (error) {
+    if (error instanceof HttpError) return apiError(error);
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Meal save failed", error);
     if (message === "OPENAI_API_KEY is required") {

@@ -3,15 +3,16 @@ import { encryptJson } from "@/lib/encryption";
 import { decryptProfile, encryptProfileWrite } from "@/lib/profile-crypto";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { apiRoute } from "@/lib/http";
 import { profileSchema } from "@/lib/validators";
 
-export async function GET() {
+export const GET = apiRoute(async () => {
   const user = await requireUser();
   // Never leak ciphertext / leftover plaintext columns to the client.
   return NextResponse.json({ user: { ...user, profile: decryptProfile(user.profile) } });
-}
+});
 
-export async function PATCH(request: Request) {
+export const PATCH = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const body = profileSchema.parse(await request.json());
 
@@ -39,4 +40,4 @@ export async function PATCH(request: Request) {
   });
 
   return NextResponse.json({ profile: decryptProfile(profile) });
-}
+});

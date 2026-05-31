@@ -4,10 +4,19 @@ import { z } from "zod";
 import { createSession, hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { GoogleAuthError, verifyGoogleIdToken } from "@/lib/google";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/turnstile";
 
 const bodySchema = z.object({ idToken: z.string().min(10) });
 
 export async function POST(request: Request) {
+  const limited = await enforceRateLimit(`google:ip:${getClientIp(request) ?? "unknown"}`, {
+    limit: 20,
+    windowSec: 300,
+    message: "登入嘗試過於頻繁，請稍後再試。"
+  });
+  if (limited) return limited;
+
   let idToken: string;
   try {
     idToken = bodySchema.parse(await request.json()).idToken;
@@ -63,6 +72,6 @@ export async function POST(request: Request) {
     }
   }
 
-  await createSession(user.id);
+  await createSession(user.id, user.tokenVersion);
   return NextResponse.json({ user: { id: user.id, email: user.email, name: user.name } });
 }

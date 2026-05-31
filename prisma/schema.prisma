@@ -27,6 +27,9 @@ model User {
   name         String?
   googleId     String?        @unique
   isAdmin      Boolean        @default(false)
+  // Bumped to invalidate all outstanding JWTs for this user (logout / future
+  // password change). Tokens embed this value as `tv` and are rejected on mismatch.
+  tokenVersion Int            @default(0)
   profile      UserProfile?
   meals        Meal[]
   summaries    DailySummary[]

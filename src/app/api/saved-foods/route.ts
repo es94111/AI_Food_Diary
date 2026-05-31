@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
+import { apiRoute } from "@/lib/http";
 import { savedFoodSchema } from "@/lib/validators";
 
-export async function GET() {
+export const GET = apiRoute(async () => {
   const user = await requireUser();
   const foods = await prisma.savedFood.findMany({
     where: { userId: user.id },
@@ -13,9 +14,9 @@ export async function GET() {
   return NextResponse.json({
     foods: foods.map(decryptSavedFood)
   });
-}
+});
 
-export async function POST(request: Request) {
+export const POST = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const body = savedFoodSchema.parse(await request.json());
   const food = await prisma.savedFood.create({
@@ -25,4 +26,4 @@ export async function POST(request: Request) {
     }
   });
   return NextResponse.json({ food: decryptSavedFood(food) });
-}
+});

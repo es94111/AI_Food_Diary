@@ -35,7 +35,7 @@ export function AuthForm({ mode, turnstileSiteKey }: { mode: "login" | "register
       ) : null}
       <input className="w-full rounded-2xl border border-stone-200 px-4 py-3" name="email" placeholder="Email" type="email" required />
       <input className="w-full rounded-2xl border border-stone-200 px-4 py-3" name="password" placeholder="密碼" type="password" minLength={8} required />
-      {mode === "login" && turnstileSiteKey ? (
+      {turnstileSiteKey ? (
         <>
           <Script src="https://challenges.cloudflare.com/turnstile/v0/api.js" strategy="afterInteractive" />
           <div className="cf-turnstile" data-sitekey={turnstileSiteKey} />

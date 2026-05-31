@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/turnstile_service.dart';
+import '../widgets/turnstile_webview.dart';
 import 'dashboard_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -17,6 +19,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _loading = false;
   String? _error;
 
+  String? _siteKey;
+  bool _siteKeyChecked = false;
+  String? _turnstileToken;
+  final _turnstile = TurnstileController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSiteKey();
+  }
+
+  Future<void> _loadSiteKey() async {
+    final key = await TurnstileService.siteKey();
+    if (!mounted) return;
+    setState(() {
+      _siteKey = (key != null && key.isNotEmpty) ? key : null;
+      _siteKeyChecked = true;
+    });
+  }
+
   @override
   void dispose() {
     _nameCtrl.dispose();
@@ -25,9 +47,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
     super.dispose();
   }
 
+  bool get _needsTurnstile => _siteKey != null;
+
   Future<void> _register() async {
     if (_passwordCtrl.text.length < 8) {
       setState(() => _error = '密碼至少需要 8 個字元');
+      return;
+    }
+    if (_needsTurnstile && _turnstileToken == null) {
+      setState(() => _error = '請先完成下方人機驗證');
       return;
     }
     setState(() {
@@ -36,14 +64,21 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
     try {
       await AuthService.register(
-          _emailCtrl.text, _passwordCtrl.text, _nameCtrl.text);
+          _emailCtrl.text, _passwordCtrl.text, _nameCtrl.text,
+          turnstileToken: _turnstileToken);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
         (route) => false,
       );
     } catch (e) {
-      setState(() => _error = e.toString());
+      // A used/expired Turnstile token can't be reused — re-run the challenge
+      // so the next attempt gets a fresh token.
+      setState(() {
+        _error = e.toString();
+        _turnstileToken = null;
+      });
+      if (_needsTurnstile) await _turnstile.reset();
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -85,6 +120,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         labelText: '密碼（至少 8 字元）',
                         border: OutlineInputBorder()),
                   ),
+                  // Human verification sits directly below the credentials.
+                  if (_needsTurnstile) ...[
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        _turnstileToken == null ? '人機驗證' : '✅ 已完成人機驗證',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _turnstileToken == null
+                              ? Colors.black54
+                              : Colors.green[700],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    TurnstileWebView(
+                      siteKey: _siteKey!,
+                      controller: _turnstile,
+                      onToken: (t) => setState(() {
+                        _turnstileToken = t;
+                        if (_error == '請先完成下方人機驗證') _error = null;
+                      }),
+                      onExpired: () => setState(() => _turnstileToken = null),
+                    ),
+                  ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
                     Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -102,6 +163,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                                 strokeWidth: 2, color: Colors.white))
                         : const Text('建立帳號'),
                   ),
+                  if (!_siteKeyChecked)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 8),
+                      child: Text('檢查驗證設定中...',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 11, color: Colors.black38)),
+                    ),
                 ],
               ),
             ),
