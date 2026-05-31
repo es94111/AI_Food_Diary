@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptJson } from "@/lib/encryption";
+import { decryptMetricValue } from "@/lib/field-crypto";
 import { getHealthSyncUserId } from "@/lib/health-auth";
 
 const healthMetricSchema = z.object({
@@ -55,11 +56,17 @@ export async function GET(request: Request) {
   try {
     const auth = await getHealthSyncUserId(request);
     const user = auth ? { id: auth.userId } : await requireUser();
-    const metrics = await prisma.healthMetric.findMany({
+    const rawMetrics = await prisma.healthMetric.findMany({
       where: { userId: user.id },
       orderBy: { measuredAt: "desc" },
       take: 50
     });
+    // Decrypt each value back to plaintext for the API response, and drop the
+    // encrypted column so ciphertext is never sent to the client.
+    const metrics = rawMetrics.map(({ encValue, ...m }) => ({
+      ...m,
+      value: decryptMetricValue({ value: m.value, encValue })
+    }));
     const latestByType = metrics.reduce<Record<string, (typeof metrics)[number]>>((latest, metric) => {
       if (!latest[metric.type]) latest[metric.type] = metric;
       return latest;
@@ -71,9 +78,9 @@ export async function GET(request: Request) {
       where: { userId: user.id, type: "WEIGHT", unit: "kg" },
       orderBy: { measuredAt: "desc" },
       take: 14,
-      select: { value: true }
+      select: { value: true, encValue: true }
     });
-    const weightSeries = weightRows.map((row) => row.value).reverse();
+    const weightSeries = weightRows.map((row) => decryptMetricValue(row)).reverse();
 
     return NextResponse.json({
       lastSyncedAt: metrics[0]?.updatedAt ?? null,
@@ -110,13 +117,16 @@ export async function POST(request: Request) {
             userId: user.id,
             source: body.source,
             type: metric.type,
-            value: metric.value,
+            // Value is encrypted at rest; the plaintext column is left null.
+            value: null,
+            encValue: encryptJson(metric.value),
             unit: metric.unit,
             measuredAt: new Date(metric.measuredAt),
             rawEncrypted: metric.raw === undefined ? undefined : encryptJson(metric.raw)
           },
           update: {
-            value: metric.value,
+            value: null,
+            encValue: encryptJson(metric.value),
             unit: metric.unit,
             rawEncrypted: metric.raw === undefined ? undefined : encryptJson(metric.raw)
           }

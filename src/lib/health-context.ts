@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { decryptMetricValue } from "@/lib/field-crypto";
 
 type HealthMetric = {
   type: string;
@@ -12,7 +13,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 // Callers pass the UTC bounds of the target day, already computed in the user's
 // timezone (see @/lib/dates), so "today" lines up with the user's calendar day.
 export async function getHealthContext(userId: string, dayStart: Date, dayEnd: Date) {
-  const metrics = await prisma.healthMetric.findMany({
+  const rawMetrics = await prisma.healthMetric.findMany({
     where: {
       userId,
       measuredAt: { gte: new Date(dayStart.getTime() - 14 * DAY_MS), lt: dayEnd }
@@ -20,6 +21,13 @@ export async function getHealthContext(userId: string, dayStart: Date, dayEnd: D
     orderBy: { measuredAt: "desc" },
     take: 200
   });
+  // Decrypt each value back to plaintext for the in-process aggregation below.
+  const metrics: HealthMetric[] = rawMetrics.map((m) => ({
+    type: m.type,
+    value: decryptMetricValue(m),
+    unit: m.unit,
+    measuredAt: m.measuredAt
+  }));
 
   const latest = latestByType(metrics);
   const todaySteps = sumToday(metrics, "STEPS", dayStart, dayEnd);
@@ -43,10 +51,11 @@ export async function getLatestSyncedWeightKg(userId: string, before: Date) {
       unit: { equals: "kg", mode: "insensitive" },
       measuredAt: { lt: before }
     },
-    orderBy: { measuredAt: "desc" }
+    orderBy: { measuredAt: "desc" },
+    select: { value: true, encValue: true }
   });
 
-  return metric?.value ?? null;
+  return metric ? decryptMetricValue(metric) : null;
 }
 
 export async function getLatestSyncedHeightCm(userId: string, before: Date) {
@@ -57,10 +66,11 @@ export async function getLatestSyncedHeightCm(userId: string, before: Date) {
       unit: { equals: "cm", mode: "insensitive" },
       measuredAt: { lt: before }
     },
-    orderBy: { measuredAt: "desc" }
+    orderBy: { measuredAt: "desc" },
+    select: { value: true, encValue: true }
   });
 
-  return metric?.value ?? null;
+  return metric ? decryptMetricValue(metric) : null;
 }
 
 function latestByType(metrics: HealthMetric[]) {

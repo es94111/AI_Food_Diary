@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { generateDailySummary } from "@/lib/ai";
 import { resolveUserAiConfig } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
+import { decryptProfile } from "@/lib/profile-crypto";
 import { prisma } from "@/lib/db";
 import { dayRangeUtc, normalizeDateStr, todayStr } from "@/lib/dates";
 import { resolveRequestTz } from "@/lib/timezone";
@@ -42,8 +43,9 @@ export async function GET(request: Request) {
   const healthContext = await getHealthContext(user.id, start, end);
   const syncedWeight = await getLatestSyncedWeightKg(user.id, end);
   const syncedHeight = await getLatestSyncedHeightCm(user.id, end);
-  const effectiveProfile = user.profile
-    ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg, heightCm: syncedHeight ?? user.profile.heightCm }
+  const decProfile = decryptProfile(user.profile);
+  const effectiveProfile = decProfile
+    ? { ...decProfile, weightKg: syncedWeight ?? decProfile.weightKg, heightCm: syncedHeight ?? decProfile.heightCm }
     : null;
   // Prefer the target derived from the (synced) TDEE so it auto-updates with
   // Health Connect data; fall back to the stored target only when TDEE is unknown.

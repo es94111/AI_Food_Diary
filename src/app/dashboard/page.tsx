@@ -7,6 +7,8 @@ import { addDaysStr, dayRangeUtc, dayStartUtc, normalizeDateStr, todayStr, weekR
 import { resolveUserTz, tzName, TZ_COOKIE } from "@/lib/timezone";
 import { TimezoneReporter } from "@/components/timezone-reporter";
 import { sumMeals } from "@/lib/totals";
+import { decryptProfile } from "@/lib/profile-crypto";
+import { decryptMetricValue } from "@/lib/field-crypto";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { AiInfoCard } from "@/components/ai-info-card";
@@ -25,6 +27,7 @@ import { getLatestAppRelease } from "@/lib/app-release";
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ date?: string; view?: string }> }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
+  const decProfile = decryptProfile(user.profile);
   const params = await searchParams;
   const cookieStore = await cookies();
   const tz = resolveUserTz(cookieStore.get(TZ_COOKIE)?.value, user.profile?.timezone);
@@ -41,11 +44,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const todayRecommendation = await prisma.dailyRecommendation.findUnique({
     where: { userId_recommendationDate: { userId: user.id, recommendationDate: dayStartUtc(todayStrValue, tz) } }
   });
-  const healthMetrics = await prisma.healthMetric.findMany({
+  const rawHealthMetrics = await prisma.healthMetric.findMany({
     where: { userId: user.id },
     orderBy: { measuredAt: "desc" },
     take: 100
   });
+  // Decrypt values up-front so every downstream aggregation sees plaintext.
+  const healthMetrics = rawHealthMetrics.map((m) => ({ ...m, value: decryptMetricValue(m) }));
   const latestHealthMetrics = latestMetricsByType(healthMetrics);
   // Weight readings, oldest→newest, for the body-composition sparkline.
   const weightSeries = healthMetrics
@@ -56,14 +61,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const totals = sumMeals(meals);
   const syncedWeight = latestHealthMetrics.WEIGHT?.unit.toLowerCase() === "kg" ? latestHealthMetrics.WEIGHT.value : null;
   const syncedHeight = latestHealthMetrics.HEIGHT?.unit.toLowerCase() === "cm" ? latestHealthMetrics.HEIGHT.value : null;
-  const effectiveProfile = user.profile
-    ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg, heightCm: syncedHeight ?? user.profile.heightCm }
+  const effectiveProfile = decProfile
+    ? { ...decProfile, weightKg: syncedWeight ?? decProfile.weightKg, heightCm: syncedHeight ?? decProfile.heightCm }
     : null;
   const bmr = calculateBmr(effectiveProfile);
   const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);
   // Auto-derive the target from the (synced) TDEE so it updates with Health
   // Connect data; fall back to the stored target only when TDEE is unknown.
-  const target = calorieTargetFromGoal(tdee, effectiveProfile?.goal) ?? user.profile?.calorieTarget ?? 2000;
+  const target = calorieTargetFromGoal(tdee, effectiveProfile?.goal) ?? decProfile?.calorieTarget ?? 2000;
   const isTodayView = view === "day" && selectedDateStr === todayStrValue;
   const canGenerateDailySummary = selectedDateStr < todayStrValue;
   const displayTotals =
@@ -89,15 +94,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       }))
     }))
   );
-  const profile = user.profile
+  const profile = decProfile
     ? {
-        gender: user.profile.gender,
-        birthDate: user.profile.birthDate?.toISOString() ?? null,
-        heightCm: user.profile.heightCm,
-        weightKg: user.profile.weightKg ? Number(user.profile.weightKg) : null,
-        activityLevel: user.profile.activityLevel,
-        goal: user.profile.goal,
-        calorieTarget: user.profile.calorieTarget
+        gender: decProfile.gender,
+        birthDate: decProfile.birthDate,
+        heightCm: decProfile.heightCm,
+        weightKg: decProfile.weightKg,
+        activityLevel: decProfile.activityLevel,
+        goal: decProfile.goal,
+        calorieTarget: decProfile.calorieTarget
       }
     : null;
   const weekStartStrValue = weekStartStr(selectedDateStr);

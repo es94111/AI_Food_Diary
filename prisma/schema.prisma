@@ -46,10 +46,17 @@ model AppConfig {
 model UserProfile {
   id                   String   @id @default(cuid())
   userId               String   @unique
+  // Legacy plaintext columns. Kept nullable for backward-compatible migration;
+  // new writes go to the enc* columns and these are cleared. Removed in a later step.
   gender               String?
   birthDate            DateTime?
   heightCm             Int?
   weightKg             Decimal? @db.Decimal(5, 2)
+  // Encrypted (AES-256-GCM) counterparts of the body fields above.
+  encGender            Json?
+  encBirthDate         Json?
+  encHeightCm          Json?
+  encWeightKg          Json?
   activityLevel        String?
   goal                 Goal     @default(MAINTAIN)
   calorieTarget        Int      @default(2000)
@@ -157,10 +164,14 @@ model HealthMetric {
   userId     String
   source     String
   type       String
-  value      Float
+  // Legacy plaintext value; nullable during migration. New writes use encValue
+  // and leave this null. type/unit/measuredAt stay plaintext (needed for the
+  // unique key and for filtering/queries).
+  value      Float?
   unit       String
   measuredAt DateTime
   rawEncrypted Json?
+  encValue   Json?
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
