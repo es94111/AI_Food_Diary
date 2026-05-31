@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -15,17 +17,66 @@ class _MetricDef {
 }
 
 class _MetricGroup {
-  const _MetricGroup(this.title, this.icon, this.color, this.metrics);
+  const _MetricGroup(this.id, this.title, this.icon, this.color, this.metrics);
+  final String id;
   final String title;
   final IconData icon;
   final Color color;
   final List<_MetricDef> metrics;
 }
 
+// Daily goals: turns a bare number into "how am I doing". Sleep is in minutes.
+const _metricTargets = <String, double>{
+  'STEPS': 10000,
+  'ACTIVE_CALORIES': 500,
+  'EXERCISE': 30,
+  'WATER': 2,
+  'SLEEP': 480,
+};
+
+enum _Status { good, warn, bad }
+
+// Colour semantics for metrics with a clinical normal range. Returns null when
+// "good/bad" is context-dependent (e.g. live heart rate).
+_Status? _metricStatus(String type, double v) {
+  switch (type) {
+    case 'RESTING_HEART_RATE':
+      if (v < 45 || v > 85) return _Status.bad;
+      if (v > 70) return _Status.warn;
+      return _Status.good;
+    case 'BLOOD_OXYGEN':
+      if (v < 90) return _Status.bad;
+      if (v < 95) return _Status.warn;
+      return _Status.good;
+    case 'BMI':
+      if (v >= 30 || v < 17) return _Status.bad;
+      if (v >= 25 || v < 18.5) return _Status.warn;
+      return _Status.good;
+    case 'BLOOD_PRESSURE_SYSTOLIC':
+      if (v >= 140) return _Status.bad;
+      if (v >= 120) return _Status.warn;
+      return _Status.good;
+    case 'BLOOD_PRESSURE_DIASTOLIC':
+      if (v >= 90) return _Status.bad;
+      if (v >= 80) return _Status.warn;
+      return _Status.good;
+    default:
+      return null;
+  }
+}
+
+Color _statusColor(_Status s) => switch (s) {
+      _Status.good => const Color(0xFF059669),
+      _Status.warn => const Color(0xFFD97706),
+      _Status.bad => const Color(0xFFE11D48),
+    };
+
+String _compact(double v) => NumberFormat.decimalPattern().format(v.round());
+
 // Metrics grouped by category, each with its own accent colour, so the health
 // page reads as an infographic with related metrics kept together.
 const _metricGroups = <_MetricGroup>[
-  _MetricGroup('活動與能量', Icons.directions_run, Color(0xFFB45309), [
+  _MetricGroup('activity', '活動與能量', Icons.directions_run, Color(0xFFB45309), [
     _MetricDef('步數', 'STEPS', Icons.directions_walk, 0),
     _MetricDef('距離', 'DISTANCE', Icons.straighten, 0),
     _MetricDef('速度', 'SPEED', Icons.speed, 1),
@@ -36,7 +87,7 @@ const _metricGroups = <_MetricGroup>[
     _MetricDef('總消耗', 'TOTAL_CALORIES', Icons.bolt, 0),
     _MetricDef('運動', 'EXERCISE', Icons.fitness_center, 0),
   ]),
-  _MetricGroup('身體組成', Icons.accessibility_new, Color(0xFF0284C7), [
+  _MetricGroup('body', '身體組成', Icons.accessibility_new, Color(0xFF0284C7), [
     _MetricDef('體重', 'WEIGHT', Icons.monitor_weight, 1),
     _MetricDef('身高', 'HEIGHT', Icons.height, 0),
     _MetricDef('BMI', 'BMI', Icons.calculate, 1),
@@ -46,7 +97,7 @@ const _metricGroups = <_MetricGroup>[
     _MetricDef('體溫', 'BODY_TEMPERATURE', Icons.thermostat, 1),
     _MetricDef('皮膚溫度', 'SKIN_TEMPERATURE', Icons.device_thermostat, 1),
   ]),
-  _MetricGroup('生命徵象', Icons.favorite, Color(0xFFE11D48), [
+  _MetricGroup('vitals', '生命徵象', Icons.favorite, Color(0xFFE11D48), [
     _MetricDef('心率', 'HEART_RATE', Icons.monitor_heart, 0),
     _MetricDef('靜息心率', 'RESTING_HEART_RATE', Icons.favorite, 0),
     _MetricDef('HRV', 'HRV', Icons.show_chart, 0),
@@ -56,14 +107,14 @@ const _metricGroups = <_MetricGroup>[
     _MetricDef('舒張壓', 'BLOOD_PRESSURE_DIASTOLIC', Icons.favorite_border, 0),
     _MetricDef('血糖', 'BLOOD_GLUCOSE', Icons.water_drop_outlined, 0),
   ]),
-  _MetricGroup('睡眠', Icons.bedtime, Color(0xFF6366F1), [
+  _MetricGroup('sleep', '睡眠', Icons.bedtime, Color(0xFF6366F1), [
     _MetricDef('睡眠', 'SLEEP', Icons.bedtime, 0, sleep: true),
     _MetricDef('深睡', 'SLEEP_DEEP', Icons.nightlight, 0, sleep: true),
     _MetricDef('淺睡', 'SLEEP_LIGHT', Icons.nights_stay, 0, sleep: true),
     _MetricDef('REM', 'SLEEP_REM', Icons.bedtime_outlined, 0, sleep: true),
     _MetricDef('清醒', 'SLEEP_AWAKE', Icons.wb_sunny, 0, sleep: true),
   ]),
-  _MetricGroup('飲食與水分', Icons.restaurant, Color(0xFF059669), [
+  _MetricGroup('nutrition', '飲食與水分', Icons.restaurant, Color(0xFF059669), [
     _MetricDef('喝水', 'WATER', Icons.water_drop, 1),
     _MetricDef('營養攝取', 'NUTRITION', Icons.restaurant, 0),
   ]),
@@ -130,8 +181,10 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     }
   }
 
+  HealthMetricValue? _metric(String type) => _status?.latestByType[type];
+
   String _fmt(_MetricDef def) {
-    final m = _status?.latestByType[def.type];
+    final m = _metric(def.type);
     if (m == null) return '—';
     // Sleep durations read better as H:MM than raw minutes.
     if (def.sleep) return _hhmm(m.value);
@@ -158,7 +211,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
             const SizedBox(height: 2),
             const Text('透過 Health Connect 同步步數、熱量、睡眠、運動、心率等資料。',
                 style: TextStyle(fontSize: 11, color: Colors.black54)),
-            const SizedBox(height: 4),
+            _activityHero(),
             for (final g in _metricGroups) _groupSection(g),
             if (_status?.lastSyncedAt != null)
               Padding(
@@ -205,9 +258,91 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     );
   }
 
-  /// One category: a coloured header (icon + title) followed by a grid of
-  /// tinted metric tiles sharing the group's accent colour.
+  /// Apple-style activity rings: the day's hero summary for the health card.
+  Widget _activityHero() {
+    const rings = [
+      ('STEPS', '步數', Color(0xFFFBBF24)),
+      ('ACTIVE_CALORIES', '活動熱量', Color(0xFFFB7185)),
+      ('EXERCISE', '運動', Color(0xFF34D399)),
+    ];
+    if (!rings.any((r) => _metric(r.$1) != null)) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1C1917),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('今日活動',
+              style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              for (final r in rings)
+                Expanded(child: _heroRing(r.$1, r.$2, r.$3)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroRing(String type, String label, Color color) {
+    final m = _metric(type);
+    final target = _metricTargets[type] ?? 1;
+    final pct = m == null ? 0.0 : m.value / target;
+    return Column(
+      children: [
+        SizedBox(
+          height: 64,
+          width: 64,
+          child: CustomPaint(
+            painter: _RingPainter(pct, color),
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  FittedBox(
+                    child: Text(m == null ? '—' : _compact(m.value),
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900)),
+                  ),
+                  Text(m == null ? '未同步' : '${(pct * 100).round()}%',
+                      style: const TextStyle(
+                          color: Colors.white54, fontSize: 9)),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600)),
+        Text('目標 ${_compact(target)}',
+            style: const TextStyle(color: Colors.white38, fontSize: 9)),
+      ],
+    );
+  }
+
+  /// One category: a coloured header, an optional chart (weight trend / sleep
+  /// stages), then a grid of tinted tiles. Tiles with no synced data are hidden,
+  /// and the whole section collapses when nothing is available.
   Widget _groupSection(_MetricGroup group) {
+    final present =
+        group.metrics.where((m) => _metric(m.type) != null).toList();
+    final chart = _groupChart(group);
+    if (present.isEmpty && chart == null) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 14),
       child: Column(
@@ -229,24 +364,46 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
                       fontSize: 15, fontWeight: FontWeight.w900)),
             ],
           ),
-          const SizedBox(height: 8),
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            childAspectRatio: 1.55,
-            mainAxisSpacing: 8,
-            crossAxisSpacing: 8,
-            children: [
-              for (final m in group.metrics) _metricTile(m, group.color),
-            ],
-          ),
+          if (chart != null) ...[
+            const SizedBox(height: 12),
+            chart,
+          ],
+          if (present.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            GridView.count(
+              crossAxisCount: 3,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 1.4,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              children: [
+                for (final m in present) _metricTile(m, group.color),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
+  Widget? _groupChart(_MetricGroup group) {
+    if (group.id == 'sleep') return _sleepBar();
+    if (group.id == 'body') {
+      final series = _status?.weightSeries ?? const <double>[];
+      return series.length >= 2 ? _Sparkline(points: series) : null;
+    }
+    return null;
+  }
+
   Widget _metricTile(_MetricDef def, Color color) {
+    final m = _metric(def.type);
+    final status = m == null ? null : _metricStatus(def.type, m.value);
+    final valueColor = status != null ? _statusColor(status) : Colors.black87;
+    final target = _metricTargets[def.type];
+    final pct = (m != null && target != null)
+        ? (m.value / target).clamp(0.0, 1.0)
+        : null;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -262,14 +419,210 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
           Text(_fmt(def),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w900, fontSize: 14)),
+              style: TextStyle(
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                  color: valueColor)),
           Text(def.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 10, color: Colors.black54)),
+          if (pct != null) ...[
+            const SizedBox(height: 5),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: pct,
+                minHeight: 4,
+                color: color,
+                backgroundColor: color.withValues(alpha: 0.15),
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+
+  /// Stacked composition bar for sleep stages (values in minutes).
+  Widget? _sleepBar() {
+    double v(String t) => _metric(t)?.value ?? 0;
+    final segs = <(String, double, Color)>[
+      ('深睡', v('SLEEP_DEEP'), const Color(0xFF4338CA)),
+      ('淺睡', v('SLEEP_LIGHT'), const Color(0xFF818CF8)),
+      ('REM', v('SLEEP_REM'), const Color(0xFFC4B5FD)),
+      ('清醒', v('SLEEP_AWAKE'), const Color(0xFFFCD34D)),
+    ];
+    final total = segs.fold<double>(0, (s, e) => s + e.$2);
+    if (total <= 0) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: Row(
+            children: [
+              for (final s in segs)
+                if (s.$2 > 0)
+                  Expanded(
+                    flex: s.$2.round().clamp(1, 100000),
+                    child: Container(height: 10, color: s.$3),
+                  ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 12,
+          runSpacing: 4,
+          children: [
+            for (final s in segs)
+              if (s.$2 > 0) _sleepLegend(s.$1, s.$2, s.$3),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _sleepLegend(String label, double minutes, Color color) {
+    final t = minutes.round();
+    final h = t ~/ 60;
+    final mm = (t % 60).toString().padLeft(2, '0');
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 4),
+        Text('$label $h:$mm',
+            style: const TextStyle(fontSize: 11, color: Colors.black54)),
+      ],
+    );
+  }
+}
+
+/// Apple-style activity ring painter (background track + rounded progress arc).
+class _RingPainter extends CustomPainter {
+  _RingPainter(this.percent, this.color);
+  final double percent;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 7.0;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = (size.shortestSide - stroke) / 2;
+    final track = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..color = color.withValues(alpha: 0.15);
+    canvas.drawCircle(center, radius, track);
+    final arc = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = color;
+    final sweep = 2 * pi * percent.clamp(0.0, 1.0);
+    canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius), -pi / 2, sweep, false, arc);
+  }
+
+  @override
+  bool shouldRepaint(_RingPainter old) =>
+      old.percent != percent || old.color != color;
+}
+
+/// Lightweight inline weight trend line — no chart library, just a polyline.
+class _Sparkline extends StatelessWidget {
+  const _Sparkline({required this.points});
+  final List<double> points;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = points.first;
+    final last = points.last;
+    final delta = last - first;
+    final deltaColor = delta > 0
+        ? const Color(0xFFE11D48)
+        : delta < 0
+            ? const Color(0xFF059669)
+            : Colors.black45;
+    final arrow = delta > 0
+        ? '▲'
+        : delta < 0
+            ? '▼'
+            : '＝';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('體重趨勢（近 14 筆）',
+                style: TextStyle(fontSize: 12, color: Colors.black54)),
+            Text('$arrow ${delta.abs().toStringAsFixed(1)} kg',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: deltaColor)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        SizedBox(
+          height: 48,
+          width: double.infinity,
+          child: CustomPaint(painter: _SparkPainter(points)),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(first.toStringAsFixed(1),
+                style: const TextStyle(fontSize: 11, color: Colors.black38)),
+            Text('最新 ${last.toStringAsFixed(1)} kg',
+                style: const TextStyle(fontSize: 11, color: Colors.black38)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SparkPainter extends CustomPainter {
+  _SparkPainter(this.points);
+  final List<double> points;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (points.length < 2) return;
+    final minV = points.reduce(min);
+    final maxV = points.reduce(max);
+    final range = (maxV - minV).abs() < 1e-9 ? 1.0 : maxV - minV;
+    const pad = 4.0;
+    Offset at(int i) {
+      final x = pad + (i / (points.length - 1)) * (size.width - 2 * pad);
+      final y = pad + (1 - (points[i] - minV) / range) * (size.height - 2 * pad);
+      return Offset(x, y);
+    }
+
+    final path = Path()..moveTo(at(0).dx, at(0).dy);
+    for (var i = 1; i < points.length; i++) {
+      path.lineTo(at(i).dx, at(i).dy);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round
+        ..color = const Color(0xFF0EA5E9),
+    );
+    canvas.drawCircle(
+        at(points.length - 1), 3, Paint()..color = const Color(0xFF0EA5E9));
+  }
+
+  @override
+  bool shouldRepaint(_SparkPainter old) => old.points != points;
 }

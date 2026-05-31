@@ -65,9 +65,20 @@ export async function GET(request: Request) {
       return latest;
     }, {});
 
+    // Recent weight readings (oldest→newest) for the app's trend sparkline.
+    // Queried separately so it isn't truncated by the capped `metrics` window.
+    const weightRows = await prisma.healthMetric.findMany({
+      where: { userId: user.id, type: "WEIGHT", unit: "kg" },
+      orderBy: { measuredAt: "desc" },
+      take: 14,
+      select: { value: true }
+    });
+    const weightSeries = weightRows.map((row) => row.value).reverse();
+
     return NextResponse.json({
       lastSyncedAt: metrics[0]?.updatedAt ?? null,
       latestByType,
+      weightSeries,
       metrics
     });
   } catch (error) {

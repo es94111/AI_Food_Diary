@@ -296,7 +296,14 @@ class HealthSyncStatus {
   final DateTime? lastSyncedAt;
   final Map<String, HealthMetricValue> latestByType;
 
-  HealthSyncStatus({this.lastSyncedAt, required this.latestByType});
+  /// Recent weight readings (oldest→newest, kg) for the trend sparkline.
+  final List<double> weightSeries;
+
+  HealthSyncStatus({
+    this.lastSyncedAt,
+    required this.latestByType,
+    this.weightSeries = const [],
+  });
 
   factory HealthSyncStatus.fromJson(Map<String, dynamic> j) {
     final latest = <String, HealthMetricValue>{};
@@ -308,11 +315,19 @@ class HealthSyncStatus {
         }
       });
     }
+    final weights = <double>[];
+    final ws = j['weightSeries'];
+    if (ws is List) {
+      for (final e in ws) {
+        if (e is num) weights.add(e.toDouble());
+      }
+    }
     return HealthSyncStatus(
       lastSyncedAt: j['lastSyncedAt'] == null
           ? null
           : DateTime.tryParse(j['lastSyncedAt'].toString())?.toLocal(),
       latestByType: latest,
+      weightSeries: weights,
     );
   }
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
@@ -46,6 +47,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     take: 100
   });
   const latestHealthMetrics = latestMetricsByType(healthMetrics);
+  // Weight readings, oldest→newest, for the body-composition sparkline.
+  const weightSeries = healthMetrics
+    .filter((metric) => metric.type === "WEIGHT" && metric.unit.toLowerCase() === "kg")
+    .slice(0, 14)
+    .reverse()
+    .map((metric) => metric.value);
   const totals = sumMeals(meals);
   const syncedWeight = latestHealthMetrics.WEIGHT?.unit.toLowerCase() === "kg" ? latestHealthMetrics.WEIGHT.value : null;
   const syncedHeight = latestHealthMetrics.HEIGHT?.unit.toLowerCase() === "cm" ? latestHealthMetrics.HEIGHT.value : null;
@@ -130,10 +137,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             style={{ width: `${Math.min((displayTotals.calories / target) * 100, 100)}%` }}
           />
         </div>
-        <div className="mt-5 grid grid-cols-3 gap-2.5 text-center">
-          <Macro label={`蛋白質 ${proteinPercent}%`} value={`${displayTotals.protein.toFixed(1)}g`} />
-          <Macro label={`脂肪 ${fatPercent}%`} value={`${displayTotals.fat.toFixed(1)}g`} />
-          <Macro label={`碳水 ${carbsPercent}%`} value={`${displayTotals.carbs.toFixed(1)}g`} />
+        <div className="mt-5 flex flex-col items-center gap-4 sm:flex-row">
+          {macroTotal > 0 ? <MacroDonut protein={proteinPercent} fat={fatPercent} carbs={carbsPercent} /> : null}
+          <div className="grid w-full flex-1 grid-cols-3 gap-2.5 text-center">
+            <Macro dot="#fbbf24" label={`蛋白質 ${proteinPercent}%`} value={`${displayTotals.protein.toFixed(1)}g`} />
+            <Macro dot="#fb7185" label={`脂肪 ${fatPercent}%`} value={`${displayTotals.fat.toFixed(1)}g`} />
+            <Macro dot="#38bdf8" label={`碳水 ${carbsPercent}%`} value={`${displayTotals.carbs.toFixed(1)}g`} />
+          </div>
         </div>
       </div>
       <MealCaptureForm initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""} />
@@ -161,8 +171,25 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、熱量、睡眠、運動、心率、體脂等資料。</p>
         <HealthConnectionsPanel />
       </div>
+      <ActivityHero metrics={latestHealthMetrics} />
       {HEALTH_GROUPS.map((group) => (
-        <HealthGroupCard key={group.title} group={group} metrics={latestHealthMetrics} />
+        <HealthGroupCard
+          key={group.id}
+          group={group}
+          metrics={latestHealthMetrics}
+          chart={
+            group.id === "sleep" ? (
+              <SleepBar
+                deep={latestHealthMetrics.SLEEP_DEEP?.value}
+                light={latestHealthMetrics.SLEEP_LIGHT?.value}
+                rem={latestHealthMetrics.SLEEP_REM?.value}
+                awake={latestHealthMetrics.SLEEP_AWAKE?.value}
+              />
+            ) : group.id === "body" ? (
+              <Sparkline points={weightSeries} label="體重趨勢（近 14 筆）" unit="kg" />
+            ) : undefined
+          }
+        />
       ))}
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">代謝估算</h2>
@@ -233,11 +260,31 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   );
 }
 
-function Macro({ label, value }: { label: string; value: string }) {
+function Macro({ label, value, dot }: { label: string; value: string; dot?: string }) {
   return (
     <div className="rounded-2xl p-3.5" style={{ background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.2)" }}>
       <p className="text-lg font-black">{value}</p>
-      <p className="mt-0.5 text-xs text-stone-300">{label}</p>
+      <p className="mt-0.5 flex items-center justify-center gap-1 text-xs text-stone-300">
+        {dot ? <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: dot }} /> : null}
+        {label}
+      </p>
+    </div>
+  );
+}
+
+// Donut for the day's macro split. A radial mask punches a transparent hole so
+// the dark card shows through (no fixed centre colour to keep in sync).
+function MacroDonut({ protein, fat, carbs }: { protein: number; fat: number; carbs: number }) {
+  const pf = protein + fat;
+  const gradient = `conic-gradient(#fbbf24 0 ${protein}%, #fb7185 ${protein}% ${pf}%, #38bdf8 ${pf}% 100%)`;
+  const hole = "radial-gradient(circle at center, transparent 54%, #000 55%)";
+  return (
+    <div className="relative h-24 w-24 shrink-0">
+      <div className="h-full w-full rounded-full" style={{ background: gradient, mask: hole, WebkitMask: hole }} />
+      <div className="absolute inset-0 flex flex-col items-center justify-center leading-tight">
+        <span className="text-[10px] font-medium text-stone-400">三大營養</span>
+        <span className="text-xs font-bold text-white">佔比</span>
+      </div>
     </div>
   );
 }
@@ -276,19 +323,64 @@ function formatSleep(metric: { value: number } | undefined) {
 
 type HealthMetricDef = { type: string; label: string; emoji: string; digits?: number; sleep?: boolean };
 type HealthAccent = "amber" | "sky" | "rose" | "indigo" | "emerald";
-type HealthGroup = { title: string; emoji: string; accent: HealthAccent; metrics: HealthMetricDef[] };
+type HealthGroup = { id: string; title: string; emoji: string; accent: HealthAccent; metrics: HealthMetricDef[] };
 
 // Static class strings so Tailwind's JIT keeps them.
-const HEALTH_ACCENTS: Record<HealthAccent, { badge: string; tile: string; value: string }> = {
-  amber: { badge: "bg-amber-100 text-amber-700", tile: "bg-amber-50/70", value: "text-amber-900" },
-  sky: { badge: "bg-sky-100 text-sky-700", tile: "bg-sky-50/70", value: "text-sky-900" },
-  rose: { badge: "bg-rose-100 text-rose-700", tile: "bg-rose-50/70", value: "text-rose-900" },
-  indigo: { badge: "bg-indigo-100 text-indigo-700", tile: "bg-indigo-50/70", value: "text-indigo-900" },
-  emerald: { badge: "bg-emerald-100 text-emerald-700", tile: "bg-emerald-50/70", value: "text-emerald-900" }
+const HEALTH_ACCENTS: Record<HealthAccent, { badge: string; tile: string; value: string; bar: string }> = {
+  amber: { badge: "bg-amber-100 text-amber-700", tile: "bg-amber-50/70", value: "text-amber-900", bar: "bg-amber-400" },
+  sky: { badge: "bg-sky-100 text-sky-700", tile: "bg-sky-50/70", value: "text-sky-900", bar: "bg-sky-400" },
+  rose: { badge: "bg-rose-100 text-rose-700", tile: "bg-rose-50/70", value: "text-rose-900", bar: "bg-rose-400" },
+  indigo: { badge: "bg-indigo-100 text-indigo-700", tile: "bg-indigo-50/70", value: "text-indigo-900", bar: "bg-indigo-400" },
+  emerald: { badge: "bg-emerald-100 text-emerald-700", tile: "bg-emerald-50/70", value: "text-emerald-900", bar: "bg-emerald-400" }
 };
+
+// Daily goals: turns a bare number into "how am I doing". Sleep is in minutes.
+const METRIC_TARGETS: Record<string, number> = {
+  STEPS: 10000,
+  ACTIVE_CALORIES: 500,
+  EXERCISE: 30,
+  WATER: 2,
+  SLEEP: 480
+};
+
+const STATUS_TEXT: Record<"good" | "warn" | "bad", string> = {
+  good: "text-emerald-600",
+  warn: "text-amber-600",
+  bad: "text-rose-600"
+};
+
+// Colour semantics for metrics with a clinical normal range. Returns null for
+// metrics where "good/bad" is context-dependent (e.g. live heart rate).
+function metricStatus(type: string, value: number): "good" | "warn" | "bad" | null {
+  switch (type) {
+    case "RESTING_HEART_RATE":
+      if (value < 45 || value > 85) return "bad";
+      if (value > 70) return "warn";
+      return "good";
+    case "BLOOD_OXYGEN":
+      if (value < 90) return "bad";
+      if (value < 95) return "warn";
+      return "good";
+    case "BMI":
+      if (value >= 30 || value < 17) return "bad";
+      if (value >= 25 || value < 18.5) return "warn";
+      return "good";
+    case "BLOOD_PRESSURE_SYSTOLIC":
+      if (value >= 140) return "bad";
+      if (value >= 120) return "warn";
+      return "good";
+    case "BLOOD_PRESSURE_DIASTOLIC":
+      if (value >= 90) return "bad";
+      if (value >= 80) return "warn";
+      return "good";
+    default:
+      return null;
+  }
+}
 
 const HEALTH_GROUPS: HealthGroup[] = [
   {
+    id: "activity",
     title: "活動與能量",
     emoji: "🏃",
     accent: "amber",
@@ -305,6 +397,7 @@ const HEALTH_GROUPS: HealthGroup[] = [
     ]
   },
   {
+    id: "body",
     title: "身體組成",
     emoji: "🧍",
     accent: "sky",
@@ -320,6 +413,7 @@ const HEALTH_GROUPS: HealthGroup[] = [
     ]
   },
   {
+    id: "vitals",
     title: "生命徵象",
     emoji: "❤️",
     accent: "rose",
@@ -335,6 +429,7 @@ const HEALTH_GROUPS: HealthGroup[] = [
     ]
   },
   {
+    id: "sleep",
     title: "睡眠",
     emoji: "🌙",
     accent: "indigo",
@@ -347,6 +442,7 @@ const HEALTH_GROUPS: HealthGroup[] = [
     ]
   },
   {
+    id: "nutrition",
     title: "飲食與水分",
     emoji: "🍽️",
     accent: "emerald",
@@ -359,30 +455,168 @@ const HEALTH_GROUPS: HealthGroup[] = [
 
 function HealthGroupCard({
   group,
-  metrics
+  metrics,
+  chart
 }: {
   group: HealthGroup;
   metrics: Record<string, { value: number; unit: string } | undefined>;
+  chart?: ReactNode;
 }) {
   const accent = HEALTH_ACCENTS[group.accent];
+  // Only render tiles that actually have synced data — empty "尚未同步" tiles
+  // dilute the real signal, so collapse them (and the whole card if nothing).
+  const present = group.metrics.filter((m) => metrics[m.type]);
+  if (present.length === 0 && !chart) return null;
   return (
     <div className="glass glass-lift rounded-[2rem] p-6">
       <div className="flex items-center gap-2">
         <span className={`inline-flex h-8 w-8 items-center justify-center rounded-xl text-lg ${accent.badge}`}>{group.emoji}</span>
         <h3 className="text-lg font-black">{group.title}</h3>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-        {group.metrics.map((m) => (
-          <div className={`rounded-2xl p-3 ${accent.tile}`} key={m.type}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-sm">{m.emoji}</span>
-              <p className="text-xs text-stone-500">{m.label}</p>
+      {chart ? <div className="mt-4">{chart}</div> : null}
+      {present.length > 0 ? (
+        <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {present.map((m) => {
+            const metric = metrics[m.type]!;
+            const status = metricStatus(m.type, metric.value);
+            const valueColor = status ? STATUS_TEXT[status] : accent.value;
+            const target = METRIC_TARGETS[m.type];
+            const pct = target ? Math.min(metric.value / target, 1) : null;
+            return (
+              <div className={`rounded-2xl p-3 ${accent.tile}`} key={m.type}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">{m.emoji}</span>
+                  <p className="text-xs text-stone-500">{m.label}</p>
+                </div>
+                <p className={`mt-1 text-lg font-black ${valueColor}`}>
+                  {m.sleep ? formatSleep(metric) : formatHealthMetric(metric, m.digits ?? 0)}
+                </p>
+                {pct !== null ? (
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/5">
+                    <div className={`h-full rounded-full ${accent.bar}`} style={{ width: `${pct * 100}%` }} />
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Apple-style activity rings: the day's hero metric for the health tab.
+function ActivityHero({ metrics }: { metrics: Record<string, { value: number; unit: string } | undefined> }) {
+  const rings = [
+    { type: "STEPS", label: "步數", color: "#fbbf24" },
+    { type: "ACTIVE_CALORIES", label: "活動熱量", color: "#fb7185" },
+    { type: "EXERCISE", label: "運動", color: "#34d399" }
+  ];
+  if (!rings.some((r) => metrics[r.type])) return null;
+  return (
+    <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
+      <p className="text-sm font-medium text-stone-400">今日活動</p>
+      <div className="mt-4 grid grid-cols-3 gap-2">
+        {rings.map((r) => {
+          const metric = metrics[r.type];
+          const target = METRIC_TARGETS[r.type];
+          const pct = metric ? metric.value / target : 0;
+          return (
+            <div className="flex flex-col items-center gap-2" key={r.type}>
+              <ProgressRing percent={pct} color={r.color}>
+                <span className="text-base font-black">{metric ? Math.round(metric.value).toLocaleString() : "—"}</span>
+                <span className="text-[10px] text-stone-400">{metric ? `${Math.round(pct * 100)}%` : "未同步"}</span>
+              </ProgressRing>
+              <div className="text-center">
+                <p className="text-xs font-medium text-stone-300">{r.label}</p>
+                <p className="text-[10px] text-stone-500">目標 {target.toLocaleString()}</p>
+              </div>
             </div>
-            <p className={`mt-1 text-lg font-black ${accent.value}`}>
-              {m.sleep ? formatSleep(metrics[m.type]) : formatHealthMetric(metrics[m.type], m.digits ?? 0)}
-            </p>
-          </div>
-        ))}
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProgressRing({ percent, color, children }: { percent: number; color: string; children: ReactNode }) {
+  const radius = 32;
+  const circ = 2 * Math.PI * radius;
+  const offset = circ * (1 - Math.max(0, Math.min(percent, 1)));
+  return (
+    <div className="relative flex h-20 w-20 items-center justify-center">
+      <svg viewBox="0 0 80 80" className="h-20 w-20 -rotate-90">
+        <circle cx="40" cy="40" r={radius} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="7" />
+        <circle cx="40" cy="40" r={radius} fill="none" stroke={color} strokeWidth="7" strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset} />
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center leading-none">{children}</div>
+    </div>
+  );
+}
+
+// Stacked composition bar for sleep stages (values in minutes).
+function SleepBar({ deep, light, rem, awake }: { deep?: number; light?: number; rem?: number; awake?: number }) {
+  const segments = [
+    { label: "深睡", value: deep ?? 0, color: "#4338ca" },
+    { label: "淺睡", value: light ?? 0, color: "#818cf8" },
+    { label: "REM", value: rem ?? 0, color: "#c4b5fd" },
+    { label: "清醒", value: awake ?? 0, color: "#fcd34d" }
+  ];
+  const total = segments.reduce((sum, s) => sum + s.value, 0);
+  if (total <= 0) return null;
+  return (
+    <div>
+      <div className="flex h-3 overflow-hidden rounded-full bg-black/5">
+        {segments.map((s) => (s.value > 0 ? <div key={s.label} style={{ width: `${(s.value / total) * 100}%`, background: s.color }} /> : null))}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+        {segments.map((s) =>
+          s.value > 0 ? (
+            <span className="flex items-center gap-1 text-[11px] text-stone-500" key={s.label}>
+              <span className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />
+              {s.label} {Math.floor(s.value / 60)}:{String(Math.round(s.value % 60)).padStart(2, "0")}
+            </span>
+          ) : null
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Lightweight inline trend line — no chart library, just an SVG polyline.
+function Sparkline({ points, label, unit }: { points: number[]; label: string; unit: string }) {
+  if (points.length < 2) return null;
+  const width = 260;
+  const height = 56;
+  const pad = 6;
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const coords = points
+    .map((value, index) => {
+      const x = pad + (index / (points.length - 1)) * (width - 2 * pad);
+      const y = pad + (1 - (value - min) / range) * (height - 2 * pad);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+  const first = points[0];
+  const last = points[points.length - 1];
+  const delta = last - first;
+  const deltaColor = delta > 0 ? "text-rose-500" : delta < 0 ? "text-emerald-600" : "text-stone-400";
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-stone-500">{label}</p>
+        <p className={`text-xs font-bold ${deltaColor}`}>
+          {delta > 0 ? "▲" : delta < 0 ? "▼" : "＝"} {Math.abs(delta).toFixed(1)} {unit}
+        </p>
+      </div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="mt-1 h-14 w-full" preserveAspectRatio="none">
+        <polyline points={coords} fill="none" stroke="#0ea5e9" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <div className="flex items-center justify-between text-[11px] text-stone-400">
+        <span>{first.toFixed(1)}</span>
+        <span>最新 {last.toFixed(1)} {unit}</span>
       </div>
     </div>
   );
