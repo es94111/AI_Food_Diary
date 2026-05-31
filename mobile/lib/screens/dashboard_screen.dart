@@ -6,6 +6,7 @@ import '../services/google_auth.dart';
 import '../services/health_service.dart';
 import '../services/meal_service.dart';
 import '../utils/metabolism.dart';
+import '../widgets/ai_settings_form.dart';
 import '../widgets/health_sync_card.dart';
 import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
@@ -246,6 +247,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _accountCard(),
         const SizedBox(height: 12),
         _bodyDataCard(metabolism),
+        const SizedBox(height: 12),
+        const AiSettingsCard(),
         if (GoogleAuth.isConfigured) ...[
           const SizedBox(height: 12),
           _GoogleLinkCard(

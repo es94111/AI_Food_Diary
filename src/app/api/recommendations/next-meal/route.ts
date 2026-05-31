@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateNextMealAdvice } from "@/lib/ai";
+import { resolveUserAiConfig } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
@@ -39,7 +40,13 @@ export async function GET(request: Request) {
     : null;
   // Prefer the target derived from the (synced) TDEE so it auto-updates.
   const calorieTarget = calorieTargetFromGoal(calculateTdee(calculateBmr(effectiveProfile), effectiveProfile?.activityLevel), effectiveProfile?.goal) ?? effectiveProfile?.calorieTarget ?? 2000;
-  const advice = await generateNextMealAdvice({
+  let aiConfig;
+  try {
+    aiConfig = resolveUserAiConfig(user);
+  } catch {
+    return NextResponse.json({ error: "尚未設定 AI 金鑰，請點右上角「使用者設定 → AI 設定」選擇服務商並輸入你的 API 金鑰。" }, { status: 400 });
+  }
+  const advice = await generateNextMealAdvice(aiConfig, {
     today,
     calorieTarget,
     goal: effectiveProfile?.goal ?? "MAINTAIN",

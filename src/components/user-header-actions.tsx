@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
+import { AiSettingsForm } from "@/components/ai-settings-form";
 
 type Profile = {
   gender?: string | null;
@@ -62,6 +63,8 @@ export function UserHeaderActions({ profile }: { profile?: Profile | null }) {
               </button>
             </div>
             <ProfileMetabolismForm profile={profile} onSaved={() => setOpen(false)} />
+            <div className="my-6 border-t border-stone-200/70" />
+            <AiSettingsForm />
           </div>
         </div>
       )}

@@ -43,21 +43,32 @@ const defaultNextMealAdvicePrompt =
 const defaultDailySummaryPrompt =
   "請用繁體中文產生 {{date}} 的飲食總結與今日建議。目標熱量 {{calorieTarget}} kcal。實際攝取 {{totalCalories}} kcal，蛋白質 {{totalProtein}}g，脂肪 {{totalFat}}g，碳水 {{totalCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，避免醫療診斷。請只用 JSON 輸出，欄位為 summary 與 recommendation。";
 
-function openai() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is required");
+// Per-request AI configuration, resolved from the calling user's saved settings
+// (see resolveUserAiConfig in ai-config.ts). The key/base/models are no longer
+// read from the environment so the service can be opened to multiple users.
+export type AiConfig = {
+  apiKey: string;
+  baseUrl: string;
+  visionModel: string;
+  textModel: string;
+};
+
+function client(config: AiConfig) {
+  if (!config.apiKey) {
+    throw new Error("AI_NOT_CONFIGURED");
   }
   return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-    baseURL: normalizeOpenAiBaseUrl(process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL)
+    apiKey: config.apiKey,
+    baseURL: normalizeBaseUrl(config.baseUrl)
   });
 }
 
-function normalizeOpenAiBaseUrl(baseUrl?: string) {
+// Only trim trailing slashes — the base URL must already include the correct
+// version path (e.g. ".../v1" for OpenAI, ".../v1beta/openai" for Gemini).
+function normalizeBaseUrl(baseUrl?: string) {
   const value = baseUrl?.trim();
   if (!value) return undefined;
-  const withoutTrailingSlash = value.replace(/\/+$/, "");
-  return withoutTrailingSlash.endsWith("/v1") ? withoutTrailingSlash : `${withoutTrailingSlash}/v1`;
+  return value.replace(/\/+$/, "");
 }
 
 function messageText(content: unknown) {
@@ -188,7 +199,7 @@ function renderPrompt(template: string, values: Record<string, string | number>)
   );
 }
 
-export async function analyzeMealImage(imageDataUrl?: string): Promise<FoodAnalysis> {
+export async function analyzeMealImage(config: AiConfig, imageDataUrl?: string): Promise<FoodAnalysis> {
   if (!imageDataUrl) {
     return {
       foods: [],
@@ -198,8 +209,8 @@ export async function analyzeMealImage(imageDataUrl?: string): Promise<FoodAnaly
     };
   }
 
-  const response = await openai().chat.completions.create({
-    model: process.env.OPENAI_VISION_MODEL ?? "gpt-4.1-mini",
+  const response = await client(config).chat.completions.create({
+    model: config.visionModel,
     messages: [
       {
         role: "user",
@@ -217,9 +228,9 @@ export async function analyzeMealImage(imageDataUrl?: string): Promise<FoodAnaly
   return parseMealAnalysisText(completionText(response));
 }
 
-export async function analyzeNutritionLabelImage(imageDataUrl: string): Promise<FoodAnalysis> {
-  const response = await openai().chat.completions.create({
-    model: process.env.OPENAI_VISION_MODEL ?? "gpt-4.1-mini",
+export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrl: string): Promise<FoodAnalysis> {
+  const response = await client(config).chat.completions.create({
+    model: config.visionModel,
     messages: [
       {
         role: "user",
@@ -237,13 +248,13 @@ export async function analyzeNutritionLabelImage(imageDataUrl: string): Promise<
   return parseMealAnalysisText(completionText(response));
 }
 
-export async function analyzeMealDescription(description: string): Promise<FoodAnalysis> {
+export async function analyzeMealDescription(config: AiConfig, description: string): Promise<FoodAnalysis> {
   const prompt = renderPrompt(promptFromEnv("AI_MEAL_DESCRIPTION_ANALYSIS_PROMPT", defaultMealDescriptionAnalysisPrompt), {
     description
   });
 
-  const response = await openai().chat.completions.create({
-    model: process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini",
+  const response = await client(config).chat.completions.create({
+    model: config.textModel,
     messages: [
       {
         role: "user",
@@ -255,13 +266,13 @@ export async function analyzeMealDescription(description: string): Promise<FoodA
   return parseMealAnalysisText(completionText(response));
 }
 
-export async function analyzeManualFoodItems(items: FoodAnalysis["foods"]): Promise<FoodAnalysis> {
+export async function analyzeManualFoodItems(config: AiConfig, items: FoodAnalysis["foods"]): Promise<FoodAnalysis> {
   const prompt = renderPrompt(promptFromEnv("AI_MANUAL_FOOD_RATING_PROMPT", defaultManualFoodRatingPrompt), {
     items: JSON.stringify(items)
   });
 
-  const response = await openai().chat.completions.create({
-    model: process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini",
+  const response = await client(config).chat.completions.create({
+    model: config.textModel,
     messages: [
       {
         role: "user",
@@ -273,7 +284,7 @@ export async function analyzeManualFoodItems(items: FoodAnalysis["foods"]): Prom
   return parseMealAnalysisText(completionText(response));
 }
 
-export async function generateNextMealAdvice(input: {
+export async function generateNextMealAdvice(config: AiConfig, input: {
   calorieTarget: number;
   today: { calories: number; protein: number; fat: number; carbs: number };
   goal: string;
@@ -289,8 +300,8 @@ export async function generateNextMealAdvice(input: {
     healthContext: input.healthContext ?? "尚未同步"
   });
 
-  const response = await openai().chat.completions.create({
-    model: process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini",
+  const response = await client(config).chat.completions.create({
+    model: config.textModel,
     messages: [
       {
         role: "user",
@@ -302,7 +313,7 @@ export async function generateNextMealAdvice(input: {
   return completionText(response).trim();
 }
 
-export async function generateDailySummary(input: {
+export async function generateDailySummary(config: AiConfig, input: {
   date: string;
   calorieTarget: number;
   totals: { calories: number; protein: number; fat: number; carbs: number };
@@ -318,8 +329,8 @@ export async function generateDailySummary(input: {
     healthContext: input.healthContext ?? "尚未同步"
   });
 
-  const response = await openai().chat.completions.create({
-    model: process.env.OPENAI_TEXT_MODEL ?? "gpt-4.1-mini",
+  const response = await client(config).chat.completions.create({
+    model: config.textModel,
     messages: [
       {
         role: "user",

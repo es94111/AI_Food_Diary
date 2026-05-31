@@ -70,3 +70,21 @@ export const savedFoodSchema = z.object({
   fat: z.coerce.number().min(0).max(1000),
   carbs: z.coerce.number().min(0).max(1000)
 });
+
+export const aiSettingsSchema = z
+  .object({
+    provider: z.enum(["openai", "gemini", "compatible"]),
+    // Omit/blank apiKey to keep the previously saved key unchanged.
+    apiKey: z.string().max(400).optional(),
+    baseUrl: z.string().max(300).optional(),
+    visionModel: z.string().max(120).optional(),
+    textModel: z.string().max(120).optional()
+  })
+  .refine((v) => v.provider !== "compatible" || !!v.baseUrl?.trim(), {
+    message: "OpenAI 相容 API 需要填寫 Base URL",
+    path: ["baseUrl"]
+  })
+  .refine((v) => v.provider !== "compatible" || !!v.visionModel?.trim(), {
+    message: "OpenAI 相容 API 需要填寫模型名稱",
+    path: ["visionModel"]
+  });

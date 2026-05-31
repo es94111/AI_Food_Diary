@@ -56,6 +56,12 @@ model UserProfile {
   timezone             String?
   encryptedPreferences Json?
   encryptedAllergies   Json?
+  // Per-user AI provider config (BYO key). Key is stored encrypted at rest.
+  aiProvider           String?  // "openai" | "gemini" | "compatible"
+  aiBaseUrl            String?  // only used for "compatible"; others use provider defaults
+  aiVisionModel        String?
+  aiTextModel          String?
+  encryptedAiApiKey    Json?
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt

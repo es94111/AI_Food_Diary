@@ -1,20 +1,24 @@
 import { NextResponse } from "next/server";
 import { analyzeManualFoodItems } from "@/lib/ai";
+import { resolveUserAiConfig } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
 import { mealSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
   try {
-    await requireUser();
+    const user = await requireUser();
     const body = mealSchema.parse(await request.json());
     const manualItems = body.manualItems ?? [];
     if (manualItems.length === 0) return NextResponse.json({ error: "請先新增至少一項食物再進行 AI 評分。" }, { status: 400 });
 
-    const analysis = await analyzeManualFoodItems(manualItems.map((item) => ({ ...item, aiRating: item.aiRating ?? "MANUAL" })));
+    const analysis = await analyzeManualFoodItems(resolveUserAiConfig(user), manualItems.map((item) => ({ ...item, aiRating: item.aiRating ?? "MANUAL" })));
     return NextResponse.json({ analysis });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Manual food rating failed", error);
+    if (message === "AI_NOT_CONFIGURED") {
+      return NextResponse.json({ error: "尚未設定 AI 金鑰，請點右上角「使用者設定 → AI 設定」選擇服務商並輸入你的 API 金鑰。" }, { status: 400 });
+    }
     if (message === "OPENAI_API_KEY is required") {
       return NextResponse.json({ error: "尚未設定 OPENAI_API_KEY，請先在 .env 填入 API Key 後重啟 app/worker。" }, { status: 400 });
     }
