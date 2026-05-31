@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { generateDailySummary } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { addDays, isoDate, startOfLocalDay } from "@/lib/dates";
+import { dayRangeUtc, normalizeDateStr, todayStr } from "@/lib/dates";
+import { resolveRequestTz } from "@/lib/timezone";
 import { getHealthContext, getLatestSyncedWeightKg, getLatestSyncedHeightCm } from "@/lib/health-context";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { sumMeals } from "@/lib/totals";
@@ -10,10 +11,10 @@ import { sumMeals } from "@/lib/totals";
 export async function GET(request: Request) {
   const user = await requireUser();
   const url = new URL(request.url);
-  const target = url.searchParams.get("date")
-    ? new Date(`${url.searchParams.get("date")}T00:00:00`)
-    : new Date();
-  const summaryDate = startOfLocalDay(target);
+  const tz = resolveRequestTz(request, user.profile?.timezone);
+  const dateStr = normalizeDateStr(url.searchParams.get("date"), tz);
+  const { start, end } = dayRangeUtc(dateStr, tz);
+  const summaryDate = start;
 
   const existing = await prisma.dailySummary.findUnique({
     where: { userId_summaryDate: { userId: user.id, summaryDate } }
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ summary: null });
   }
 
-  if (summaryDate >= startOfLocalDay(new Date())) {
+  if (dateStr >= todayStr(tz)) {
     return NextResponse.json(
       { error: "今日總結需等今天結束後才能產生。" },
       { status: 400 }
@@ -34,12 +35,12 @@ export async function GET(request: Request) {
   }
 
   const meals = await prisma.meal.findMany({
-    where: { userId: user.id, eatenAt: { gte: summaryDate, lt: addDays(summaryDate, 1) } }
+    where: { userId: user.id, eatenAt: { gte: start, lt: end } }
   });
   const totals = sumMeals(meals);
-  const healthContext = await getHealthContext(user.id, summaryDate);
-  const syncedWeight = await getLatestSyncedWeightKg(user.id, summaryDate);
-  const syncedHeight = await getLatestSyncedHeightCm(user.id, summaryDate);
+  const healthContext = await getHealthContext(user.id, start, end);
+  const syncedWeight = await getLatestSyncedWeightKg(user.id, end);
+  const syncedHeight = await getLatestSyncedHeightCm(user.id, end);
   const effectiveProfile = user.profile
     ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg, heightCm: syncedHeight ?? user.profile.heightCm }
     : null;
@@ -47,7 +48,7 @@ export async function GET(request: Request) {
   // Health Connect data; fall back to the stored target only when TDEE is unknown.
   const calorieTarget = calorieTargetFromGoal(calculateTdee(calculateBmr(effectiveProfile), effectiveProfile?.activityLevel), effectiveProfile?.goal) ?? effectiveProfile?.calorieTarget ?? 2000;
   const ai = await generateDailySummary({
-    date: isoDate(summaryDate),
+    date: dateStr,
     calorieTarget,
     totals,
     healthContext

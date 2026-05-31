@@ -81,7 +81,6 @@ class HealthSyncCard extends StatefulWidget {
 
 class _HealthSyncCardState extends State<HealthSyncCard> {
   HealthSyncStatus? _status;
-  List<HealthConnection> _connections = [];
   bool _syncing = false;
   String? _message;
   bool _isError = false;
@@ -95,11 +94,9 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   Future<void> _load() async {
     try {
       final status = await HealthService.status();
-      final conns = await HealthService.connections();
       if (mounted) {
         setState(() {
           _status = status;
-          _connections = conns;
         });
       }
     } catch (_) {}
@@ -202,29 +199,6 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
                 label: Text(_syncing ? '同步中...' : '同步近 7 天資料'),
               ),
             ),
-            if (_connections.where((c) => c.isActive).isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text('已連結裝置',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-              ..._connections.where((c) => c.isActive).map((c) => ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.smartphone, size: 20),
-                    title: Text(c.deviceName ?? c.provider),
-                    subtitle: c.lastSyncedAt != null
-                        ? Text(
-                            '上次同步 ${DateFormat('MM/dd HH:mm').format(c.lastSyncedAt!)}')
-                        : const Text('尚未同步'),
-                    trailing: TextButton(
-                      onPressed: () async {
-                        await HealthService.revokeConnection(c.id);
-                        await _load();
-                      },
-                      child: const Text('撤銷',
-                          style: TextStyle(color: Colors.red)),
-                    ),
-                  )),
-            ],
           ],
         ),
       ),

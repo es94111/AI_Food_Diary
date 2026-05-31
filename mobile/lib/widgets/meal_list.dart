@@ -137,9 +137,9 @@ class _MealCard extends StatelessWidget {
                 )),
             const SizedBox(height: 4),
             Text(
-                'P ${meal.totalProtein.toStringAsFixed(1)}g · '
-                'F ${meal.totalFat.toStringAsFixed(1)}g · '
-                'C ${meal.totalCarbs.toStringAsFixed(1)}g',
+                '蛋白質 ${meal.totalProtein.toStringAsFixed(1)}g · '
+                '脂肪 ${meal.totalFat.toStringAsFixed(1)}g · '
+                '碳水 ${meal.totalCarbs.toStringAsFixed(1)}g',
                 style: const TextStyle(fontSize: 12, color: Colors.black54)),
             const SizedBox(height: 8),
             _MacroBars(

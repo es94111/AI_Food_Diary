@@ -2,17 +2,7 @@
 
 import { useState } from "react";
 
-type HealthConnection = {
-  id: string;
-  provider: string;
-  deviceName: string | null;
-  lastSyncedAt: string | Date | null;
-  revokedAt: string | Date | null;
-  createdAt: string | Date;
-};
-
-export function HealthConnectionsPanel({ initialConnections }: { initialConnections: HealthConnection[] }) {
-  const [connections, setConnections] = useState(initialConnections);
+export function HealthConnectionsPanel() {
   const [deviceName, setDeviceName] = useState("");
   const [token, setToken] = useState("");
   const [message, setMessage] = useState("");
@@ -34,25 +24,9 @@ export function HealthConnectionsPanel({ initialConnections }: { initialConnecti
       return;
     }
 
-    setConnections((current) => [data.connection, ...current]);
     setToken(data.token);
     setDeviceName("");
     setMessage("同步 token 已建立，請立即複製到 Flutter app。關閉後不會再次顯示。");
-  }
-
-  async function revokeConnection(id: string) {
-    setLoading(true);
-    setMessage("");
-    const response = await fetch(`/api/health/connections/${id}`, { method: "DELETE" });
-    const data = await response.json().catch(() => ({}));
-    setLoading(false);
-    if (!response.ok) {
-      setMessage(data.error ?? "撤銷同步裝置失敗。");
-      return;
-    }
-
-    setConnections((current) => current.map((connection) => (connection.id === id ? { ...connection, revokedAt: new Date().toISOString() } : connection)));
-    setMessage("已撤銷同步裝置。舊 token 將不能再同步資料。");
   }
 
   async function copyToken() {
@@ -81,29 +55,7 @@ export function HealthConnectionsPanel({ initialConnections }: { initialConnecti
         </div>
       ) : null}
 
-      <div className="mt-4 space-y-2">
-        {connections.length === 0 ? <p className="text-xs text-stone-500">尚未建立同步裝置。</p> : null}
-        {connections.map((connection) => {
-          const revoked = Boolean(connection.revokedAt);
-          return (
-            <div className="flex items-center justify-between gap-3 rounded-xl bg-white p-3 text-sm" key={connection.id}>
-              <div>
-                <p className="font-bold text-stone-800">{connection.deviceName ?? "未命名裝置"}</p>
-                <p className="mt-0.5 text-xs text-stone-500">
-                  {revoked ? "已撤銷" : connection.lastSyncedAt ? `最後同步 ${formatDate(connection.lastSyncedAt)}` : "尚未同步"}
-                </p>
-              </div>
-              <button className="text-sm font-semibold text-red-600 disabled:text-stone-300" disabled={loading || revoked} onClick={() => revokeConnection(connection.id)} type="button">撤銷</button>
-            </div>
-          );
-        })}
-      </div>
-
       {message ? <p className="mt-3 text-xs font-semibold text-amber-700">{message}</p> : null}
     </div>
   );
-}
-
-function formatDate(value: string | Date) {
-  return new Date(value).toLocaleString("zh-TW", { dateStyle: "short", timeStyle: "short" });
 }

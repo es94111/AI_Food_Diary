@@ -1,4 +1,3 @@
-import { addDays, startOfLocalDay } from "@/lib/dates";
 import { prisma } from "@/lib/db";
 
 type HealthMetric = {
@@ -8,21 +7,23 @@ type HealthMetric = {
   measuredAt: Date;
 };
 
-export async function getHealthContext(userId: string, day = new Date()) {
-  const start = startOfLocalDay(day);
-  const end = addDays(start, 1);
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Callers pass the UTC bounds of the target day, already computed in the user's
+// timezone (see @/lib/dates), so "today" lines up with the user's calendar day.
+export async function getHealthContext(userId: string, dayStart: Date, dayEnd: Date) {
   const metrics = await prisma.healthMetric.findMany({
     where: {
       userId,
-      measuredAt: { gte: addDays(start, -14), lt: end }
+      measuredAt: { gte: new Date(dayStart.getTime() - 14 * DAY_MS), lt: dayEnd }
     },
     orderBy: { measuredAt: "desc" },
     take: 200
   });
 
   const latest = latestByType(metrics);
-  const todaySteps = sumToday(metrics, "STEPS", start, end);
-  const todayActiveCalories = sumToday(metrics, "ACTIVE_CALORIES", start, end);
+  const todaySteps = sumToday(metrics, "STEPS", dayStart, dayEnd);
+  const todayActiveCalories = sumToday(metrics, "ACTIVE_CALORIES", dayStart, dayEnd);
 
   const parts = [
     todaySteps ? `今日步數 ${Math.round(todaySteps)} 步` : "今日步數尚未同步",
@@ -34,13 +35,13 @@ export async function getHealthContext(userId: string, day = new Date()) {
   return parts.join("；");
 }
 
-export async function getLatestSyncedWeightKg(userId: string, day = new Date()) {
+export async function getLatestSyncedWeightKg(userId: string, before: Date) {
   const metric = await prisma.healthMetric.findFirst({
     where: {
       userId,
       type: "WEIGHT",
       unit: { equals: "kg", mode: "insensitive" },
-      measuredAt: { lt: addDays(startOfLocalDay(day), 1) }
+      measuredAt: { lt: before }
     },
     orderBy: { measuredAt: "desc" }
   });
@@ -48,13 +49,13 @@ export async function getLatestSyncedWeightKg(userId: string, day = new Date()) 
   return metric?.value ?? null;
 }
 
-export async function getLatestSyncedHeightCm(userId: string, day = new Date()) {
+export async function getLatestSyncedHeightCm(userId: string, before: Date) {
   const metric = await prisma.healthMetric.findFirst({
     where: {
       userId,
       type: "HEIGHT",
       unit: { equals: "cm", mode: "insensitive" },
-      measuredAt: { lt: addDays(startOfLocalDay(day), 1) }
+      measuredAt: { lt: before }
     },
     orderBy: { measuredAt: "desc" }
   });

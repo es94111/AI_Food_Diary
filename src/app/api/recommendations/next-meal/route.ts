@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { generateNextMealAdvice } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { addDays, startOfLocalDay } from "@/lib/dates";
+import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
+import { resolveRequestTz } from "@/lib/timezone";
 import { getHealthContext, getLatestSyncedWeightKg, getLatestSyncedHeightCm } from "@/lib/health-context";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { sumMeals } from "@/lib/totals";
@@ -10,13 +11,12 @@ import { sumMeals } from "@/lib/totals";
 export async function GET(request: Request) {
   const user = await requireUser();
   const url = new URL(request.url);
-  // Key by the caller's local date when provided (clients live in other
-  // timezones than the server), so "today" matches the user's day and we don't
-  // surface yesterday's advice in their early morning hours.
-  const dateParam = url.searchParams.get("date");
-  const start = dateParam
-    ? startOfLocalDay(new Date(`${dateParam}T00:00:00`))
-    : startOfLocalDay(new Date());
+  // Key by the caller's local date and zone (clients live in other timezones
+  // than the server), so "today" matches the user's day and we don't surface
+  // yesterday's advice in their early morning hours.
+  const tz = resolveRequestTz(request, user.profile?.timezone);
+  const dateStr = normalizeDateStr(url.searchParams.get("date"), tz);
+  const { start, end } = dayRangeUtc(dateStr, tz);
 
   // Peek mode: return today's stored advice without regenerating (no AI spend).
   // Used by the app to re-display advice after a restart.
@@ -28,12 +28,12 @@ export async function GET(request: Request) {
   }
 
   const meals = await prisma.meal.findMany({
-    where: { userId: user.id, eatenAt: { gte: start, lt: addDays(start, 1) } }
+    where: { userId: user.id, eatenAt: { gte: start, lt: end } }
   });
   const today = sumMeals(meals);
-  const healthContext = await getHealthContext(user.id, start);
-  const syncedWeight = await getLatestSyncedWeightKg(user.id, start);
-  const syncedHeight = await getLatestSyncedHeightCm(user.id, start);
+  const healthContext = await getHealthContext(user.id, start, end);
+  const syncedWeight = await getLatestSyncedWeightKg(user.id, end);
+  const syncedHeight = await getLatestSyncedHeightCm(user.id, end);
   const effectiveProfile = user.profile
     ? { ...user.profile, weightKg: syncedWeight ?? user.profile.weightKg, heightCm: syncedHeight ?? user.profile.heightCm }
     : null;

@@ -1,7 +1,10 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { addDays, isoDate, parseLocalDate, startOfLocalDay, startOfLocalWeek } from "@/lib/dates";
+import { addDaysStr, dayRangeUtc, dayStartUtc, normalizeDateStr, todayStr, weekRangeUtc, weekStartStr } from "@/lib/dates";
+import { resolveUserTz, tzName, TZ_COOKIE } from "@/lib/timezone";
+import { TimezoneReporter } from "@/components/timezone-reporter";
 import { sumMeals } from "@/lib/totals";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
@@ -22,28 +25,25 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   const params = await searchParams;
-  const selectedDate = parseLocalDate(params.date);
+  const cookieStore = await cookies();
+  const tz = resolveUserTz(cookieStore.get(TZ_COOKIE)?.value, user.profile?.timezone);
+  const todayStrValue = todayStr(tz);
+  const selectedDateStr = normalizeDateStr(params.date, tz);
   const view = params.view === "week" ? "week" : "day";
 
-  const start = view === "week" ? startOfLocalWeek(selectedDate) : startOfLocalDay(selectedDate);
-  const end = addDays(start, view === "week" ? 7 : 1);
+  const { start, end } = view === "week" ? weekRangeUtc(selectedDateStr, tz) : dayRangeUtc(selectedDateStr, tz);
   const meals = await prisma.meal.findMany({
     where: { userId: user.id, eatenAt: { gte: start, lt: end } },
     include: { items: true },
     orderBy: { eatenAt: "desc" }
   });
   const todayRecommendation = await prisma.dailyRecommendation.findUnique({
-    where: { userId_recommendationDate: { userId: user.id, recommendationDate: startOfLocalDay(new Date()) } }
+    where: { userId_recommendationDate: { userId: user.id, recommendationDate: dayStartUtc(todayStrValue, tz) } }
   });
   const healthMetrics = await prisma.healthMetric.findMany({
     where: { userId: user.id },
     orderBy: { measuredAt: "desc" },
     take: 100
-  });
-  const healthConnections = await prisma.healthConnection.findMany({
-    where: { userId: user.id },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, provider: true, deviceName: true, lastSyncedAt: true, revokedAt: true, createdAt: true }
   });
   const latestHealthMetrics = latestMetricsByType(healthMetrics);
   const totals = sumMeals(meals);
@@ -57,8 +57,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // Auto-derive the target from the (synced) TDEE so it updates with Health
   // Connect data; fall back to the stored target only when TDEE is unknown.
   const target = calorieTargetFromGoal(tdee, effectiveProfile?.goal) ?? user.profile?.calorieTarget ?? 2000;
-  const isTodayView = view === "day" && isoDate(start) === isoDate(new Date());
-  const canGenerateDailySummary = start < startOfLocalDay(new Date());
+  const isTodayView = view === "day" && selectedDateStr === todayStrValue;
+  const canGenerateDailySummary = selectedDateStr < todayStrValue;
   const displayTotals =
     view === "week"
       ? { calories: Math.round(totals.calories / 7), protein: totals.protein / 7, fat: totals.fat / 7, carbs: totals.carbs / 7 }
@@ -93,13 +93,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         calorieTarget: user.profile.calorieTarget
       }
     : null;
+  const weekStartStrValue = weekStartStr(selectedDateStr);
   const weeklyDays = Array.from({ length: 7 }, (_, index) => {
-    const dayStart = addDays(start, index);
-    const dayEnd = addDays(dayStart, 1);
+    const dayStr = addDaysStr(weekStartStrValue, index);
+    const { start: dayStart, end: dayEnd } = dayRangeUtc(dayStr, tz);
     const dayMeals = meals.filter((meal) => meal.eatenAt >= dayStart && meal.eatenAt < dayEnd);
     const dayTotals = sumMeals(dayMeals);
     return {
-      date: isoDate(dayStart),
+      date: dayStr,
       calories: dayTotals.calories,
       protein: dayTotals.protein,
       fat: dayTotals.fat,
@@ -107,7 +108,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       imageCount: dayMeals.filter((meal) => meal.imageStorageKey).length
     };
   });
-  const title = view === "week" ? `${isoDate(start)} — ${isoDate(addDays(end, -1))}` : isoDate(start);
+  const title = view === "week" ? `${weekStartStrValue} — ${addDaysStr(weekStartStrValue, 6)}` : selectedDateStr;
   const appConfig = user.isAdmin
     ? await prisma.appConfig.findUnique({ where: { id: "singleton" } })
     : null;
@@ -115,7 +116,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const foodPanel = (
     <>
-      <DateRangeSwitcher date={isoDate(selectedDate)} view={view} />
+      <DateRangeSwitcher date={selectedDateStr} view={view} />
       <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
         <p className="text-sm font-medium text-stone-400">{view === "week" ? "本週平均攝取" : "當日攝取"}</p>
         <div className="mt-1 flex items-end gap-2">
@@ -145,7 +146,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       {view === "week" ? <WeeklyNutritionReview days={weeklyDays} /> : null}
       <AiInfoCard
         title="今日總結"
-        endpoint={`/api/daily-summary?date=${isoDate(selectedDate)}`}
+        endpoint={`/api/daily-summary?date=${selectedDateStr}&tz=${encodeURIComponent(tzName(tz))}`}
         type="summary"
         canGenerate={canGenerateDailySummary}
         blockedMessage="今日總結需等今天結束後才能產生。"
@@ -158,7 +159,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       <div className="glass glass-lift rounded-[2rem] p-6">
         <h2 className="text-xl font-black">健康同步</h2>
         <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、熱量、睡眠、運動、心率、體脂等資料。</p>
-        <HealthConnectionsPanel initialConnections={healthConnections} />
+        <HealthConnectionsPanel />
       </div>
       {HEALTH_GROUPS.map((group) => (
         <HealthGroupCard key={group.title} group={group} metrics={latestHealthMetrics} />
@@ -213,6 +214,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   return (
     <main className="mx-auto min-h-screen max-w-3xl px-5 py-8 sm:px-6">
+      <TimezoneReporter serverTimezone={user.profile?.timezone ?? ""} />
       <header>
         <div className="flex items-center gap-2">
           <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-600 text-white">

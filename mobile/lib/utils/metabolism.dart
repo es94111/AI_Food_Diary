@@ -104,3 +104,7 @@ String isoDate(DateTime d) {
   final day = d.day.toString().padLeft(2, '0');
   return '${d.year}-$m-$day';
 }
+
+/// Device UTC offset in minutes (east of UTC positive). Sent to the backend so
+/// day boundaries are computed in the user's timezone, not the server's.
+int localTzOffsetMinutes() => DateTime.now().timeZoneOffset.inMinutes;

@@ -53,6 +53,7 @@ model UserProfile {
   activityLevel        String?
   goal                 Goal     @default(MAINTAIN)
   calorieTarget        Int      @default(2000)
+  timezone             String?
   encryptedPreferences Json?
   encryptedAllergies   Json?
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)

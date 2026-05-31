@@ -3,16 +3,17 @@ import { analyzeMealImage } from "@/lib/ai";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptJson } from "@/lib/encryption";
-import { startOfLocalDay, addDays } from "@/lib/dates";
+import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
+import { resolveRequestTz } from "@/lib/timezone";
 import { mealSchema } from "@/lib/validators";
 import { uploadImage } from "@/lib/storage";
 
 export async function GET(request: Request) {
   const user = await requireUser();
   const url = new URL(request.url);
-  const day = url.searchParams.get("date") ? new Date(`${url.searchParams.get("date")}T00:00:00`) : new Date();
-  const start = startOfLocalDay(day);
-  const end = addDays(start, 1);
+  const tz = resolveRequestTz(request, user.profile?.timezone);
+  const dateStr = normalizeDateStr(url.searchParams.get("date"), tz);
+  const { start, end } = dayRangeUtc(dateStr, tz);
 
   const meals = await prisma.meal.findMany({
     where: { userId: user.id, eatenAt: { gte: start, lt: end } },

@@ -7,7 +7,8 @@ class MealService {
 
   /// Meals for a single local day (date = yyyy-MM-dd).
   static Future<List<Meal>> mealsForDay(DateTime day) async {
-    final res = await _api.get('/api/meals', query: {'date': isoDate(day)});
+    final res = await _api.get('/api/meals',
+        query: {'date': isoDate(day), 'tzOffset': '${localTzOffsetMinutes()}'});
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法載入餐點'));
     }
@@ -122,6 +123,7 @@ class MealService {
       {bool generate = false}) async {
     final res = await _api.get('/api/daily-summary', query: {
       'date': isoDate(day),
+      'tzOffset': '${localTzOffsetMinutes()}',
       if (generate) 'generate': '1',
     });
     if (!ApiClient.ok(res)) {
@@ -137,7 +139,7 @@ class MealService {
   /// user's day, not the server's timezone.
   static Future<String> nextMealAdvice() async {
     final res = await _api.get('/api/recommendations/next-meal',
-        query: {'date': isoDate(DateTime.now())});
+        query: {'date': isoDate(DateTime.now()), 'tzOffset': '${localTzOffsetMinutes()}'});
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法產生下一餐建議'));
     }
@@ -147,7 +149,7 @@ class MealService {
   /// Returns today's stored next-meal advice without regenerating ('' if none).
   static Future<String> peekNextMealAdvice() async {
     final res = await _api.get('/api/recommendations/next-meal',
-        query: {'peek': '1', 'date': isoDate(DateTime.now())});
+        query: {'peek': '1', 'date': isoDate(DateTime.now()), 'tzOffset': '${localTzOffsetMinutes()}'});
     if (!ApiClient.ok(res)) return '';
     return (res.data['advice'] as String?) ?? '';
   }

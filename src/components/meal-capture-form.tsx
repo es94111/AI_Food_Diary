@@ -241,7 +241,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
 
   async function loadNextMealAdvice() {
     setAdviceLoading(true);
-    const response = await fetch("/api/recommendations/next-meal");
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const response = await fetch(`/api/recommendations/next-meal?tz=${encodeURIComponent(tz)}`);
     const data = await response.json().catch(() => ({}));
     setAdviceLoading(false);
     if (response.ok) setNextMealAdvice(data.advice ?? "");

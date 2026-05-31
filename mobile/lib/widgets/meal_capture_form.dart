@@ -96,6 +96,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   bool _adviceLoading = false;
   String? _error;
   late String _advice = widget.initialAdvice;
+  bool _adviceExpanded = true;
 
   @override
   void initState() {
@@ -534,14 +535,31 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('下一餐建議',
-              style: TextStyle(
-                  fontWeight: FontWeight.w900, color: Color(0xFF92400E))),
-          const SizedBox(height: 2),
-          const Text('此建議會保留到今天結束；新增下一餐後會自動更新。',
-              style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
-          const SizedBox(height: 6),
-          MarkdownText(_advice, style: const TextStyle(color: Color(0xFF78350F))),
+          InkWell(
+            onTap: () => setState(() => _adviceExpanded = !_adviceExpanded),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('下一餐建議',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF92400E))),
+                ),
+                Icon(
+                  _adviceExpanded ? Icons.expand_less : Icons.expand_more,
+                  color: const Color(0xFF92400E),
+                ),
+              ],
+            ),
+          ),
+          if (_adviceExpanded) ...[
+            const SizedBox(height: 2),
+            const Text('此建議會保留到今天結束；新增下一餐後會自動更新。',
+                style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
+            const SizedBox(height: 6),
+            MarkdownText(_advice,
+                style: const TextStyle(color: Color(0xFF78350F))),
+          ],
         ],
       ),
     );
