@@ -271,9 +271,41 @@ const SLEEP_LANES: { stage: string; label: string; color: string }[] = [
   { stage: "DEEP", label: "深睡", color: "#4338ca" }
 ];
 
+// Local hour/minute/second of an instant in a given IANA timezone, used to
+// align grid ticks to wall-clock hour boundaries (handles whole-minute offsets
+// like +05:30, not just whole hours).
+function tzClockParts(t: number, tz: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  }).formatToParts(new Date(t));
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  return { h: get("hour"), m: get("minute"), s: get("second") };
+}
+
+// Evenly-spaced wall-clock hour ticks across [start, end], aligned to clean
+// hour boundaries (e.g. 23:00, 01:00, 03:00). Interval widens with the night's
+// length so labels never crowd. Returns absolute timestamps within range.
+function hourTicks(start: number, end: number, tz: string): number[] {
+  const hours = (end - start) / 3_600_000;
+  const stepH = hours <= 6 ? 1 : hours <= 11 ? 2 : 3;
+  const stepMs = stepH * 3_600_000;
+  const p = tzClockParts(start, tz);
+  // Top of start's local hour, then back off so the hour is a multiple of stepH.
+  let t = start - (p.m * 60_000 + p.s * 1_000) - (p.h % stepH) * 3_600_000;
+  while (t < start) t += stepMs;
+  const ticks: number[] = [];
+  for (; t <= end; t += stepMs) ticks.push(t);
+  return ticks;
+}
+
 // Hypnogram: a per-night timeline of which sleep stage occurred at what clock
 // time. Each segment is a coloured block placed on its stage's lane, positioned
-// horizontally by its start/end relative to the night's span.
+// horizontally by its start/end relative to the night's span. Vertical ticks
+// mark wall-clock hours so any block can be read off to the minute.
 export function SleepHypnogram({ segments, tz }: { segments: SleepSegment[]; tz: string }) {
   const laneOf = new Map(SLEEP_LANES.map((l, i) => [l.stage, i]));
   const segs = segments
@@ -286,10 +318,18 @@ export function SleepHypnogram({ segments, tz }: { segments: SleepSegment[]; tz:
   const span = end - start;
   if (span <= 0) return null;
   const laneH = 18;
+  const laneArea = SLEEP_LANES.length * laneH;
   const fmt = (t: number) => new Date(t).toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" });
+  const ticks = hourTicks(start, end, tz);
+  const pct = (t: number) => `${((t - start) / span) * 100}%`;
   return (
     <div>
-      <p className="text-xs text-stone-500">睡眠階段時間軸</p>
+      <div className="flex items-baseline justify-between">
+        <p className="text-xs text-stone-500">睡眠階段時間軸</p>
+        <p className="text-[11px] font-medium text-stone-400">
+          {fmt(start)}–{fmt(end)}
+        </p>
+      </div>
       <div className="mt-2 flex gap-2">
         <div className="flex flex-col" style={{ width: 30 }}>
           {SLEEP_LANES.map((l) => (
@@ -299,9 +339,14 @@ export function SleepHypnogram({ segments, tz }: { segments: SleepSegment[]; tz:
           ))}
         </div>
         <div className="flex-1">
-          <div className="relative" style={{ height: SLEEP_LANES.length * laneH }}>
+          <div className="relative" style={{ height: laneArea }}>
+            {/* Horizontal lane separators */}
             {SLEEP_LANES.map((l, i) => (
               <div key={l.stage} className="absolute inset-x-0 border-t border-black/5" style={{ top: i * laneH + laneH / 2 }} />
+            ))}
+            {/* Vertical wall-clock hour gridlines */}
+            {ticks.map((t) => (
+              <div key={t} className="absolute top-0 border-l border-dashed border-black/10" style={{ left: pct(t), height: laneArea }} />
             ))}
             {segs.map((s, idx) => {
               const lane = laneOf.get(s.stage)!;
@@ -310,7 +355,7 @@ export function SleepHypnogram({ segments, tz }: { segments: SleepSegment[]; tz:
                   key={idx}
                   className="absolute rounded-sm"
                   style={{
-                    left: `${((s.from - start) / span) * 100}%`,
+                    left: pct(s.from),
                     width: `${Math.max(((s.to - s.from) / span) * 100, 0.5)}%`,
                     top: lane * laneH + 3,
                     height: laneH - 6,
@@ -321,9 +366,13 @@ export function SleepHypnogram({ segments, tz }: { segments: SleepSegment[]; tz:
               );
             })}
           </div>
-          <div className="mt-1 flex justify-between text-[10px] text-stone-400">
-            <span>{fmt(start)}</span>
-            <span>{fmt(end)}</span>
+          {/* Hour tick labels aligned to the gridlines above */}
+          <div className="relative mt-1 h-3 text-[10px] text-stone-400">
+            {ticks.map((t) => (
+              <span key={t} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: pct(t) }}>
+                {fmt(t)}
+              </span>
+            ))}
           </div>
         </div>
       </div>
