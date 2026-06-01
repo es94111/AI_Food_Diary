@@ -166,6 +166,7 @@ class HealthService {
       endTime: now,
       types: _types,
     );
+    final points = _health.removeDuplicates(data);
 
     // Health Connect stores most metrics as thousands of fine-grained interval
     // records, and the backend caps each sync at 500. Roll up to one record per
@@ -174,10 +175,13 @@ class HealthService {
     // body fat, resting HR) keep the latest reading; heart rate is averaged.
     final accs = <(String, DateTime), _Acc>{};
 
-    for (final p in _health.removeDuplicates(data)) {
+    for (final p in points) {
       final mapping = _mapType(p.type);
       if (mapping == null) continue;
       final (backendType, unit, agg) = mapping;
+      // Sleep is aggregated separately (see _appendSleep) so we can also emit a
+      // per-night stage timeline; skip the generic per-day roll-up for it here.
+      if (backendType == 'SLEEP' || backendType.startsWith('SLEEP_')) continue;
       final day = _localDayStart(p.dateFrom);
       final acc = accs.putIfAbsent((backendType, day), () => _Acc(unit, agg));
       final value = _valueFor(p, backendType, agg);
@@ -222,7 +226,101 @@ class HealthService {
         }
       });
     }
+
+    _appendSleep(points, out);
     return out;
+  }
+
+  /// Aggregates sleep separately from the generic roll-up: stage records
+  /// (deep/light/REM/awake) each carry their own start/end, so we group them
+  /// into nights (a gap > 3h starts a new night), attribute each night to the
+  /// local day it *ended* on (the wake-up morning), and emit a SLEEP record
+  /// carrying the full stage timeline in `raw` — the data a hypnogram needs.
+  /// Stage totals (SLEEP_DEEP/LIGHT/REM/AWAKE) are emitted per night too.
+  static void _appendSleep(
+      List<HealthDataPoint> points, List<Map<String, dynamic>> out) {
+    String? stageOf(HealthDataType t) => switch (t) {
+          HealthDataType.SLEEP_DEEP => 'DEEP',
+          HealthDataType.SLEEP_LIGHT => 'LIGHT',
+          HealthDataType.SLEEP_REM => 'REM',
+          HealthDataType.SLEEP_AWAKE => 'AWAKE',
+          _ => null,
+        };
+
+    final segs = <_SleepSeg>[];
+    for (final p in points) {
+      final stage = stageOf(p.type);
+      if (stage == null || !p.dateTo.isAfter(p.dateFrom)) continue;
+      segs.add(_SleepSeg(stage, p.dateFrom, p.dateTo));
+    }
+    segs.sort((a, b) => a.from.compareTo(b.from));
+
+    // Group consecutive stage segments into nights.
+    const gap = Duration(hours: 3);
+    final nights = <List<_SleepSeg>>[];
+    for (final s in segs) {
+      if (nights.isEmpty || s.from.difference(nights.last.last.to) > gap) {
+        nights.add([s]);
+      } else {
+        nights.last.add(s);
+      }
+    }
+
+    final byDay = <DateTime, List<_SleepSeg>>{};
+    for (final night in nights) {
+      final end = night.map((s) => s.to).reduce((a, b) => a.isAfter(b) ? a : b);
+      (byDay[_localDayStart(end)] ??= []).addAll(night);
+    }
+
+    const stageTypes = {
+      'DEEP': 'SLEEP_DEEP',
+      'LIGHT': 'SLEEP_LIGHT',
+      'REM': 'SLEEP_REM',
+      'AWAKE': 'SLEEP_AWAKE',
+    };
+    byDay.forEach((day, list) {
+      list.sort((a, b) => a.from.compareTo(b.from));
+      final stageMinutes = <String, double>{};
+      for (final s in list) {
+        final mins = s.to.difference(s.from).inMinutes.toDouble();
+        if (mins > 0) stageMinutes[s.stage] = (stageMinutes[s.stage] ?? 0) + mins;
+      }
+      final total = stageMinutes.values.fold<double>(0, (a, b) => a + b);
+      if (total <= 0) return;
+
+      final raw = [
+        for (final s in list)
+          {
+            'stage': s.stage,
+            'start': _isoUtc.format(s.from.toUtc()),
+            'end': _isoUtc.format(s.to.toUtc()),
+          }
+      ];
+      out.add(_payload('SLEEP', total.roundToDouble(), 'min', day, raw: raw));
+      stageTypes.forEach((stage, type) {
+        final mins = stageMinutes[stage] ?? 0;
+        if (mins > 0) out.add(_payload(type, mins.roundToDouble(), 'min', day));
+      });
+    });
+
+    // Fallback for trackers that only report a whole-session duration with no
+    // stage breakdown: emit a plain SLEEP total (no hypnogram) for any day not
+    // already covered by stage data.
+    final stageDays = byDay.keys.toSet();
+    final sessionByDay = <DateTime, double>{};
+    for (final p in points) {
+      if (p.type != HealthDataType.SLEEP_SESSION ||
+          !p.dateTo.isAfter(p.dateFrom)) {
+        continue;
+      }
+      final day = _localDayStart(p.dateTo);
+      if (stageDays.contains(day)) continue;
+      sessionByDay[day] =
+          (sessionByDay[day] ?? 0) + p.dateTo.difference(p.dateFrom).inMinutes;
+    }
+    sessionByDay.forEach((day, mins) {
+      if (mins > 0) out.add(_payload('SLEEP', mins.roundToDouble(), 'min', day));
+    });
   }
 
   static final _isoUtc = DateFormat("yyyy-MM-dd'T'HH:mm:ss.000'Z'");
@@ -273,12 +371,14 @@ class HealthService {
   }
 
   static Map<String, dynamic> _payload(
-      String type, double value, String unit, DateTime localDay) {
+      String type, double value, String unit, DateTime localDay,
+      {List<Map<String, dynamic>>? raw}) {
     return {
       'type': type,
       'value': value,
       'unit': unit,
       'measuredAt': _isoUtc.format(localDay.toUtc()),
+      if (raw != null && raw.isNotEmpty) 'raw': raw,
     };
   }
 
@@ -461,6 +561,14 @@ class HealthService {
     debugPrint('HealthWrite: mirrored $count meals to Health Connect');
     return count;
   }
+}
+
+/// One sleep stage interval (deep/light/REM/awake) with its wall-clock span.
+class _SleepSeg {
+  _SleepSeg(this.stage, this.from, this.to);
+  final String stage;
+  final DateTime from;
+  final DateTime to;
 }
 
 /// How a day's worth of points for a metric are reduced to a single value.

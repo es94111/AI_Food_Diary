@@ -159,8 +159,17 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       _message = null;
     });
     try {
+      // Mirror freshly logged meals into Health Connect *before* reading it back,
+      // otherwise the meal just logged isn't visible to this sync and today's
+      // nutrition lags one sync behind. Best-effort: a write failure must not
+      // block the core health-data sync.
+      var meals = 0;
+      try {
+        meals = await HealthService.writeRecentMealsToHealth();
+      } catch (e) {
+        debugPrint('HealthSync: meal mirror failed $e');
+      }
       final count = await HealthService.syncNow();
-      final meals = await HealthService.writeRecentMealsToHealth();
       await _load();
       await widget.onSynced();
       setState(() {
@@ -388,7 +397,20 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   }
 
   Widget? _groupChart(_MetricGroup group) {
-    if (group.id == 'sleep') return _sleepBar();
+    if (group.id == 'sleep') {
+      final segs = _metric('SLEEP')?.sleepStages ?? const <SleepSegment>[];
+      final bar = _sleepBar();
+      final hypno = segs.length >= 2 ? _Hypnogram(segments: segs) : null;
+      if (hypno == null && bar == null) return null;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ?hypno,
+          if (hypno != null && bar != null) const SizedBox(height: 14),
+          ?bar,
+        ],
+      );
+    }
     if (group.id == 'body') {
       final series = _status?.weightSeries ?? const <double>[];
       return series.length >= 2 ? _Sparkline(points: series) : null;
@@ -501,6 +523,131 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       ],
     );
   }
+}
+
+/// Hypnogram: a per-night timeline of which sleep stage occurred at what clock
+/// time. Lanes run top→bottom (awake → deep); each segment is a coloured block
+/// positioned horizontally by its start/end within the night's span.
+class _Hypnogram extends StatelessWidget {
+  const _Hypnogram({required this.segments});
+  final List<SleepSegment> segments;
+
+  static const _lanes = ['AWAKE', 'REM', 'LIGHT', 'DEEP'];
+  static const _labels = {
+    'AWAKE': '清醒',
+    'REM': 'REM',
+    'LIGHT': '淺睡',
+    'DEEP': '深睡',
+  };
+  static const _colors = {
+    'DEEP': Color(0xFF4338CA),
+    'LIGHT': Color(0xFF818CF8),
+    'REM': Color(0xFFC4B5FD),
+    'AWAKE': Color(0xFFFCD34D),
+  };
+  static const _laneHeight = 18.0;
+  static const _labelWidth = 30.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final segs = [...segments]..sort((a, b) => a.start.compareTo(b.start));
+    final start = segs.first.start;
+    final end = segs.map((s) => s.end).reduce((a, b) => a.isAfter(b) ? a : b);
+    if (!end.isAfter(start)) return const SizedBox.shrink();
+    final fmt = DateFormat('HH:mm');
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('睡眠階段時間軸',
+            style: TextStyle(fontSize: 12, color: Colors.black54)),
+        const SizedBox(height: 6),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: _labelWidth,
+              child: Column(
+                children: [
+                  for (final l in _lanes)
+                    SizedBox(
+                      height: _laneHeight,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Text(_labels[l]!,
+                            style: const TextStyle(
+                                fontSize: 9, color: Colors.black45)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: SizedBox(
+                height: _lanes.length * _laneHeight,
+                child: CustomPaint(
+                  painter: _HypnoPainter(segs, start,
+                      end.difference(start).inSeconds, _colors),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Padding(
+          padding: const EdgeInsets.only(left: _labelWidth + 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(fmt.format(start),
+                  style: const TextStyle(fontSize: 9, color: Colors.black38)),
+              Text(fmt.format(end),
+                  style: const TextStyle(fontSize: 9, color: Colors.black38)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HypnoPainter extends CustomPainter {
+  _HypnoPainter(this.segs, this.start, this.spanSeconds, this.colors);
+  final List<SleepSegment> segs;
+  final DateTime start;
+  final int spanSeconds;
+  final Map<String, Color> colors;
+
+  static const _laneIndex = {'AWAKE': 0, 'REM': 1, 'LIGHT': 2, 'DEEP': 3};
+  static const _laneHeight = 18.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (spanSeconds <= 0) return;
+    // Faint baseline per lane.
+    final track = Paint()..color = const Color(0x11000000);
+    for (var i = 0; i < 4; i++) {
+      final y = i * _laneHeight + _laneHeight / 2;
+      canvas.drawRect(Rect.fromLTWH(0, y, size.width, 1), track);
+    }
+    for (final s in segs) {
+      final lane = _laneIndex[s.stage];
+      final color = colors[s.stage];
+      if (lane == null || color == null) continue;
+      final x1 = s.start.difference(start).inSeconds / spanSeconds * size.width;
+      final x2 = s.end.difference(start).inSeconds / spanSeconds * size.width;
+      final w = (x2 - x1).clamp(1.5, size.width);
+      final rect = Rect.fromLTWH(x1, lane * _laneHeight + 3, w, _laneHeight - 6);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(rect, const Radius.circular(2)),
+        Paint()..color = color,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HypnoPainter old) =>
+      old.segs != segs || old.spanSeconds != spanSeconds;
 }
 
 /// Apple-style activity ring painter (background track + rounded progress arc).

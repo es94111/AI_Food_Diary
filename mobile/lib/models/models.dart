@@ -239,27 +239,59 @@ class DailySummary {
       );
 }
 
+/// One sleep stage interval (deep/light/REM/awake) with local-time bounds,
+/// decoded from a SLEEP metric's `raw` timeline for the hypnogram.
+class SleepSegment {
+  final String stage;
+  final DateTime start;
+  final DateTime end;
+
+  SleepSegment({required this.stage, required this.start, required this.end});
+}
+
 class HealthMetricValue {
   final String type;
   final double value;
   final String unit;
   final DateTime measuredAt;
 
+  /// Per-night sleep stage timeline (SLEEP only; empty otherwise).
+  final List<SleepSegment> sleepStages;
+
   HealthMetricValue({
     required this.type,
     required this.value,
     required this.unit,
     required this.measuredAt,
+    this.sleepStages = const [],
   });
 
-  factory HealthMetricValue.fromJson(Map<String, dynamic> j) => HealthMetricValue(
-        type: (j['type'] as String?) ?? '',
-        value: _toDouble(j['value']),
-        unit: (j['unit'] as String?) ?? '',
-        measuredAt:
-            DateTime.tryParse(j['measuredAt']?.toString() ?? '')?.toLocal() ??
-                DateTime.now(),
-      );
+  factory HealthMetricValue.fromJson(Map<String, dynamic> j) {
+    final stages = <SleepSegment>[];
+    final raw = j['raw'];
+    if (raw is List) {
+      for (final e in raw) {
+        if (e is Map) {
+          final stage = e['stage']?.toString();
+          final start =
+              DateTime.tryParse(e['start']?.toString() ?? '')?.toLocal();
+          final end = DateTime.tryParse(e['end']?.toString() ?? '')?.toLocal();
+          if (stage != null && start != null && end != null && end.isAfter(start)) {
+            stages.add(SleepSegment(stage: stage, start: start, end: end));
+          }
+        }
+      }
+    }
+    return HealthMetricValue(
+      type: (j['type'] as String?) ?? '',
+      value: _toDouble(j['value']),
+      unit: (j['unit'] as String?) ?? '',
+      measuredAt:
+          DateTime.tryParse(j['measuredAt']?.toString() ?? '')?.toLocal() ??
+              DateTime.now(),
+      sleepStages: stages,
+    );
+  }
 }
 
 class HealthConnection {

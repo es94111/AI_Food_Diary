@@ -3,8 +3,26 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptJson } from "@/lib/encryption";
-import { decryptMetricValue } from "@/lib/field-crypto";
+import { decryptField, decryptMetricValue } from "@/lib/field-crypto";
 import { getHealthSyncUserId } from "@/lib/health-auth";
+
+// Shape a stored HealthMetric row for the client: decrypt the value, decrypt
+// `raw` (e.g. a sleep stage timeline) when present, and drop the encrypted
+// columns so ciphertext is never sent over the wire.
+function toClientMetric(row: {
+  value: number | null;
+  encValue: unknown;
+  rawEncrypted: unknown;
+  [key: string]: unknown;
+}) {
+  const { encValue, rawEncrypted, ...rest } = row;
+  const raw = decryptField<unknown>(rawEncrypted, null);
+  return {
+    ...rest,
+    value: decryptMetricValue({ value: row.value, encValue }),
+    ...(raw !== null ? { raw } : {})
+  };
+}
 
 const healthMetricSchema = z.object({
   type: z.enum([
@@ -62,14 +80,23 @@ export async function GET(request: Request) {
       take: 50
     });
     // Decrypt each value back to plaintext for the API response, and drop the
-    // encrypted column so ciphertext is never sent to the client.
-    const metrics = rawMetrics.map(({ encValue, ...m }) => ({
-      ...m,
-      value: decryptMetricValue({ value: m.value, encValue })
-    }));
-    const latestByType = metrics.reduce<Record<string, (typeof metrics)[number]>>((latest, metric) => {
-      if (!latest[metric.type]) latest[metric.type] = metric;
-      return latest;
+    // encrypted columns so ciphertext is never sent to the client.
+    const metrics = rawMetrics.map(toClientMetric);
+
+    // Compute the latest value per type from a dedicated query rather than the
+    // capped `metrics` window. `measuredAt` is day-granular, so a single day can
+    // produce ~30 tied rows; with `take: 50` (≈1.5 days) sparse metrics like
+    // WATER / NUTRITION would be arbitrarily dropped from the window and show as
+    // stale/missing. `distinct` over (type) ordered by measuredAt desc returns
+    // exactly the most recent row for each type.
+    const latestRows = await prisma.healthMetric.findMany({
+      where: { userId: user.id },
+      orderBy: [{ type: "asc" }, { measuredAt: "desc" }],
+      distinct: ["type"]
+    });
+    const latestByType = latestRows.reduce<Record<string, (typeof metrics)[number]>>((acc, row) => {
+      acc[row.type] = toClientMetric(row);
+      return acc;
     }, {});
 
     // Recent weight readings (oldest→newest) for the app's trend sparkline.
@@ -83,7 +110,7 @@ export async function GET(request: Request) {
     const weightSeries = weightRows.map((row) => decryptMetricValue(row)).reverse();
 
     return NextResponse.json({
-      lastSyncedAt: metrics[0]?.updatedAt ?? null,
+      lastSyncedAt: rawMetrics[0]?.updatedAt ?? null,
       latestByType,
       weightSeries,
       metrics
