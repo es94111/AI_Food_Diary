@@ -182,6 +182,10 @@ class HealthService {
       // Sleep is aggregated separately (see _appendSleep) so we can also emit a
       // per-night stage timeline; skip the generic per-day roll-up for it here.
       if (backendType == 'SLEEP' || backendType.startsWith('SLEEP_')) continue;
+      // Nutrition is uploaded straight from the app's logged meals
+      // (see _mealNutritionMetrics) instead of round-tripping through Health
+      // Connect, so skip the unreliable HC read-back for it here.
+      if (backendType == 'NUTRITION') continue;
       final day = _localDayStart(p.dateFrom);
       final acc = accs.putIfAbsent((backendType, day), () => _Acc(unit, agg));
       final value = _valueFor(p, backendType, agg);
@@ -323,6 +327,32 @@ class HealthService {
     });
   }
 
+  /// Builds NUTRITION metrics straight from the app's own logged meals, summed
+  /// (calories) per local day. The Health Connect write→read round-trip for
+  /// nutrition is unreliable — and redundant, since the app already owns the
+  /// meal data — so we upload calories directly rather than reading them back.
+  static Future<List<Map<String, dynamic>>> _mealNutritionMetrics(
+      {int days = 7}) async {
+    final now = DateTime.now();
+    final byDay = <DateTime, double>{};
+    for (var i = 0; i < days; i++) {
+      try {
+        final meals = await MealService.mealsForDay(now.subtract(Duration(days: i)));
+        for (final meal in meals) {
+          final day = _localDayStart(meal.eatenAt);
+          byDay[day] = (byDay[day] ?? 0) + meal.totalCalories;
+        }
+      } catch (_) {
+        // Skip days that fail to load; keep building the rest.
+      }
+    }
+    final out = <Map<String, dynamic>>[];
+    byDay.forEach((day, kcal) {
+      if (kcal > 0) out.add(_payload('NUTRITION', kcal.roundToDouble(), 'kcal', day));
+    });
+    return out;
+  }
+
   static final _isoUtc = DateFormat("yyyy-MM-dd'T'HH:mm:ss.000'Z'");
 
   static DateTime _localDayStart(DateTime d) {
@@ -390,6 +420,8 @@ class HealthService {
       throw ApiException('請在 Health Connect 中授予讀取權限');
     }
     final metrics = await _fetchLast7Days();
+    // Nutrition comes straight from logged meals, not Health Connect.
+    metrics.addAll(await _mealNutritionMetrics());
     debugPrint('HealthSync: fetched ${metrics.length} metrics');
     if (metrics.isEmpty) return 0;
 
