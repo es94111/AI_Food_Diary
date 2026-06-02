@@ -199,6 +199,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       builder: (ctx) => _ConfirmSheet(
         items: items,
         imageDataUrl: _imageDataUrl,
+        onReestimate: (editedItems) async {
+          final analyzed = await MealService.reestimate(
+              _mealType, editedItems.map((e) => e.toMealItem()).toList());
+          return analyzed.map(EditableItem.fromAnalysis).toList();
+        },
         onSave: (confirmedItems) async {
           final items = confirmedItems.map((e) => e.toMealItem()).toList();
           // Nutrition is mirrored into Health Connect later, during the
@@ -690,11 +695,13 @@ class _ConfirmSheet extends StatefulWidget {
     required this.items,
     required this.imageDataUrl,
     required this.onSave,
+    required this.onReestimate,
   });
 
   final List<EditableItem> items;
   final String? imageDataUrl;
   final Future<void> Function(List<EditableItem>) onSave;
+  final Future<List<EditableItem>> Function(List<EditableItem>) onReestimate;
 
   @override
   State<_ConfirmSheet> createState() => _ConfirmSheetState();
@@ -703,7 +710,35 @@ class _ConfirmSheet extends StatefulWidget {
 class _ConfirmSheetState extends State<_ConfirmSheet> {
   late final List<EditableItem> _items = List.of(widget.items);
   bool _saving = false;
+  bool _reanalyzing = false;
   String? _error;
+
+  // Re-run AI on the edited items, replacing the list with the fresh estimate.
+  Future<void> _reestimate() async {
+    final valid = _items.where((e) => e.hasName).toList();
+    if (valid.isEmpty) {
+      setState(() => _error = '請先填寫至少一項食物名稱再重新辨識。');
+      return;
+    }
+    setState(() {
+      _reanalyzing = true;
+      _error = null;
+    });
+    try {
+      final result = await widget.onReestimate(valid);
+      if (mounted) {
+        setState(() {
+          _items
+            ..clear()
+            ..addAll(result);
+        });
+      }
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _reanalyzing = false);
+    }
+  }
 
   Future<void> _save() async {
     final valid = _items.where((e) => e.hasName).toList();
@@ -748,6 +783,9 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
             ..._items.asMap().entries.map((entry) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: ItemEditor(
+                    // Keyed by item identity so the text fields rebuild with the
+                    // fresh values after a re-estimate swaps in new objects.
+                    key: ObjectKey(entry.value),
                     item: entry.value,
                     index: entry.key,
                     onChanged: () => setState(() {}),
@@ -771,8 +809,24 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
               Text(_error!, style: const TextStyle(color: Colors.red)),
             ],
             const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _saving || _reanalyzing ? null : _reestimate,
+              style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14)),
+              icon: _reanalyzing
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.refresh),
+              label: Text(_reanalyzing ? '重新辨識中...' : '依修改重新 AI 辨識'),
+            ),
+            const SizedBox(height: 4),
+            const Text('修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。',
+                style: TextStyle(fontSize: 11, color: Colors.black45)),
+            const SizedBox(height: 8),
             FilledButton(
-              onPressed: _saving ? null : _save,
+              onPressed: _saving || _reanalyzing ? null : _save,
               style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               child: _saving

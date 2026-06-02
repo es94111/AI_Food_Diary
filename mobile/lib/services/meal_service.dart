@@ -54,6 +54,18 @@ class MealService {
     }, 'AI 評分失敗，請稍後再試');
   }
 
+  /// Re-estimates nutrition for user-corrected items. Recomputes calories and
+  /// macros from the edited name + amount (not the original photo), so fixing a
+  /// food name refreshes the whole estimate.
+  static Future<List<FoodAnalysisItem>> reestimate(
+      String mealType, List<MealItem> items) {
+    return _analyze('/api/meals/reestimate', {
+      'mealType': mealType,
+      'manualItems': items.map((e) => e.toPayload()).toList(),
+      'eatenAt': DateTime.now().toUtc().toIso8601String(),
+    }, '重新 AI 辨識失敗，請稍後再試');
+  }
+
   static Future<List<FoodAnalysisItem>> analyzeNutritionLabel(
       String imageDataUrl) {
     return _analyze('/api/meals/analyze-nutrition-label', {

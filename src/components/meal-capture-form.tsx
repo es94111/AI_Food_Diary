@@ -47,6 +47,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
 
   useEffect(() => {
     loadSavedFoods();
@@ -237,6 +238,35 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       router.refresh();
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Re-run AI on the user's corrected items: recomputes nutrition from the
+  // edited name + amount (not the original photo) and replaces the confirm list.
+  async function reanalyzeConfirmItems() {
+    const items = itemsForPayload(confirmItems);
+    if (items.length === 0) {
+      setError("請先填寫至少一項食物名稱再重新辨識。");
+      return;
+    }
+    setReanalyzing(true);
+    setError("");
+    try {
+      const response = await fetch("/api/meals/reestimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mealType: confirmMealType, manualItems: items, eatenAt: new Date().toISOString() })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "重新 AI 辨識失敗，請稍後再試");
+        return;
+      }
+      setConfirmItems(itemsFromAnalysis(data.analysis.foods));
+    } catch (error) {
+      setError(error instanceof Error ? `重新辨識失敗：${error.message}` : "重新 AI 辨識失敗，請稍後再試");
+    } finally {
+      setReanalyzing(false);
     }
   }
 
@@ -446,7 +476,16 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
             </div>
             <button className="mt-3 w-full rounded-xl border border-dashed border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setConfirmItems((items) => [...items, emptyManualItem()])} type="button">新增食物品項</button>
             {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-            <button className="mt-4 w-full cursor-pointer rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={loading} onClick={saveConfirmedMeal} type="button">
+            <button
+              className="mt-4 w-full cursor-pointer rounded-2xl border border-amber-700 px-4 py-3 font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:opacity-60"
+              disabled={loading || reanalyzing}
+              onClick={reanalyzeConfirmItems}
+              type="button"
+            >
+              {reanalyzing ? "重新辨識中..." : "依修改重新 AI 辨識"}
+            </button>
+            <p className="mt-2 text-xs text-stone-500">修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。</p>
+            <button className="mt-3 w-full cursor-pointer rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={loading || reanalyzing} onClick={saveConfirmedMeal} type="button">
               {loading ? "儲存中..." : "確認並儲存餐點"}
             </button>
           </div>

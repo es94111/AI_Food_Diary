@@ -34,6 +34,9 @@ const defaultMealDescriptionAnalysisPrompt =
 const defaultManualFoodRatingPrompt =
   '你是營養分析助手。請根據使用者手動輸入的食物品項判斷每項食物的 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。請保留使用者已提供的食物名稱、份量、熱量與三大營養素；只有當數字為 0 或明顯缺漏時，才依食物與份量做保守估算。每一種食物都必須獨立成 foods 陣列中的一個項目。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者手動品項：{{items}}';
 
+const defaultFoodReestimatePrompt =
+  '你是營養分析助手。使用者已修正每項食物的名稱與份量。請「忽略」輸入中既有的熱量與三大營養素數字，完全依照修正後的名稱與份量重新估算每項食物的熱量、蛋白質、脂肪與碳水，並為每項給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。請保留使用者提供的食物名稱與份量，不要新增或刪除品項，每一筆輸入都要對應一筆輸出。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者修正後品項：{{items}}';
+
 const defaultNutritionLabelAnalysisPrompt =
   '你是營養標示辨識助手。請讀取圖片中的營養標示，建立一個 foods 項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
 
@@ -269,6 +272,31 @@ export async function analyzeMealDescription(config: AiConfig, description: stri
 export async function analyzeManualFoodItems(config: AiConfig, items: FoodAnalysis["foods"]): Promise<FoodAnalysis> {
   const prompt = renderPrompt(promptFromEnv("AI_MANUAL_FOOD_RATING_PROMPT", defaultManualFoodRatingPrompt), {
     items: JSON.stringify(items)
+  });
+
+  const response = await client(config).chat.completions.create({
+    model: config.textModel,
+    messages: [
+      {
+        role: "user",
+        content: prompt
+      }
+    ]
+  });
+
+  return parseMealAnalysisText(completionText(response));
+}
+
+// Re-estimates nutrition for user-corrected items: unlike analyzeManualFoodItems
+// (which keeps any non-zero numbers the user supplied), this recomputes calories
+// and macros purely from the corrected name + amount, so fixing a food name
+// ("便當" → "排骨便當") refreshes the whole estimate.
+export async function reestimateFoodItems(
+  config: AiConfig,
+  items: Array<{ name: string; estimatedAmount: string }>
+): Promise<FoodAnalysis> {
+  const prompt = renderPrompt(promptFromEnv("AI_FOOD_REESTIMATE_PROMPT", defaultFoodReestimatePrompt), {
+    items: JSON.stringify(items.map((item) => ({ name: item.name, estimatedAmount: item.estimatedAmount })))
   });
 
   const response = await client(config).chat.completions.create({
