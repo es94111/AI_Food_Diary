@@ -191,6 +191,12 @@ class HealthService {
       // _waterIntakeMetrics); skip the HC read-back so the two don't collide on
       // the same (source, type, day) upsert key.
       if (backendType == 'WATER') continue;
+      // Steps are read via Health Connect's de-duplicating aggregation API
+      // (see _appendSteps) instead of summing raw records. Summing the raw
+      // STEPS records double-counts when more than one app writes steps (phone
+      // pedometer + watch + Google Fit, …), inflating the daily total; skip the
+      // generic per-day roll-up for STEPS here.
+      if (backendType == 'STEPS') continue;
       final day = _localDayStart(p.dateFrom);
       final acc = accs.putIfAbsent((backendType, day), () => _Acc(unit, agg));
       final value = _valueFor(p, backendType, agg);
@@ -239,8 +245,33 @@ class HealthService {
       });
     }
 
+    await _appendSteps(out);
     _appendSleep(points, out);
     return out;
+  }
+
+  /// Emits one STEPS metric per local day using Health Connect's aggregation
+  /// API (`getTotalStepsInInterval`), which de-duplicates overlapping step
+  /// records across data sources — the same number Health Connect itself shows.
+  ///
+  /// Summing the raw STEPS records (the generic roll-up) instead double-counts
+  /// whenever more than one app writes steps (phone pedometer + watch + Google
+  /// Fit, …): their records overlap in time and `removeDuplicates` only drops
+  /// exactly-identical points, so the daily total climbs far past reality.
+  static Future<void> _appendSteps(List<Map<String, dynamic>> out) async {
+    final now = DateTime.now();
+    for (var i = 0; i < 7; i++) {
+      final dayStart = _localDayStart(now.subtract(Duration(days: i)));
+      final dayEnd = dayStart.add(const Duration(days: 1));
+      try {
+        final steps = await _health.getTotalStepsInInterval(dayStart, dayEnd);
+        if (steps != null && steps > 0) {
+          out.add(_payload('STEPS', steps.toDouble(), 'count', dayStart));
+        }
+      } catch (_) {
+        // Skip days the aggregation fails for; keep building the rest.
+      }
+    }
   }
 
   /// Aggregates sleep separately from the generic roll-up: stage records
