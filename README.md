@@ -38,6 +38,19 @@ AI_DAILY_SUMMARY_PROMPT="每日總結提示語"
 
 `AI_DAILY_SUMMARY_PROMPT` 支援模板變數：`{{date}}`、`{{calorieTarget}}`、`{{totalCalories}}`、`{{totalProtein}}`、`{{totalFat}}`、`{{totalCarbs}}`。
 
+### 辨識穩定度調校
+
+為了縮小「同一張照片每次辨識熱量飄動」的問題，所有 AI 呼叫都會帶入低 `temperature` 與固定 `seed`，並對回傳 JSON 的呼叫啟用 JSON mode；餐點照片提示語也改為「估份量（公克）→ 取每 100g 密度 → 份量×密度」的分步估算。以下變數皆為選填，可在 `.env` 覆寫後重啟 app/worker：
+
+```env
+AI_ANALYSIS_TEMPERATURE="0.2"            # 越低越穩定，辨識類任務建議 0~0.3
+AI_ANALYSIS_SEED="42"                     # 固定種子（OpenAI 系支援，部分相容服務會忽略）
+AI_MEAL_ANALYSIS_SAMPLES="3"             # 精準模式取樣次數，設 1 可停用
+AI_MEAL_ANALYSIS_SAMPLE_TEMPERATURE="0.5" # 精準模式各次取樣的 temperature
+```
+
+**精準模式**：拍照新增餐點時可勾選「精準模式」，後端會對同一張圖跑 `AI_MEAL_ANALYSIS_SAMPLES` 次，取**總熱量中位數**的結果，飄動更小（代價是分析較慢、token 用量約為取樣次數倍）。`temperature`／`seed`／JSON mode／分步估算對 Web 與手機 App 自動生效；精準模式勾選框目前僅在 Web。
+
 PowerShell 產生加密金鑰範例：
 
 ```powershell

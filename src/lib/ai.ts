@@ -25,17 +25,22 @@ const foodAnalysisSchema = z.object({
 
 export type FoodAnalysis = z.infer<typeof foodAnalysisSchema>;
 
+// Step-wise estimation: ask the model to fix the portion in grams first, then
+// apply a per-100g nutrient density, instead of guessing total calories in one
+// leap. Decomposing "weight × density" both improves accuracy and makes the
+// estimate auditable (the assumptions land in notes), which shrinks the spread
+// between runs on the same photo.
 const defaultMealAnalysisPrompt =
-  '你是營養分析助手。請根據餐點照片估算食物、份量、熱量與三大營養素。每一種可辨識食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱。例如炸素排與玉米濃湯必須分成兩筆。請為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。';
+  '你是專業營養分析助手。請依下列步驟分析餐點照片，每一種可辨識食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱（例如炸素排與玉米濃湯必須分成兩筆）：\n步驟1：辨識每一種食物。\n步驟2：估算每項食物的可見份量，換算成公克或毫升，estimatedAmount 請寫成含數量的描述（例如「約 150g」「約 240ml」）。若畫面中有餐具、碗盤、手或包裝可當比例尺，請用它們輔助判斷大小。\n步驟3：取該食物每 100g（或每 100ml）的標準熱量與三大營養素密度。\n步驟4：以「份量 ÷ 100 × 密度」計算該項的 calories、protein、fat、carbs。\n步驟5：為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。\n請在 notes 用一句話說明你對主要食物所假設的份量（公克）與每 100g 熱量，方便使用者稽核。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"約 150g","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。';
 
 const defaultMealDescriptionAnalysisPrompt =
-  '你是營養分析助手。請根據使用者用文字描述的餐點估算食物、份量、熱量與三大營養素。每一種食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱。若描述含糊，請使用常見份量保守估算，並在 notes 說明假設。請為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.7,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者描述：{{description}}';
+  '你是專業營養分析助手。請依下列步驟分析使用者用文字描述的餐點，每一種食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱：\n步驟1：辨識每一種食物。\n步驟2：判斷每項食物的份量並換算成公克或毫升，estimatedAmount 請寫成含數量的描述（例如「約 150g」）。若描述含糊，請以常見單份保守估算。\n步驟3：取該食物每 100g（或每 100ml）的標準熱量與三大營養素密度。\n步驟4：以「份量 ÷ 100 × 密度」計算該項的 calories、protein、fat、carbs。\n步驟5：為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。\n請在 notes 用一句話說明你對主要食物所假設的份量（公克）與每 100g 熱量，含糊處一併說明。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"約 150g","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.7,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者描述：{{description}}';
 
 const defaultManualFoodRatingPrompt =
   '你是營養分析助手。請根據使用者手動輸入的食物品項判斷每項食物的 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。請保留使用者已提供的食物名稱、份量、熱量與三大營養素；只有當數字為 0 或明顯缺漏時，才依食物與份量做保守估算。每一種食物都必須獨立成 foods 陣列中的一個項目。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者手動品項：{{items}}';
 
 const defaultFoodReestimatePrompt =
-  '你是營養分析助手。使用者已修正每項食物的名稱與份量。請「忽略」輸入中既有的熱量與三大營養素數字，完全依照修正後的名稱與份量重新估算每項食物的熱量、蛋白質、脂肪與碳水，並為每項給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。請保留使用者提供的食物名稱與份量，不要新增或刪除品項，每一筆輸入都要對應一筆輸出。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者修正後品項：{{items}}';
+  '你是專業營養分析助手。使用者已修正每項食物的名稱與份量。請「忽略」輸入中既有的熱量與三大營養素數字，完全依照修正後的名稱與份量，用以下步驟重新估算每項食物：步驟1：把份量換算成公克或毫升。步驟2：取該食物每 100g（或每 100ml）的標準熱量與三大營養素密度。步驟3：以「份量 ÷ 100 × 密度」計算 calories、protein、fat、carbs。步驟4：為每項給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。請保留使用者提供的食物名稱與份量，不要新增或刪除品項，每一筆輸入都要對應一筆輸出。請在 notes 用一句話說明主要食物所假設的每 100g 熱量。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者修正後品項：{{items}}';
 
 const defaultNutritionLabelAnalysisPrompt =
   '你是營養標示辨識助手。請讀取圖片中的營養標示，建立一個 foods 項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
@@ -55,6 +60,35 @@ export type AiConfig = {
   visionModel: string;
   textModel: string;
 };
+
+// Sampling controls shared by every completion. A low temperature is the single
+// biggest lever against run-to-run drift (providers default to ~1.0); a fixed
+// seed makes identical inputs reproducible on providers that honour it (OpenAI).
+// Both are env-overridable so operators can tune per provider.
+const ANALYSIS_TEMPERATURE = numberEnv("AI_ANALYSIS_TEMPERATURE", 0.2);
+const ANALYSIS_SEED = numberEnv("AI_ANALYSIS_SEED", 42);
+// Precise mode (self-consistency) runs the same image several times and keeps the
+// median; a slightly higher temperature gives the runs enough diversity for the
+// median to be meaningful. Defaults to 3 samples; set to 1 to disable.
+const PRECISE_SAMPLES = Math.max(1, Math.min(Math.round(numberEnv("AI_MEAL_ANALYSIS_SAMPLES", 3)), 5));
+const PRECISE_TEMPERATURE = numberEnv("AI_MEAL_ANALYSIS_SAMPLE_TEMPERATURE", 0.5);
+
+function numberEnv(name: string, fallback: number) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+// Builds the shared request knobs. `seed: null` opts out of the fixed seed (used
+// when sampling, so the runs actually differ). `json` switches on JSON mode to
+// cut down on free-text parsing failures — only safe for prompts that already ask
+// for JSON, and skipped for the plain-text advice endpoints.
+function completionOptions(opts: { json?: boolean; temperature?: number; seed?: number | null } = {}) {
+  const { json = false, temperature = ANALYSIS_TEMPERATURE, seed = ANALYSIS_SEED } = opts;
+  const options: Record<string, unknown> = { temperature };
+  if (seed !== null && Number.isFinite(seed)) options.seed = seed;
+  if (json) options.response_format = { type: "json_object" };
+  return options;
+}
 
 function client(config: AiConfig) {
   if (!config.apiKey) {
@@ -202,6 +236,33 @@ function renderPrompt(template: string, values: Record<string, string | number>)
   );
 }
 
+async function requestMealImageAnalysis(
+  config: AiConfig,
+  imageDataUrl: string,
+  options: { temperature?: number; seed?: number | null } = {}
+): Promise<FoodAnalysis> {
+  const response = await client(config).chat.completions.create({
+    model: config.visionModel,
+    ...completionOptions({ json: true, ...options }),
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text: promptFromEnv("AI_MEAL_ANALYSIS_PROMPT", defaultMealAnalysisPrompt)
+          },
+          // "high" detail gives the model the resolution it needs to judge
+          // portion size, which is the dominant source of calorie error.
+          { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }
+        ]
+      }
+    ]
+  });
+
+  return parseMealAnalysisText(completionText(response));
+}
+
 export async function analyzeMealImage(config: AiConfig, imageDataUrl?: string): Promise<FoodAnalysis> {
   if (!imageDataUrl) {
     return {
@@ -212,28 +273,52 @@ export async function analyzeMealImage(config: AiConfig, imageDataUrl?: string):
     };
   }
 
-  const response = await client(config).chat.completions.create({
-    model: config.visionModel,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: promptFromEnv("AI_MEAL_ANALYSIS_PROMPT", defaultMealAnalysisPrompt)
-          },
-          { type: "image_url", image_url: { url: imageDataUrl, detail: "auto" } }
-        ]
-      }
-    ]
-  });
+  return requestMealImageAnalysis(config, imageDataUrl);
+}
 
-  return parseMealAnalysisText(completionText(response));
+// Self-consistency for the photo flow: run the same image several times and keep
+// the sample whose total calories is the median. Portion estimation is what
+// drifts between runs, so the median run is a robust point estimate — and keeping
+// a whole real sample (rather than averaging mismatched food lists) means the
+// foods/macros stay internally consistent. Runs use a higher temperature and no
+// fixed seed so they actually differ; falls back to a single deterministic run
+// when sampling is disabled or no image is given.
+export async function analyzeMealImageStable(
+  config: AiConfig,
+  imageDataUrl?: string,
+  samples = PRECISE_SAMPLES
+): Promise<FoodAnalysis> {
+  const count = Math.max(1, Math.min(Math.round(samples), 5));
+  if (!imageDataUrl || count === 1) return analyzeMealImage(config, imageDataUrl);
+
+  const settled = await Promise.allSettled(
+    Array.from({ length: count }, (_unused, index) =>
+      requestMealImageAnalysis(config, imageDataUrl, { temperature: PRECISE_TEMPERATURE, seed: ANALYSIS_SEED + index })
+    )
+  );
+  const analyses = settled
+    .filter((result): result is PromiseFulfilledResult<FoodAnalysis> => result.status === "fulfilled")
+    .map((result) => result.value)
+    .filter((analysis) => analysis.foods.length > 0);
+
+  if (analyses.length === 0) {
+    const rejection = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+    throw rejection?.reason ?? new Error("OPENAI_RESPONSE_NOT_PARSEABLE");
+  }
+  if (analyses.length === 1) return analyses[0];
+
+  const sorted = [...analyses].sort((a, b) => a.total.calories - b.total.calories);
+  const median = sorted[Math.floor((sorted.length - 1) / 2)];
+  return {
+    ...median,
+    notes: `${median.notes}（精準模式：取 ${analyses.length} 次辨識的中位數，總熱量範圍 ${sorted[0].total.calories}–${sorted[sorted.length - 1].total.calories} kcal）`
+  };
 }
 
 export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrl: string): Promise<FoodAnalysis> {
   const response = await client(config).chat.completions.create({
     model: config.visionModel,
+    ...completionOptions({ json: true }),
     messages: [
       {
         role: "user",
@@ -258,6 +343,7 @@ export async function analyzeMealDescription(config: AiConfig, description: stri
 
   const response = await client(config).chat.completions.create({
     model: config.textModel,
+    ...completionOptions({ json: true }),
     messages: [
       {
         role: "user",
@@ -276,6 +362,7 @@ export async function analyzeManualFoodItems(config: AiConfig, items: FoodAnalys
 
   const response = await client(config).chat.completions.create({
     model: config.textModel,
+    ...completionOptions({ json: true }),
     messages: [
       {
         role: "user",
@@ -301,6 +388,7 @@ export async function reestimateFoodItems(
 
   const response = await client(config).chat.completions.create({
     model: config.textModel,
+    ...completionOptions({ json: true }),
     messages: [
       {
         role: "user",
@@ -328,8 +416,10 @@ export async function generateNextMealAdvice(config: AiConfig, input: {
     healthContext: input.healthContext ?? "尚未同步"
   });
 
+  // Plain-text advice — no JSON mode, but still temperature-bounded for stability.
   const response = await client(config).chat.completions.create({
     model: config.textModel,
+    ...completionOptions(),
     messages: [
       {
         role: "user",
@@ -359,6 +449,7 @@ export async function generateDailySummary(config: AiConfig, input: {
 
   const response = await client(config).chat.completions.create({
     model: config.textModel,
+    ...completionOptions({ json: true }),
     messages: [
       {
         role: "user",

@@ -43,6 +43,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   const nutritionLabelInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<CaptureMode>("photo");
   const [preview, setPreview] = useState<string>();
+  const [preciseMode, setPreciseMode] = useState(false);
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
   const [nutritionLabelLoading, setNutritionLabelLoading] = useState(false);
@@ -144,7 +145,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         return;
       }
       endpoint = "/api/meals/analyze";
-      payload = { mealType, imageDataUrl: preview };
+      payload = { mealType, imageDataUrl: preview, precise: preciseMode };
     } else if (mode === "describe") {
       const mealDescription = description.trim();
       if (!mealDescription) {
@@ -369,6 +370,18 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
             點此拍照/上傳，或將圖片拖放到這裡
           </button>
         )}
+        <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm">
+          <input
+            checked={preciseMode}
+            className="mt-0.5 h-4 w-4 accent-amber-700"
+            onChange={(event) => setPreciseMode(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            <span className="font-semibold text-amber-950">精準模式</span>
+            <span className="ml-1 text-xs text-amber-700">多次辨識取中位數，熱量更穩定（分析較慢、用量約 3 倍）。</span>
+          </span>
+        </label>
       </div>
       ) : null}
       {mode === "describe" ? (

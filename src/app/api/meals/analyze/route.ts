@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { analyzeMealImage } from "@/lib/ai";
+import { analyzeMealImage, analyzeMealImageStable } from "@/lib/ai";
 import { resolveUserAiConfig } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
 import { apiError, HttpError } from "@/lib/http";
@@ -13,7 +13,12 @@ export async function POST(request: Request) {
     if (limited) return limited;
     const body = mealSchema.parse(await request.json());
     if (!body.imageDataUrl) return NextResponse.json({ error: "請先上傳圖片再進行 AI 分析。" }, { status: 400 });
-    const analysis = await analyzeMealImage(resolveUserAiConfig(user), body.imageDataUrl);
+    const config = resolveUserAiConfig(user);
+    // Precise mode trades ~3× tokens for a median-of-samples estimate that drifts
+    // far less between identical photos.
+    const analysis = body.precise
+      ? await analyzeMealImageStable(config, body.imageDataUrl)
+      : await analyzeMealImage(config, body.imageDataUrl);
     return NextResponse.json({ analysis });
   } catch (error) {
     if (error instanceof HttpError) return apiError(error);
