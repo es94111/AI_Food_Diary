@@ -29,6 +29,7 @@ export const PATCH = apiRoute(async (request: Request) => {
     activityLevel: body.activityLevel,
     goal: body.goal,
     calorieTarget: body.calorieTarget,
+    waterGoalMl: body.waterGoalMl,
     encryptedPreferences: body.preferences ? encryptJson(body.preferences) : undefined,
     encryptedAllergies: body.allergies ? encryptJson(body.allergies) : undefined
   };

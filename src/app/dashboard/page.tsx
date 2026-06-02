@@ -12,6 +12,7 @@ import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabo
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { AiInfoCard } from "@/components/ai-info-card";
 import { MealList } from "@/components/meal-list";
+import { WaterCard } from "@/components/water-card";
 import { DateRangeSwitcher } from "@/components/date-range-switcher";
 import { WeeklyNutritionReview } from "@/components/weekly-nutrition-review";
 
@@ -91,6 +92,22 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   });
   const title = view === "week" ? `${weekStartStrValue} — ${addDaysStr(weekStartStrValue, 6)}` : selectedDateStr;
 
+  // Water tracking is a daily habit metric, so the card only shows in day view.
+  const waterLogs =
+    view === "day"
+      ? await prisma.waterLog.findMany({
+          where: { userId: user.id, drankAt: { gte: start, lt: end } },
+          orderBy: { drankAt: "desc" }
+        })
+      : [];
+  const waterTotalMl = waterLogs.reduce((sum, log) => sum + log.amountMl, 0);
+  const waterGoalMl = decProfile?.waterGoalMl ?? 2000;
+  const waterLogsView = waterLogs.map((log) => ({
+    id: log.id,
+    amountMl: log.amountMl,
+    drankAt: log.drankAt.toISOString()
+  }));
+
   return (
     <>
       <header className="mt-6">
@@ -122,6 +139,17 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
             </div>
           </div>
         </div>
+        {view === "day" ? (
+          <WaterCard
+            key={selectedDateStr}
+            dateStr={selectedDateStr}
+            tz={tzName(tz)}
+            goalMl={waterGoalMl}
+            initialLogs={waterLogsView}
+            initialTotalMl={waterTotalMl}
+            isToday={isTodayView}
+          />
+        ) : null}
         <MealCaptureForm initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""} />
         <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">{view === "week" ? "本週餐點" : "當日餐點"}</h2>

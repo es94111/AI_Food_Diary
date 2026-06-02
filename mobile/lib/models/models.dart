@@ -20,6 +20,7 @@ class UserProfile {
   final String? activityLevel;
   final String goal;
   final int calorieTarget;
+  final int waterGoalMl;
 
   UserProfile({
     this.gender,
@@ -29,6 +30,7 @@ class UserProfile {
     this.activityLevel,
     this.goal = 'MAINTAIN',
     this.calorieTarget = 2000,
+    this.waterGoalMl = 2000,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> j) => UserProfile(
@@ -39,6 +41,22 @@ class UserProfile {
         activityLevel: j['activityLevel'] as String?,
         goal: (j['goal'] as String?) ?? 'MAINTAIN',
         calorieTarget: j['calorieTarget'] == null ? 2000 : _toInt(j['calorieTarget']),
+        waterGoalMl: j['waterGoalMl'] == null ? 2000 : _toInt(j['waterGoalMl']),
+      );
+}
+
+class WaterLog {
+  final String id;
+  final int amountMl;
+  final DateTime drankAt;
+
+  WaterLog({required this.id, required this.amountMl, required this.drankAt});
+
+  factory WaterLog.fromJson(Map<String, dynamic> j) => WaterLog(
+        id: j['id'] as String,
+        amountMl: _toInt(j['amountMl']),
+        drankAt: DateTime.tryParse(j['drankAt']?.toString() ?? '')?.toLocal() ??
+            DateTime.now(),
       );
 }
 

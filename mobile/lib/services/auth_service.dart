@@ -88,6 +88,7 @@ class AuthService {
     String? activityLevel,
     String? goal,
     int? calorieTarget,
+    int? waterGoalMl,
   }) async {
     final res = await _api.patch('/api/me', data: {
       if (gender != null) 'gender': gender,
@@ -97,6 +98,7 @@ class AuthService {
       if (activityLevel != null) 'activityLevel': activityLevel,
       if (goal != null) 'goal': goal,
       if (calorieTarget != null) 'calorieTarget': calorieTarget,
+      if (waterGoalMl != null) 'waterGoalMl': waterGoalMl,
     });
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '儲存失敗，請確認資料格式。'),

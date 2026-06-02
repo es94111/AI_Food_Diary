@@ -32,6 +32,7 @@ model User {
   tokenVersion Int            @default(0)
   profile      UserProfile?
   meals        Meal[]
+  waterLogs    WaterLog[]
   summaries    DailySummary[]
   savedFoods   SavedFood[]
   recommendations DailyRecommendation[]
@@ -63,6 +64,7 @@ model UserProfile {
   activityLevel        String?
   goal                 Goal     @default(MAINTAIN)
   calorieTarget        Int      @default(2000)
+  waterGoalMl          Int      @default(2000)
   timezone             String?
   encryptedPreferences Json?
   encryptedAllergies   Json?
@@ -116,6 +118,18 @@ model MealItem {
   meal            Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+model WaterLog {
+  id        String   @id @default(cuid())
+  userId    String
+  amountMl  Int
+  drankAt   DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, drankAt])
 }
 
 model SavedFood {

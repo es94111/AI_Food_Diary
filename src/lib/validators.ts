@@ -21,8 +21,14 @@ export const profileSchema = z.object({
   activityLevel: z.string().max(80).optional(),
   goal: z.enum(["LOSE_FAT", "MAINTAIN", "BUILD_MUSCLE"]).optional(),
   calorieTarget: z.coerce.number().int().min(800).max(6000).optional(),
+  waterGoalMl: z.coerce.number().int().min(100).max(10000).optional(),
   preferences: z.array(z.string().max(80)).optional(),
   allergies: z.array(z.string().max(80)).optional()
+});
+
+export const waterLogSchema = z.object({
+  amountMl: z.coerce.number().int().min(1).max(5000),
+  drankAt: z.string().datetime().optional()
 });
 
 export const mealSchema = z.object({

@@ -11,6 +11,7 @@ import '../widgets/health_sync_card.dart';
 import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
+import '../widgets/water_card.dart';
 import '../widgets/profile_form.dart';
 import '../widgets/update_card.dart';
 import 'login_screen.dart';
@@ -210,6 +211,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _dateSwitcher(),
           const SizedBox(height: 12),
           _calorieCard(totals, target),
+          if (!_weekView) ...[
+            const SizedBox(height: 12),
+            WaterCard(
+              key: ValueKey('water-${isoDate(_selectedDate)}'),
+              date: _selectedDate,
+              goalMl: _user?.profile?.waterGoalMl ?? 2000,
+              isToday: _isToday,
+              onGoalChanged: _refreshUserAndMeals,
+            ),
+          ],
           const SizedBox(height: 12),
           MealCaptureForm(
               onSaved: _loadMeals,
