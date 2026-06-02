@@ -4,11 +4,31 @@ import type { ReactNode } from "react";
 // activity rings, sleep hypnogram/bar, weight sparkline). Pure render functions
 // with no client-only APIs, so they render fine inside a server component.
 
+export type MetricValue = { value: number; unit: string; measuredAt: Date };
+
 export function latestMetricsByType(metrics: Array<{ type: string; value: number; unit: string; measuredAt: Date }>) {
-  return metrics.reduce<Record<string, { value: number; unit: string; measuredAt: Date }>>((latest, metric) => {
+  return metrics.reduce<Record<string, MetricValue>>((latest, metric) => {
     if (!latest[metric.type]) latest[metric.type] = metric;
     return latest;
   }, {});
+}
+
+// Whether an instant falls within the user's current calendar day.
+function isWithin(measuredAt: Date, start: Date, end: Date) {
+  return measuredAt >= start && measuredAt < end;
+}
+
+// "6/2 14:30" in the user's zone — body-composition readings keep their exact
+// timestamp since they're allowed to be older than today.
+function formatMeasuredAt(measuredAt: Date, tz: string) {
+  return new Intl.DateTimeFormat("zh-TW", {
+    timeZone: tz,
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(measuredAt);
 }
 
 function formatHealthMetric(metric: { value: number; unit: string } | undefined, digits: number) {
@@ -162,16 +182,30 @@ export const HEALTH_GROUPS: HealthGroup[] = [
 export function HealthGroupCard({
   group,
   metrics,
-  chart
+  chart,
+  todayStart,
+  todayEnd,
+  tz
 }: {
   group: HealthGroup;
-  metrics: Record<string, { value: number; unit: string } | undefined>;
+  metrics: Record<string, MetricValue | undefined>;
   chart?: ReactNode;
+  todayStart: Date;
+  todayEnd: Date;
+  tz: string;
 }) {
   const accent = HEALTH_ACCENTS[group.accent];
+  // Body composition (weight, body fat, ...) changes slowly and is meaningful
+  // even when it's days old, so it shows the latest reading with its exact
+  // timestamp. Every other group is a daily snapshot — only today's data counts.
+  const showHistory = group.id === "body";
   // Only render tiles that actually have synced data — empty "尚未同步" tiles
   // dilute the real signal, so collapse them (and the whole card if nothing).
-  const present = group.metrics.filter((m) => metrics[m.type]);
+  const present = group.metrics.filter((m) => {
+    const metric = metrics[m.type];
+    if (!metric) return false;
+    return showHistory || isWithin(metric.measuredAt, todayStart, todayEnd);
+  });
   if (present.length === 0 && !chart) return null;
   return (
     <div className="glass glass-lift rounded-[2rem] p-6">
@@ -197,6 +231,7 @@ export function HealthGroupCard({
                 <p className={`mt-1 text-lg font-black ${valueColor}`}>
                   {m.sleep ? formatSleep(metric) : formatHealthMetric(metric, m.digits ?? 0)}
                 </p>
+                {showHistory ? <p className="mt-0.5 text-[10px] text-stone-400">{formatMeasuredAt(metric.measuredAt, tz)}</p> : null}
                 {pct !== null ? (
                   <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/5">
                     <div className={`h-full rounded-full ${accent.bar}`} style={{ width: `${pct * 100}%` }} />
@@ -211,20 +246,33 @@ export function HealthGroupCard({
   );
 }
 
-// Apple-style activity rings: the day's hero metric for the health tab.
-export function ActivityHero({ metrics }: { metrics: Record<string, { value: number; unit: string } | undefined> }) {
+// Apple-style activity rings: the day's hero metric for the health tab. Only
+// today's readings count — this card is explicitly "今日活動".
+export function ActivityHero({
+  metrics,
+  todayStart,
+  todayEnd
+}: {
+  metrics: Record<string, MetricValue | undefined>;
+  todayStart: Date;
+  todayEnd: Date;
+}) {
+  const todayMetric = (type: string) => {
+    const metric = metrics[type];
+    return metric && isWithin(metric.measuredAt, todayStart, todayEnd) ? metric : undefined;
+  };
   const rings = [
     { type: "STEPS", label: "步數", color: "#fbbf24" },
     { type: "ACTIVE_CALORIES", label: "活動熱量", color: "#fb7185" },
     { type: "EXERCISE", label: "運動", color: "#34d399" }
   ];
-  if (!rings.some((r) => metrics[r.type])) return null;
+  if (!rings.some((r) => todayMetric(r.type))) return null;
   return (
     <div className="glass-dark iridescent rounded-[2rem] p-6 text-white">
       <p className="text-sm font-medium text-stone-400">今日活動</p>
       <div className="mt-4 grid grid-cols-3 gap-2">
         {rings.map((r) => {
-          const metric = metrics[r.type];
+          const metric = todayMetric(r.type);
           const target = METRIC_TARGETS[r.type];
           const pct = metric ? metric.value / target : 0;
           return (

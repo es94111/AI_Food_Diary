@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolveUserTz, tzName, TZ_COOKIE } from "@/lib/timezone";
+import { dayRangeUtc, todayStr } from "@/lib/dates";
 import { decryptProfile } from "@/lib/profile-crypto";
 import { decryptField, decryptMetricValue } from "@/lib/field-crypto";
 import { calculateBmr, calculateTdee } from "@/lib/metabolism";
@@ -25,6 +26,9 @@ export default async function HealthPage() {
   const decProfile = decryptProfile(user.profile);
   const cookieStore = await cookies();
   const tz = resolveUserTz(cookieStore.get(TZ_COOKIE)?.value, user.profile?.timezone);
+  // Daily metrics only show today's reading; body composition is exempt (shown
+  // with its own timestamp). Compute today's UTC window in the user's zone.
+  const { start: todayStart, end: todayEnd } = dayRangeUtc(todayStr(tz), tz);
 
   const rawHealthMetrics = await prisma.healthMetric.findMany({
     where: { userId: user.id },
@@ -61,6 +65,9 @@ export default async function HealthPage() {
     : null;
   const bmr = calculateBmr(effectiveProfile);
   const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);
+  // Sleep belongs to a single day; only show last night's chart if it's today's.
+  const sleepMetric = latestHealthMetrics.SLEEP;
+  const sleepIsToday = sleepMetric ? sleepMetric.measuredAt >= todayStart && sleepMetric.measuredAt < todayEnd : false;
 
   return (
     <>
@@ -75,23 +82,28 @@ export default async function HealthPage() {
           <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、熱量、睡眠、運動、心率、體脂等資料。</p>
           <HealthConnectionsPanel />
         </div>
-        <ActivityHero metrics={latestHealthMetrics} />
+        <ActivityHero metrics={latestHealthMetrics} todayStart={todayStart} todayEnd={todayEnd} />
         {HEALTH_GROUPS.map((group) => (
           <HealthGroupCard
             key={group.id}
             group={group}
             metrics={latestHealthMetrics}
+            todayStart={todayStart}
+            todayEnd={todayEnd}
+            tz={tzName(tz)}
             chart={
               group.id === "sleep" ? (
-                <div className="space-y-4">
-                  {sleepStages.length >= 2 ? <SleepHypnogram segments={sleepStages} tz={tzName(tz)} /> : null}
-                  <SleepBar
-                    deep={latestHealthMetrics.SLEEP_DEEP?.value}
-                    light={latestHealthMetrics.SLEEP_LIGHT?.value}
-                    rem={latestHealthMetrics.SLEEP_REM?.value}
-                    awake={latestHealthMetrics.SLEEP_AWAKE?.value}
-                  />
-                </div>
+                sleepIsToday ? (
+                  <div className="space-y-4">
+                    {sleepStages.length >= 2 ? <SleepHypnogram segments={sleepStages} tz={tzName(tz)} /> : null}
+                    <SleepBar
+                      deep={latestHealthMetrics.SLEEP_DEEP?.value}
+                      light={latestHealthMetrics.SLEEP_LIGHT?.value}
+                      rem={latestHealthMetrics.SLEEP_REM?.value}
+                      awake={latestHealthMetrics.SLEEP_AWAKE?.value}
+                    />
+                  </div>
+                ) : undefined
               ) : group.id === "body" ? (
                 <Sparkline points={weightSeries} label="體重趨勢（近 14 筆）" unit="kg" />
               ) : undefined

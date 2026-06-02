@@ -214,7 +214,10 @@ class HealthService {
       };
       if (_integerTypes.contains(backendType)) value = value.roundToDouble();
       if (value <= 0 && acc.agg != _Agg.latest) return; // skip empty days
-      out.add(_payload(backendType, value, acc.unit, day));
+      // Body-composition ("latest") metrics keep the exact reading time so the
+      // dashboard can label "幾月幾日幾點幾分"; daily aggregates stay day-stamped.
+      final measuredAt = acc.agg == _Agg.latest ? (acc.lastAt ?? day) : day;
+      out.add(_payload(backendType, value, acc.unit, measuredAt));
     });
 
     // Health Connect has no BMI record — derive it from the latest weight and
@@ -225,8 +228,8 @@ class HealthService {
       accs.forEach((key, acc) {
         if (key.$1 == 'WEIGHT' && acc.lastValue > 0) {
           final bmi = acc.lastValue / (metres * metres);
-          out.add(_payload(
-              'BMI', double.parse(bmi.toStringAsFixed(1)), '', key.$2));
+          out.add(_payload('BMI', double.parse(bmi.toStringAsFixed(1)), '',
+              acc.lastAt ?? key.$2));
         }
       });
     }
@@ -401,13 +404,13 @@ class HealthService {
   }
 
   static Map<String, dynamic> _payload(
-      String type, double value, String unit, DateTime localDay,
+      String type, double value, String unit, DateTime at,
       {List<Map<String, dynamic>>? raw}) {
     return {
       'type': type,
       'value': value,
       'unit': unit,
-      'measuredAt': _isoUtc.format(localDay.toUtc()),
+      'measuredAt': _isoUtc.format(at.toUtc()),
       if (raw != null && raw.isNotEmpty) 'raw': raw,
     };
   }

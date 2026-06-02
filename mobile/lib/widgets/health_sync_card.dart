@@ -139,7 +139,12 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _init();
+  }
+
+  Future<void> _init() async {
+    await _load();
+    await _maybeAutoSync();
   }
 
   Future<void> _load() async {
@@ -153,7 +158,18 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     } catch (_) {}
   }
 
-  Future<void> _sync() async {
+  /// Auto-sync once when the app opens, but only if Health Connect read access
+  /// is already granted — so we never pop a permission dialog unprompted. The
+  /// meal-mirror write (which can itself prompt) is left to the manual button.
+  Future<void> _maybeAutoSync() async {
+    try {
+      if (await HealthService.hasPermissions() && mounted) {
+        await _sync(mirrorMeals: false);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _sync({bool mirrorMeals = true}) async {
     setState(() {
       _syncing = true;
       _message = null;
@@ -164,10 +180,12 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       // nutrition lags one sync behind. Best-effort: a write failure must not
       // block the core health-data sync.
       var meals = 0;
-      try {
-        meals = await HealthService.writeRecentMealsToHealth();
-      } catch (e) {
-        debugPrint('HealthSync: meal mirror failed $e');
+      if (mirrorMeals) {
+        try {
+          meals = await HealthService.writeRecentMealsToHealth();
+        } catch (e) {
+          debugPrint('HealthSync: meal mirror failed $e');
+        }
       }
       final count = await HealthService.syncNow();
       await _load();
@@ -191,6 +209,19 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   }
 
   HealthMetricValue? _metric(String type) => _status?.latestByType[type];
+
+  bool _isToday(DateTime d) {
+    final now = DateTime.now();
+    return d.year == now.year && d.month == now.month && d.day == now.day;
+  }
+
+  /// Latest reading for [type], but only if it was measured today. Used for
+  /// daily snapshots (activity, vitals, sleep, nutrition) where stale data is
+  /// misleading. Body composition uses [_metric] directly to keep older values.
+  HealthMetricValue? _todayMetric(String type) {
+    final m = _metric(type);
+    return (m != null && _isToday(m.measuredAt)) ? m : null;
+  }
 
   String _fmt(_MetricDef def) {
     final m = _metric(def.type);
@@ -274,7 +305,9 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       ('ACTIVE_CALORIES', '活動熱量', Color(0xFFFB7185)),
       ('EXERCISE', '運動', Color(0xFF34D399)),
     ];
-    if (!rings.any((r) => _metric(r.$1) != null)) return const SizedBox.shrink();
+    if (!rings.any((r) => _todayMetric(r.$1) != null)) {
+      return const SizedBox.shrink();
+    }
     return Container(
       margin: const EdgeInsets.only(top: 14),
       padding: const EdgeInsets.all(16),
@@ -303,7 +336,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   }
 
   Widget _heroRing(String type, String label, Color color) {
-    final m = _metric(type);
+    final m = _todayMetric(type);
     final target = _metricTargets[type] ?? 1;
     final pct = m == null ? 0.0 : m.value / target;
     return Column(
@@ -348,8 +381,13 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   /// stages), then a grid of tinted tiles. Tiles with no synced data are hidden,
   /// and the whole section collapses when nothing is available.
   Widget _groupSection(_MetricGroup group) {
-    final present =
-        group.metrics.where((m) => _metric(m.type) != null).toList();
+    // Body composition keeps older readings (shown with their timestamp); every
+    // other group is a daily snapshot, so only today's data is displayed.
+    final showHistory = group.id == 'body';
+    final present = group.metrics
+        .where((m) =>
+            (showHistory ? _metric(m.type) : _todayMetric(m.type)) != null)
+        .toList();
     final chart = _groupChart(group);
     if (present.isEmpty && chart == null) return const SizedBox.shrink();
     return Padding(
@@ -383,11 +421,13 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
               crossAxisCount: 3,
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
-              childAspectRatio: 1.4,
+              // Body tiles carry an extra timestamp line, so give them more height.
+              childAspectRatio: showHistory ? 1.05 : 1.4,
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
               children: [
-                for (final m in present) _metricTile(m, group.color),
+                for (final m in present)
+                  _metricTile(m, group.color, showTime: showHistory),
               ],
             ),
           ],
@@ -398,6 +438,8 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
 
   Widget? _groupChart(_MetricGroup group) {
     if (group.id == 'sleep') {
+      // Sleep belongs to one night; hide the chart unless it's last night's.
+      if (_todayMetric('SLEEP') == null) return null;
       final segs = _metric('SLEEP')?.sleepStages ?? const <SleepSegment>[];
       final bar = _sleepBar();
       final hypno = segs.length >= 2 ? _Hypnogram(segments: segs) : null;
@@ -418,7 +460,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     return null;
   }
 
-  Widget _metricTile(_MetricDef def, Color color) {
+  Widget _metricTile(_MetricDef def, Color color, {bool showTime = false}) {
     final m = _metric(def.type);
     final status = m == null ? null : _metricStatus(def.type, m.value);
     final valueColor = status != null ? _statusColor(status) : Colors.black87;
@@ -449,6 +491,11 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 10, color: Colors.black54)),
+          if (showTime && m != null)
+            Text(DateFormat('MM/dd HH:mm').format(m.measuredAt),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 9, color: Colors.black38)),
           if (pct != null) ...[
             const SizedBox(height: 5),
             ClipRRect(
