@@ -84,9 +84,21 @@ class MealCaptureForm extends StatefulWidget {
   State<MealCaptureForm> createState() => _MealCaptureFormState();
 }
 
+/// The three ways to log a meal, mirroring the web form's tabbed selector.
+/// Only the active mode's input is shown and submitted.
+enum CaptureMode { photo, describe, manual }
+
+const _captureModeLabels = {
+  CaptureMode.photo: '📷 拍照',
+  CaptureMode.describe: '✍️ 描述',
+  CaptureMode.manual: '⌨️ 手動',
+};
+
 class _MealCaptureFormState extends State<MealCaptureForm> {
   final _picker = ImagePicker();
   String _mealType = 'LUNCH';
+  CaptureMode _mode = CaptureMode.photo;
+  bool _preciseMode = false;
   String? _imageDataUrl;
   final _descriptionCtrl = TextEditingController();
   final List<EditableItem> _manualItems = [EditableItem()];
@@ -162,23 +174,38 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   Future<void> _submit() async {
     setState(() => _error = null);
+    // Each mode submits its own input only, matching the web form: leftover
+    // input from another tab never leaks into the analysis.
     final desc = _descriptionCtrl.text.trim();
     final manual = _manualItems.where((e) => e.hasName).toList();
-    if (_imageDataUrl == null && desc.isEmpty && manual.isEmpty) {
-      setState(() => _error = '請先上傳圖片、描述餐點，或在下方手動輸入食物項目。');
-      return;
+    switch (_mode) {
+      case CaptureMode.photo:
+        if (_imageDataUrl == null) {
+          setState(() => _error = '請先拍照或上傳餐點圖片。');
+          return;
+        }
+      case CaptureMode.describe:
+        if (desc.isEmpty) {
+          setState(() => _error = '請先用文字描述你吃了什麼。');
+          return;
+        }
+      case CaptureMode.manual:
+        if (manual.isEmpty) {
+          setState(() => _error = '請至少填寫一項食物名稱。');
+          return;
+        }
     }
     setState(() => _loading = true);
     try {
-      List<FoodAnalysisItem> analyzed;
-      if (_imageDataUrl != null) {
-        analyzed = await MealService.analyzeImage(_mealType, _imageDataUrl!);
-      } else if (desc.isNotEmpty) {
-        analyzed = await MealService.analyzeDescription(_mealType, desc);
-      } else {
-        analyzed = await MealService.analyzeManual(
-            _mealType, manual.map((e) => e.toMealItem()).toList());
-      }
+      final analyzed = switch (_mode) {
+        CaptureMode.photo => await MealService.analyzeImage(
+            _mealType, _imageDataUrl!,
+            precise: _preciseMode),
+        CaptureMode.describe =>
+          await MealService.analyzeDescription(_mealType, desc),
+        CaptureMode.manual => await MealService.analyzeManual(
+            _mealType, manual.map((e) => e.toMealItem()).toList()),
+      };
       if (!mounted) return;
       final confirmed = await _showConfirmDialog(
           analyzed.map(EditableItem.fromAnalysis).toList());
@@ -198,7 +225,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       showDragHandle: true,
       builder: (ctx) => _ConfirmSheet(
         items: items,
-        imageDataUrl: _imageDataUrl,
+        imageDataUrl: _mode == CaptureMode.photo ? _imageDataUrl : null,
         onReestimate: (editedItems) async {
           final analyzed = await MealService.reestimate(
               _mealType, editedItems.map((e) => e.toMealItem()).toList());
@@ -206,14 +233,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         },
         onSave: (confirmedItems) async {
           final items = confirmedItems.map((e) => e.toMealItem()).toList();
+          final desc = _descriptionCtrl.text.trim();
+          // Only the active mode's source is persisted, matching the web form.
           // Nutrition is mirrored into Health Connect later, during the
           // "健康同步" flow (HealthService.syncNow), not at save time.
           await MealService.createMeal(
             mealType: _mealType,
-            imageDataUrl: _imageDataUrl,
-            description: _descriptionCtrl.text.trim().isEmpty
-                ? null
-                : _descriptionCtrl.text.trim(),
+            imageDataUrl: _mode == CaptureMode.photo ? _imageDataUrl : null,
+            description:
+                _mode == CaptureMode.describe && desc.isNotEmpty ? desc : null,
             items: items,
           );
         },
@@ -298,11 +326,6 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   @override
   Widget build(BuildContext context) {
-    final hasManual = _manualItems.any((e) => e.hasName);
-    final submitLabel =
-        _imageDataUrl != null || _descriptionCtrl.text.trim().isNotEmpty || hasManual
-            ? 'AI 分析並確認'
-            : '儲存餐點';
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -312,7 +335,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             const Text('新增餐點',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
-            const Text('拍照、上傳圖片，或直接描述你吃了什麼，AI 會先估算營養數據供你確認。',
+            const Text('選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。',
                 style: TextStyle(fontSize: 12, color: Colors.black54)),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -326,23 +349,18 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               onChanged: (v) => setState(() => _mealType = v ?? 'LUNCH'),
             ),
             const SizedBox(height: 12),
-            _imageSection(),
+            _modeTabs(),
             const SizedBox(height: 12),
-            TextField(
-              controller: _descriptionCtrl,
-              maxLines: 3,
-              maxLength: 1200,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: '用文字描述餐點',
-                hintText: '例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 4),
-            _savedFoodsSection(),
-            const SizedBox(height: 12),
-            _manualSection(),
+            if (_mode == CaptureMode.photo) ...[
+              _imageSection(),
+              _preciseModeTile(),
+            ],
+            if (_mode == CaptureMode.describe) _describeSection(),
+            if (_mode == CaptureMode.manual) ...[
+              _savedFoodsSection(),
+              const SizedBox(height: 12),
+              _manualSection(),
+            ],
             if (_error != null) ...[
               const SizedBox(height: 10),
               Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -360,7 +378,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                         width: 20,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : Text(submitLabel),
+                    : const Text('AI 分析並確認'),
               ),
             ),
             const SizedBox(height: 6),
@@ -375,6 +393,107 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             if (widget.showAdvice && _advice.isNotEmpty) _adviceCard(),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Segmented control to pick one of the three capture modes, mirroring the
+  /// web form's pill tabs.
+  Widget _modeTabs() {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F4),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        children: CaptureMode.values.map((mode) {
+          final selected = _mode == mode;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => setState(() {
+                _mode = mode;
+                _error = null;
+              }),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color:
+                      selected ? const Color(0xFFB45309) : Colors.transparent,
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  _captureModeLabels[mode]!,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: selected ? Colors.white : Colors.black54,
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  /// Photo-mode option: multiple recognitions, take the median (matches web).
+  Widget _preciseModeTile() {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: CheckboxListTile(
+        value: _preciseMode,
+        onChanged: (v) => setState(() => _preciseMode = v ?? false),
+        controlAffinity: ListTileControlAffinity.leading,
+        dense: true,
+        activeColor: const Color(0xFFB45309),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+        title: const Text('精準模式',
+            style: TextStyle(
+                fontWeight: FontWeight.bold, color: Color(0xFF78350F))),
+        subtitle: const Text('多次辨識取中位數，熱量更穩定（分析較慢、用量約 3 倍）。',
+            style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
+      ),
+    );
+  }
+
+  Widget _describeSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('用文字描述餐點',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, color: Color(0xFF78350F))),
+          const SizedBox(height: 4),
+          const Text('例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。',
+              style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _descriptionCtrl,
+            maxLines: 3,
+            maxLength: 1200,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              hintText: '描述你吃了什麼、份量大概多少...',
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+          ),
+        ],
       ),
     );
   }

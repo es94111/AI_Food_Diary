@@ -228,7 +228,7 @@ class HealthService {
       accs.forEach((key, acc) {
         if (key.$1 == 'WEIGHT' && acc.lastValue > 0) {
           final bmi = acc.lastValue / (metres * metres);
-          out.add(_payload('BMI', double.parse(bmi.toStringAsFixed(1)), '',
+          out.add(_payload('BMI', double.parse(bmi.toStringAsFixed(1)), 'kg/m²',
               acc.lastAt ?? key.$2));
         }
       });

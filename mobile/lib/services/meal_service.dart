@@ -28,10 +28,12 @@ class MealService {
   // ---- AI analysis (returns items to confirm, does NOT persist) ----
 
   static Future<List<FoodAnalysisItem>> analyzeImage(
-      String mealType, String imageDataUrl) {
+      String mealType, String imageDataUrl,
+      {bool precise = false}) {
     return _analyze('/api/meals/analyze', {
       'mealType': mealType,
       'imageDataUrl': imageDataUrl,
+      'precise': precise,
       'eatenAt': DateTime.now().toUtc().toIso8601String(),
     }, '分析失敗，請稍後再試');
   }

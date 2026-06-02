@@ -60,7 +60,9 @@ const healthMetricSchema = z.object({
     "WATER"
   ]),
   value: z.coerce.number().finite().nonnegative(),
-  unit: z.string().min(1).max(32),
+  // Some metrics are dimensionless (e.g. BMI), so an empty unit is valid; only
+  // cap the length. Rejecting empty units here would fail the whole batch.
+  unit: z.string().max(32),
   measuredAt: z.string().datetime(),
   raw: z.unknown().optional()
 });

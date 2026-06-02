@@ -33,7 +33,9 @@ function formatMeasuredAt(measuredAt: Date, tz: string) {
 
 function formatHealthMetric(metric: { value: number; unit: string } | undefined, digits: number) {
   if (!metric) return "尚未同步";
-  return `${metric.value.toFixed(digits)} ${metric.unit}`;
+  // Trim so dimensionless metrics (empty unit, e.g. legacy BMI rows) don't
+  // render a trailing space.
+  return `${metric.value.toFixed(digits)} ${metric.unit}`.trim();
 }
 
 // Sleep durations (stored in minutes) read better as H:MM.
