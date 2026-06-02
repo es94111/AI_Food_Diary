@@ -29,10 +29,19 @@ function emptyManualItem(): ManualItem {
   return { id: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
 }
 
+type CaptureMode = "photo" | "describe" | "manual";
+
+const CAPTURE_MODES: { id: CaptureMode; label: string }[] = [
+  { id: "photo", label: "📷 拍照" },
+  { id: "describe", label: "✍️ 描述" },
+  { id: "manual", label: "⌨️ 手動" }
+];
+
 export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMealAdvice?: string }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nutritionLabelInputRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<CaptureMode>("photo");
   const [preview, setPreview] = useState<string>();
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
@@ -121,88 +130,54 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const formData = new FormData(form);
+    const formData = new FormData(event.currentTarget);
+    const mealType = String(formData.get("mealType") ?? "LUNCH");
     setError("");
-    const items = itemsForPayload(manualItems);
-    const mealDescription = description.trim();
-    if (!preview && !mealDescription && items.length === 0) {
-      setError("請先上傳圖片、描述餐點，或在下方手動輸入食物項目。");
-      return;
+
+    // Each capture mode hits its own analyze endpoint; the active mode alone
+    // decides what gets sent, so leftover input from another tab never leaks in.
+    let endpoint: string;
+    let payload: Record<string, unknown>;
+    if (mode === "photo") {
+      if (!preview) {
+        setError("請先拍照或上傳餐點圖片。");
+        return;
+      }
+      endpoint = "/api/meals/analyze";
+      payload = { mealType, imageDataUrl: preview };
+    } else if (mode === "describe") {
+      const mealDescription = description.trim();
+      if (!mealDescription) {
+        setError("請先用文字描述你吃了什麼。");
+        return;
+      }
+      endpoint = "/api/meals/analyze-description";
+      payload = { mealType, description: mealDescription };
+    } else {
+      const items = itemsForPayload(manualItems);
+      if (items.length === 0) {
+        setError("請至少填寫一項食物名稱。");
+        return;
+      }
+      endpoint = "/api/meals/analyze-manual";
+      payload = { mealType, manualItems: items };
     }
+
     setLoading(true);
     try {
-      if (preview) {
-        const response = await fetch("/api/meals/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mealType: formData.get("mealType"), imageDataUrl: preview, eatenAt: new Date().toISOString() })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          setError(data.error ?? "分析失敗，請稍後再試");
-          return;
-        }
-        setConfirmMealType(String(formData.get("mealType") ?? "LUNCH"));
-        setConfirmItems(itemsFromAnalysis(data.analysis.foods));
-        setShowConfirm(true);
-        return;
-      }
-
-      if (mealDescription) {
-        const response = await fetch("/api/meals/analyze-description", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mealType: formData.get("mealType"), description: mealDescription, eatenAt: new Date().toISOString() })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          setError(data.error ?? "分析失敗，請稍後再試");
-          return;
-        }
-        setConfirmMealType(String(formData.get("mealType") ?? "LUNCH"));
-        setConfirmItems(itemsFromAnalysis(data.analysis.foods));
-        setShowConfirm(true);
-        return;
-      }
-
-      if (items.length > 0) {
-        const response = await fetch("/api/meals/analyze-manual", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mealType: formData.get("mealType"), manualItems: items, eatenAt: new Date().toISOString() })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          setError(data.error ?? "AI 評分失敗，請稍後再試");
-          return;
-        }
-        setConfirmMealType(String(formData.get("mealType") ?? "LUNCH"));
-        setConfirmItems(itemsFromAnalysis(data.analysis.foods));
-        setShowConfirm(true);
-        return;
-      }
-
-      const response = await fetch("/api/meals", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          mealType: formData.get("mealType"),
-          imageDataUrl: preview,
-          manualItems: items,
-          eatenAt: new Date().toISOString()
-        })
+        body: JSON.stringify({ ...payload, eatenAt: new Date().toISOString() })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         setError(data.error ?? "分析失敗，請稍後再試");
         return;
       }
-      setPreview(undefined);
-      setDescription("");
-      setManualItems([emptyManualItem()]);
-      form.reset();
-      router.refresh();
+      setConfirmMealType(mealType);
+      setConfirmItems(itemsFromAnalysis(data.analysis.foods));
+      setShowConfirm(true);
     } catch (error) {
       setError(error instanceof Error ? `分析失敗：${error.message}` : "分析失敗，請確認服務是否正常運作");
     } finally {
@@ -222,7 +197,13 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       const response = await fetch("/api/meals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mealType: confirmMealType, imageDataUrl: preview, description: description.trim() || undefined, manualItems: items, eatenAt: new Date().toISOString() })
+        body: JSON.stringify({
+          mealType: confirmMealType,
+          imageDataUrl: mode === "photo" ? preview : undefined,
+          description: mode === "describe" ? description.trim() || undefined : undefined,
+          manualItems: items,
+          eatenAt: new Date().toISOString()
+        })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -329,18 +310,36 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     ]);
   }
 
-  const hasManualItems = manualItems.some((item) => item.name.trim());
-
   return (
     <form onSubmit={onSubmit} className="glass glass-lift rounded-[2rem] p-6">
       <h2 className="text-2xl font-black">新增餐點</h2>
-      <p className="mt-2 text-sm text-stone-600">拍照、上傳圖片，或直接描述你吃了什麼，AI 會先估算營養數據供你確認。</p>
+      <p className="mt-2 text-sm text-stone-600">選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。</p>
       <select className="mt-5 w-full rounded-2xl border border-stone-200 px-4 py-3" name="mealType" defaultValue="LUNCH">
         <option value="BREAKFAST">早餐</option>
         <option value="LUNCH">午餐</option>
         <option value="DINNER">晚餐</option>
         <option value="SNACK">點心</option>
       </select>
+      <div className="mt-4 flex gap-1 rounded-full bg-stone-100 p-1 text-sm font-semibold" role="tablist">
+        {CAPTURE_MODES.map((m) => (
+          <button
+            key={m.id}
+            role="tab"
+            aria-selected={mode === m.id}
+            className={`flex-1 cursor-pointer rounded-full px-3 py-2 text-center transition-colors ${
+              mode === m.id ? "bg-amber-700 text-white shadow-sm" : "text-stone-600 hover:text-stone-900"
+            }`}
+            onClick={() => {
+              setMode(m.id);
+              setError("");
+            }}
+            type="button"
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+      {mode === "photo" ? (
       <div
         className={`mt-5 rounded-2xl border border-dashed p-4 transition ${draggingImage ? "border-amber-500 bg-amber-50" : "border-amber-200 bg-white"}`}
         onDragLeave={() => setDraggingImage(false)}
@@ -371,6 +370,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           </button>
         )}
       </div>
+      ) : null}
+      {mode === "describe" ? (
       <div className="mt-5 rounded-2xl bg-amber-50 p-4">
         <h3 className="font-bold text-amber-950">用文字描述餐點</h3>
         <p className="mt-1 text-xs text-amber-700">例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。</p>
@@ -382,6 +383,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           value={description}
         />
       </div>
+      ) : null}
+      {mode === "manual" ? (
+      <>
       <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
         <p className="text-sm font-bold">常用食物</p>
         {savedFoods.length ? (
@@ -399,7 +403,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       </div>
       <div className="mt-5 rounded-2xl bg-stone-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
-        <p className="mt-1 text-xs text-stone-500">沒有圖片、文字描述，或 AI 無法分析時，可以填寫以下欄位，AI 會先判斷推薦評分再讓你確認。</p>
+        <p className="mt-1 text-xs text-stone-500">填寫以下欄位（或上傳營養標示／選用常用食物），AI 會先判斷推薦評分再讓你確認。</p>
         <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -435,9 +439,11 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         </div>
         <button className="mt-3 w-full rounded-xl border border-dashed border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setManualItems((items) => [...items, emptyManualItem()])} type="button">新增另一項食物</button>
       </div>
+      </>
+      ) : null}
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
       <button className="mt-5 w-full cursor-pointer rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={loading} type="submit">
-        {loading ? "儲存中..." : preview || description.trim() || hasManualItems ? "AI 分析並確認" : "儲存餐點"}
+        {loading ? "分析中..." : "AI 分析並確認"}
       </button>
       <p className="mt-3 text-xs text-stone-500">AI 分析為估算值，請依實際份量修正。</p>
       {adviceLoading ? <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">正在產生下一餐建議...</p> : null}

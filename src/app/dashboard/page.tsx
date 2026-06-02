@@ -71,8 +71,15 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   const proteinPercent = macroTotal ? Math.round((displayTotals.protein / macroTotal) * 100) : 0;
   const fatPercent = macroTotal ? Math.round((displayTotals.fat / macroTotal) * 100) : 0;
   const carbsPercent = macroTotal ? Math.round((displayTotals.carbs / macroTotal) * 100) : 0;
+  // Remaining budget vs. the daily target (in week view this compares the daily
+  // average against the daily target, so "剩餘" stays meaningful).
+  const remainingCalories = target - displayTotals.calories;
+  const isOverCalories = remainingCalories < 0;
+  const consumedPercent = target > 0 ? Math.round((displayTotals.calories / target) * 100) : 0;
+  const barPercent = Math.min(consumedPercent, 100);
   const mealList = meals.map((meal) => ({
     ...decryptMeal(meal),
+    eatenAt: meal.eatenAt.toISOString(),
     imageStorageKey: meal.imageStorageKey ? `/api/meals/${meal.id}/image` : null
   }));
   const weekStartStrValue = weekStartStr(selectedDateStr);
@@ -123,11 +130,16 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
             <p className="text-5xl font-black tracking-tight">{displayTotals.calories}</p>
             <p className="mb-1.5 text-lg font-semibold text-stone-400">kcal</p>
           </div>
-          <p className="mt-0.5 text-sm text-stone-500">每日目標 {target} kcal · {Math.min(Math.round((displayTotals.calories / target) * 100), 100)}%</p>
+          <div className="mt-0.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+            <p className="text-sm text-stone-500">每日目標 {target} kcal · {consumedPercent}%</p>
+            <p className={`text-sm font-bold ${isOverCalories ? "text-rose-300" : "text-amber-200"}`}>
+              {isOverCalories ? `超標 +${Math.abs(remainingCalories)} kcal` : `剩餘 ${remainingCalories} kcal`}
+            </p>
+          </div>
           <div className="mt-5 h-2 overflow-hidden rounded-full bg-white/10">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-500 to-amber-300 transition-all duration-700"
-              style={{ width: `${Math.min((displayTotals.calories / target) * 100, 100)}%` }}
+              className={`h-full rounded-full transition-all duration-700 ${isOverCalories ? "bg-gradient-to-r from-rose-600 to-rose-400" : "bg-gradient-to-r from-amber-500 to-amber-300"}`}
+              style={{ width: `${barPercent}%` }}
             />
           </div>
           <div className="mt-5 flex flex-col items-center gap-4 sm:flex-row">

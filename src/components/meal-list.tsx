@@ -29,6 +29,7 @@ type EditableMealItem = {
 type Meal = {
   id: string;
   mealType: string;
+  eatenAt: string;
   imageStorageKey: string | null;
   totalCalories: number;
   totalProtein: number | string;
@@ -64,6 +65,38 @@ function MealCard({ meal }: { meal: Meal }) {
     setLoading(false);
     if (!response.ok) {
       setError("刪除失敗");
+      return;
+    }
+    router.refresh();
+  }
+
+  // Re-log the same items as a fresh meal at the current time — the common case
+  // of eating the same thing again (e.g. the usual lunchbox) without re-shooting.
+  async function onRepeat() {
+    if (!confirm("以相同內容新增一筆餐點到現在？")) return;
+    setLoading(true);
+    setError("");
+    const response = await fetch("/api/meals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mealType: meal.mealType,
+        eatenAt: new Date().toISOString(),
+        manualItems: meal.items.map((item) => ({
+          name: item.name,
+          estimatedAmount: item.estimatedAmount || "未估算",
+          calories: Math.round(Number(item.calories) || 0),
+          protein: Number(item.protein) || 0,
+          fat: Number(item.fat) || 0,
+          carbs: Number(item.carbs) || 0,
+          aiRating: ["GOOD", "OK", "LIMIT", "MANUAL"].includes(item.aiRating) ? item.aiRating : "MANUAL"
+        }))
+      })
+    });
+    setLoading(false);
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      setError(data.error ?? "再記一次失敗");
       return;
     }
     router.refresh();
@@ -110,9 +143,14 @@ function MealCard({ meal }: { meal: Meal }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-bold">{MEAL_TYPE_LABELS[meal.mealType] ?? meal.mealType}</p>
-          <p className="text-sm text-stone-500">{meal.totalCalories} kcal</p>
+          <p className="text-sm text-stone-500">{formatMealTime(meal.eatenAt)} · {meal.totalCalories} kcal</p>
         </div>
-        <div className="flex gap-2 text-sm">
+        <div className="flex flex-wrap justify-end gap-2 text-sm">
+          {!editing ? (
+            <button className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700" disabled={loading} onClick={onRepeat} type="button">
+              再記一次
+            </button>
+          ) : null}
           <button className="rounded-full bg-stone-100 px-3 py-1 font-semibold" disabled={loading} onClick={() => setEditing((value) => !value)} type="button">
             {editing ? "取消" : "修正"}
           </button>
@@ -212,6 +250,10 @@ function toEditableItem(item: MealItem): EditableMealItem {
 
 function emptyEditableItem(): EditableMealItem {
   return { clientId: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
+}
+
+function formatMealTime(eatenAt: string) {
+  return new Date(eatenAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function RatingBadge({ rating }: { rating: string }) {
