@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import 'api_client.dart';
 import 'meal_service.dart';
+import 'water_service.dart';
 
 /// Reads health data from Health Connect and syncs it to the backend.
 ///
@@ -594,6 +595,96 @@ class HealthService {
 
     await prefs.setStringList(_writtenMealsKey, written.toList());
     debugPrint('HealthWrite: mirrored $count meals to Health Connect');
+    return count;
+  }
+
+  // ---- write water (logged intake) back to Health Connect ----
+
+  // Water-log ids already mirrored into Health Connect, so repeated syncs don't
+  // create duplicate hydration records.
+  static const _writtenWaterKey = 'written_water_hc_ids';
+
+  /// Writes one logged water entry to Health Connect as a hydration record.
+  /// Health Connect stores hydration in litres, so millilitres are converted.
+  /// Best-effort: returns false (no throw) on any failure. Re-requests the
+  /// WATER write permission once if the first attempt is rejected.
+  static Future<bool> writeWaterLog({
+    required DateTime drankAt,
+    required int amountMl,
+  }) async {
+    try {
+      await _health.configure();
+      Future<bool> doWrite() => _health.writeHealthData(
+            value: amountMl / 1000.0, // ml → L (Health Connect hydration unit)
+            type: HealthDataType.WATER,
+            startTime: drankAt,
+            endTime: drankAt,
+          );
+
+      var ok = await doWrite();
+      debugPrint('HealthWrite: writeWater -> $ok (ml=$amountMl)');
+      if (!ok) {
+        // Permission may have been revoked — ask once and retry.
+        final granted = await _health.requestAuthorization(
+          [HealthDataType.WATER],
+          permissions: [HealthDataAccess.WRITE],
+        );
+        debugPrint('HealthWrite: water re-auth granted=$granted');
+        if (granted) ok = await doWrite();
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('HealthWrite: writeWater failed $e');
+      return false;
+    }
+  }
+
+  /// Mirrors recently logged water intake into Health Connect, skipping any
+  /// entry already written in a previous sync (tracked by id). Returns the
+  /// number newly written.
+  ///
+  /// Called as part of the health-data sync so logged water always flows into
+  /// Health Connect during sync (no opt-in switch); requests the WATER write
+  /// permission once up front and silently no-ops if it isn't granted.
+  static Future<int> writeRecentWaterToHealth({int days = 7}) async {
+    await _health.configure();
+    final granted = await _health.requestAuthorization(
+      [HealthDataType.WATER],
+      permissions: [HealthDataAccess.WRITE],
+    );
+    if (!granted) {
+      debugPrint('HealthWrite: WATER write permission not granted');
+      return 0;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final written =
+        (prefs.getStringList(_writtenWaterKey) ?? const <String>[]).toSet();
+
+    final now = DateTime.now();
+    final logs = <WaterLog>[];
+    for (var i = 0; i < days; i++) {
+      try {
+        final day = await WaterService.forDay(now.subtract(Duration(days: i)));
+        logs.addAll(day.logs);
+      } catch (_) {
+        // Skip days that fail to load; keep writing the rest.
+      }
+    }
+
+    var count = 0;
+    for (final log in logs) {
+      if (written.contains(log.id) || log.amountMl <= 0) continue;
+      final ok =
+          await writeWaterLog(drankAt: log.drankAt, amountMl: log.amountMl);
+      if (ok) {
+        written.add(log.id);
+        count++;
+      }
+    }
+
+    await prefs.setStringList(_writtenWaterKey, written.toList());
+    debugPrint('HealthWrite: mirrored $count water logs to Health Connect');
     return count;
   }
 }

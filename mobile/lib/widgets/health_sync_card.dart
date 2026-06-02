@@ -180,11 +180,17 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       // nutrition lags one sync behind. Best-effort: a write failure must not
       // block the core health-data sync.
       var meals = 0;
+      var water = 0;
       if (mirrorMeals) {
         try {
           meals = await HealthService.writeRecentMealsToHealth();
         } catch (e) {
           debugPrint('HealthSync: meal mirror failed $e');
+        }
+        try {
+          water = await HealthService.writeRecentWaterToHealth();
+        } catch (e) {
+          debugPrint('HealthSync: water mirror failed $e');
         }
       }
       final count = await HealthService.syncNow();
@@ -193,8 +199,13 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       setState(() {
         _isError = false;
         final base = count == 0 ? '近 7 天無健康資料' : '同步成功！已上傳 $count 筆資料';
-        _message =
-            meals > 0 ? '$base，並寫入 $meals 筆營養紀錄至 Health Connect' : base;
+        final mirrored = [
+          if (meals > 0) '$meals 筆營養紀錄',
+          if (water > 0) '$water 筆喝水紀錄',
+        ];
+        _message = mirrored.isNotEmpty
+            ? '$base，並寫入 ${mirrored.join('、')}至 Health Connect'
+            : base;
       });
     } catch (e, stack) {
       debugPrint('HealthSync: ERROR $e');
