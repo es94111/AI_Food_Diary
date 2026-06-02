@@ -7,7 +7,6 @@ import { dayRangeUtc, todayStr } from "@/lib/dates";
 import { decryptProfile } from "@/lib/profile-crypto";
 import { decryptField, decryptMetricValue } from "@/lib/field-crypto";
 import { calculateBmr, calculateTdee } from "@/lib/metabolism";
-import { HealthConnectionsPanel } from "@/components/health-connections-panel";
 import {
   ActivityHero,
   HealthGroupCard,
@@ -79,8 +78,7 @@ export default async function HealthPage() {
       <div className="mt-6 space-y-6">
         <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">健康同步</h2>
-          <p className="mt-1 text-xs text-stone-500">Flutter Android app 可透過 Health Connect 同步步數、熱量、睡眠、運動、心率、體脂等資料。</p>
-          <HealthConnectionsPanel />
+          <p className="mt-1 text-xs text-stone-500">資料由 Android App 透過 Health Connect 自動同步（步數、熱量、睡眠、運動、心率、體脂等）。請在手機 App 的「健康」分頁完成同步。</p>
         </div>
         <ActivityHero metrics={latestHealthMetrics} todayStart={todayStart} todayEnd={todayEnd} />
         {HEALTH_GROUPS.map((group) => (
