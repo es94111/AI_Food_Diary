@@ -30,6 +30,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Meal> _meals = [];
   double? _syncedWeight;
   double? _syncedHeight;
+  // Today's measured total energy expenditure (Health Connect
+  // TotalCaloriesBurned), for the net-calorie card. Null unless synced today.
+  double? _todayTotalCalories;
   String _nextMealAdvice = '';
   int _tabIndex = 0;
   bool _loading = true;
@@ -64,6 +67,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final status = await HealthService.status();
       final weight = status.latestByType['WEIGHT'];
       final height = status.latestByType['HEIGHT'];
+      final total = status.latestByType['TOTAL_CALORIES'];
+      final now = DateTime.now();
+      bool isToday(DateTime d) =>
+          d.year == now.year && d.month == now.month && d.day == now.day;
       if (!mounted) return;
       setState(() {
         if (weight != null && weight.unit.toLowerCase() == 'kg') {
@@ -72,6 +79,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (height != null && height.value > 0) {
           _syncedHeight = height.value; // already stored in cm
         }
+        // Only today's expenditure is meaningful for today's net calories.
+        _todayTotalCalories =
+            (total != null && total.value > 0 && isToday(total.measuredAt))
+                ? total.value
+                : null;
       });
     } catch (_) {}
   }
@@ -211,6 +223,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _dateSwitcher(),
           const SizedBox(height: 12),
           _calorieCard(totals, target),
+          if (!_weekView && _isToday && _todayTotalCalories != null) ...[
+            const SizedBox(height: 12),
+            _netCalorieCard(totals.calories, _todayTotalCalories!),
+          ],
           if (!_weekView) ...[
             const SizedBox(height: 12),
             WaterCard(
@@ -484,6 +500,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     '${totals.carbs.toStringAsFixed(1)}g'),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Net calories = intake − measured total expenditure. Sits beside the
+  /// target-progress card (which uses the TDEE estimate); this one uses the
+  /// *actual* Health Connect burn, so it only shows when synced today.
+  Widget _netCalorieCard(int intake, double expenditure) {
+    final burn = expenditure.round();
+    final net = intake - burn;
+    final deficit = net < 0;
+    final color = deficit
+        ? const Color(0xFF059669)
+        : net > 0
+            ? const Color(0xFFE11D48)
+            : Colors.black54;
+    final label = deficit ? '熱量赤字' : (net > 0 ? '熱量盈餘' : '持平');
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('當日淨熱量', style: TextStyle(color: Colors.black54)),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(label,
+                      style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(net > 0 ? '+$net' : '$net',
+                    style: TextStyle(
+                        color: color,
+                        fontSize: 40,
+                        fontWeight: FontWeight.w900)),
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 6, left: 4),
+                  child: Text('kcal',
+                      style: TextStyle(
+                          color: Colors.black45,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text('攝取 $intake − 實測總消耗 $burn kcal',
+                style: const TextStyle(color: Colors.black54, fontSize: 13)),
+            const Text('總消耗為 Health Connect 同步的實測值（基礎＋活動）。',
+                style: TextStyle(color: Colors.black38, fontSize: 11)),
           ],
         ),
       ),

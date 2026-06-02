@@ -187,6 +187,10 @@ class HealthService {
       // (see _mealNutritionMetrics) instead of round-tripping through Health
       // Connect, so skip the unreliable HC read-back for it here.
       if (backendType == 'NUTRITION') continue;
+      // Water is likewise uploaded straight from the app's logged intake (see
+      // _waterIntakeMetrics); skip the HC read-back so the two don't collide on
+      // the same (source, type, day) upsert key.
+      if (backendType == 'WATER') continue;
       final day = _localDayStart(p.dateFrom);
       final acc = accs.putIfAbsent((backendType, day), () => _Acc(unit, agg));
       final value = _valueFor(p, backendType, agg);
@@ -357,6 +361,32 @@ class HealthService {
     return out;
   }
 
+  /// Builds WATER metrics straight from the app's own logged water intake,
+  /// summed (millilitres → litres) per local day. Like nutrition, the Health
+  /// Connect round-trip is unreliable — and the app already owns the water data
+  /// — so we upload it directly rather than reading it back from Health Connect.
+  static Future<List<Map<String, dynamic>>> _waterIntakeMetrics(
+      {int days = 7}) async {
+    final now = DateTime.now();
+    final byDay = <DateTime, int>{};
+    for (var i = 0; i < days; i++) {
+      try {
+        final day = await WaterService.forDay(now.subtract(Duration(days: i)));
+        for (final log in day.logs) {
+          final d = _localDayStart(log.drankAt);
+          byDay[d] = (byDay[d] ?? 0) + log.amountMl;
+        }
+      } catch (_) {
+        // Skip days that fail to load; keep building the rest.
+      }
+    }
+    final out = <Map<String, dynamic>>[];
+    byDay.forEach((day, ml) {
+      if (ml > 0) out.add(_payload('WATER', ml / 1000.0, 'L', day));
+    });
+    return out;
+  }
+
   static final _isoUtc = DateFormat("yyyy-MM-dd'T'HH:mm:ss.000'Z'");
 
   static DateTime _localDayStart(DateTime d) {
@@ -426,6 +456,8 @@ class HealthService {
     final metrics = await _fetchLast7Days();
     // Nutrition comes straight from logged meals, not Health Connect.
     metrics.addAll(await _mealNutritionMetrics());
+    // Water comes straight from the app's logged intake, not Health Connect.
+    metrics.addAll(await _waterIntakeMetrics());
     debugPrint('HealthSync: fetched ${metrics.length} metrics');
     if (metrics.isEmpty) return 0;
 

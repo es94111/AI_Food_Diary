@@ -77,6 +77,21 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   const isOverCalories = remainingCalories < 0;
   const consumedPercent = target > 0 ? Math.round((displayTotals.calories / target) * 100) : 0;
   const barPercent = Math.min(consumedPercent, 100);
+
+  // Net calories = intake − measured total expenditure (Health Connect
+  // TotalCaloriesBurned). Summed across the period; averaged per day in week
+  // view so it lines up with the averaged intake. Only shown when there's
+  // measured expenditure, since the whole point is the *actual* burn (vs. the
+  // TDEE estimate the target card already uses).
+  const expenditureRows = await prisma.healthMetric.findMany({
+    where: { userId: user.id, type: "TOTAL_CALORIES", measuredAt: { gte: start, lt: end } },
+    select: { value: true, encValue: true }
+  });
+  const expenditureTotal = expenditureRows.reduce((sum, row) => sum + decryptMetricValue(row), 0);
+  const displayExpenditure = Math.round(view === "week" ? expenditureTotal / 7 : expenditureTotal);
+  const hasExpenditure = displayExpenditure > 0;
+  const netCalories = Math.round(displayTotals.calories) - displayExpenditure;
+  const isDeficit = netCalories < 0;
   const mealList = meals.map((meal) => ({
     ...decryptMeal(meal),
     eatenAt: meal.eatenAt.toISOString(),
@@ -151,6 +166,26 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
             </div>
           </div>
         </div>
+        {hasExpenditure ? (
+          <div className="glass glass-lift rounded-[2rem] p-6">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-medium text-stone-500">{view === "week" ? "本週平均淨熱量" : "當日淨熱量"}</p>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${isDeficit ? "bg-emerald-100 text-emerald-700" : netCalories > 0 ? "bg-rose-100 text-rose-700" : "bg-stone-100 text-stone-600"}`}>
+                {isDeficit ? "熱量赤字" : netCalories > 0 ? "熱量盈餘" : "持平"}
+              </span>
+            </div>
+            <div className="mt-1 flex items-end gap-2">
+              <p className={`text-5xl font-black tracking-tight ${isDeficit ? "text-emerald-600" : netCalories > 0 ? "text-rose-600" : "text-stone-700"}`}>
+                {netCalories > 0 ? `+${netCalories}` : netCalories}
+              </p>
+              <p className="mb-1.5 text-lg font-semibold text-stone-400">kcal</p>
+            </div>
+            <p className="mt-2 text-sm text-stone-500">攝取 {Math.round(displayTotals.calories)} − 實測總消耗 {displayExpenditure} kcal</p>
+            <p className="mt-1 text-xs text-stone-400">
+              總消耗為 Health Connect 同步的實測值（基礎＋活動）。{isDeficit ? "赤字傾向減重。" : netCalories > 0 ? "盈餘傾向增重。" : ""}
+            </p>
+          </div>
+        ) : null}
         {view === "day" ? (
           <WaterCard
             key={selectedDateStr}
