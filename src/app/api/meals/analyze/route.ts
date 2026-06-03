@@ -12,13 +12,14 @@ export async function POST(request: Request) {
     const limited = await enforceAiRateLimit(user.id);
     if (limited) return limited;
     const body = mealSchema.parse(await request.json());
-    if (!body.imageDataUrl) return NextResponse.json({ error: "請先上傳圖片再進行 AI 分析。" }, { status: 400 });
+    const images = body.imageDataUrls?.length ? body.imageDataUrls : body.imageDataUrl ? [body.imageDataUrl] : [];
+    if (images.length === 0) return NextResponse.json({ error: "請先上傳圖片再進行 AI 分析。" }, { status: 400 });
     const config = resolveUserAiConfig(user);
     // Precise mode trades ~3× tokens for a median-of-samples estimate that drifts
     // far less between identical photos.
     const analysis = body.precise
-      ? await analyzeMealImageStable(config, body.imageDataUrl)
-      : await analyzeMealImage(config, body.imageDataUrl);
+      ? await analyzeMealImageStable(config, images)
+      : await analyzeMealImage(config, images);
     return NextResponse.json({ analysis });
   } catch (error) {
     if (error instanceof HttpError) return apiError(error);

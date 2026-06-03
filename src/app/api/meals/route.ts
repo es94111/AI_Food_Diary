@@ -31,6 +31,7 @@ export async function POST(request: Request) {
     const user = await requireUser();
     const body = mealSchema.parse(await request.json());
     const manualItems = body.manualItems ?? [];
+    const images = body.imageDataUrls?.length ? body.imageDataUrls : body.imageDataUrl ? [body.imageDataUrl] : [];
     const analysis = {
       foods: manualItems,
       total: {
@@ -39,18 +40,19 @@ export async function POST(request: Request) {
         fat: manualItems.reduce((total, item) => total + item.fat, 0),
         carbs: manualItems.reduce((total, item) => total + item.carbs, 0)
       },
-      confidence: body.imageDataUrl || body.description ? 0.8 : 1,
-      notes: body.imageDataUrl
+      confidence: images.length || body.description ? 0.8 : 1,
+      notes: images.length
         ? "使用者已確認 AI 圖片分析結果。"
         : body.description
           ? `使用者已確認 AI 文字分析結果。原始描述：${body.description}`
           : "手動新增餐點項目。"
     };
 
-    // Upload image to object storage and store the key, not the raw data URL
+    // Upload the representative photo (the first of the batch) to object storage and
+    // store its key, not the raw data URL.
     let imageStorageKey: string | null = null;
-    if (body.imageDataUrl) {
-      imageStorageKey = await uploadImage(body.imageDataUrl, user.id);
+    if (images.length) {
+      imageStorageKey = await uploadImage(images[0], user.id);
     }
 
     const meal = await prisma.meal.create({

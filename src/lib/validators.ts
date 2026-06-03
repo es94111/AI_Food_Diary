@@ -31,9 +31,15 @@ export const waterLogSchema = z.object({
   drankAt: z.string().datetime().optional()
 });
 
+// Photo uploads may include several images of the same meal (different dishes or
+// angles). The whole batch is analysed together. `imageDataUrl` (singular) is kept
+// for backward compatibility; the route normalises both into one array.
+export const MAX_MEAL_IMAGES = 5;
+
 export const mealSchema = z.object({
   mealType: z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]),
   imageDataUrl: z.string().startsWith("data:image/").optional(),
+  imageDataUrls: z.array(z.string().startsWith("data:image/")).min(1).max(MAX_MEAL_IMAGES).optional(),
   description: z.string().min(2).max(1200).optional(),
   // Photo flow only: run AI several times and keep the median (self-consistency).
   precise: z.boolean().optional(),

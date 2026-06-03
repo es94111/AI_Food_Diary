@@ -31,7 +31,7 @@ export type FoodAnalysis = z.infer<typeof foodAnalysisSchema>;
 // estimate auditable (the assumptions land in notes), which shrinks the spread
 // between runs on the same photo.
 const defaultMealAnalysisPrompt =
-  '你是專業營養分析助手。請依下列步驟分析餐點照片，每一種可辨識食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱（例如炸素排與玉米濃湯必須分成兩筆）：\n步驟1：辨識每一種食物。\n步驟2：估算每項食物的可見份量，換算成公克或毫升，estimatedAmount 請寫成含數量的描述（例如「約 150g」「約 240ml」）。若畫面中有餐具、碗盤、手或包裝可當比例尺，請用它們輔助判斷大小。\n步驟3：取該食物每 100g（或每 100ml）的標準熱量與三大營養素密度。\n步驟4：以「份量 ÷ 100 × 密度」計算該項的 calories、protein、fat、carbs。\n步驟5：為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。\n請在 notes 用一句話說明你對主要食物所假設的份量（公克）與每 100g 熱量，方便使用者稽核。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"約 150g","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。';
+  '你是專業營養分析助手。請依下列步驟分析餐點照片，每一種可辨識食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱（例如炸素排與玉米濃湯必須分成兩筆）：\n步驟1：辨識每一種食物。\n步驟2：估算每項食物的可見份量，換算成公克或毫升，estimatedAmount 請寫成含數量的描述（例如「約 150g」「約 240ml」）。若畫面中有餐具、碗盤、手或包裝可當比例尺，請用它們輔助判斷大小。\n步驟3：取該食物每 100g（或每 100ml）的標準熱量與三大營養素密度。\n步驟4：以「份量 ÷ 100 × 密度」計算該項的 calories、protein、fat、carbs。\n步驟5：為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。\n若提供多張照片，請綜合所有照片一起判斷：不同照片中的不同食物要分別列出，但同一份食物在不同角度重複出現時只能計算一次，不要重複加總。\n請在 notes 用一句話說明你對主要食物所假設的份量（公克）與每 100g 熱量，方便使用者稽核。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"約 150g","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。';
 
 const defaultMealDescriptionAnalysisPrompt =
   '你是專業營養分析助手。請依下列步驟分析使用者用文字描述的餐點，每一種食物都必須獨立成 foods 陣列中的一個項目，不要合併成便當、套餐、餐盤或其他總稱：\n步驟1：辨識每一種食物。\n步驟2：判斷每項食物的份量並換算成公克或毫升，estimatedAmount 請寫成含數量的描述（例如「約 150g」）。若描述含糊，請以常見單份保守估算。\n步驟3：取該食物每 100g（或每 100ml）的標準熱量與三大營養素密度。\n步驟4：以「份量 ÷ 100 × 密度」計算該項的 calories、protein、fat、carbs。\n步驟5：為每項食物給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。\n請在 notes 用一句話說明你對主要食物所假設的份量（公克）與每 100g 熱量，含糊處一併說明。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"約 150g","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.7,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者描述：{{description}}';
@@ -43,7 +43,7 @@ const defaultFoodReestimatePrompt =
   '你是專業營養分析助手。使用者已修正每項食物的名稱與份量。請「忽略」輸入中既有的熱量與三大營養素數字，完全依照修正後的名稱與份量，用以下步驟重新估算每項食物：步驟1：把份量換算成公克或毫升。步驟2：取該食物每 100g（或每 100ml）的標準熱量與三大營養素密度。步驟3：以「份量 ÷ 100 × 密度」計算 calories、protein、fat、carbs。步驟4：為每項給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。請保留使用者提供的食物名稱與份量，不要新增或刪除品項，每一筆輸入都要對應一筆輸出。請在 notes 用一句話說明主要食物所假設的每 100g 熱量。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明"}。所有營養數字必須是 number，蛋白質、脂肪、碳水使用公克，熱量使用 kcal。使用者修正後品項：{{items}}';
 
 const defaultNutritionLabelAnalysisPrompt =
-  '你是營養標示辨識助手。請讀取圖片中的營養標示，建立一個 foods 項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
+  '你是營養標示辨識助手。請讀取圖片中的營養標示。每一張不同商品的營養標示都要各自建立一個 foods 項目（例如提供三張標示就回傳三個項目）；若同一張標示分多張照片拍攝，則合併成一個項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
 
 const defaultNextMealAdvicePrompt =
   "請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，包含建議餐點、避免事項與原因，避免醫療診斷。";
@@ -238,7 +238,7 @@ function renderPrompt(template: string, values: Record<string, string | number>)
 
 async function requestMealImageAnalysis(
   config: AiConfig,
-  imageDataUrl: string,
+  imageDataUrls: string[],
   options: { temperature?: number; seed?: number | null } = {}
 ): Promise<FoodAnalysis> {
   const response = await client(config).chat.completions.create({
@@ -253,8 +253,9 @@ async function requestMealImageAnalysis(
             text: promptFromEnv("AI_MEAL_ANALYSIS_PROMPT", defaultMealAnalysisPrompt)
           },
           // "high" detail gives the model the resolution it needs to judge
-          // portion size, which is the dominant source of calorie error.
-          { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }
+          // portion size, which is the dominant source of calorie error. Several
+          // images of the same meal are sent together so the model can combine them.
+          ...imageDataUrls.map((url) => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } }))
         ]
       }
     ]
@@ -263,8 +264,8 @@ async function requestMealImageAnalysis(
   return parseMealAnalysisText(completionText(response));
 }
 
-export async function analyzeMealImage(config: AiConfig, imageDataUrl?: string): Promise<FoodAnalysis> {
-  if (!imageDataUrl) {
+export async function analyzeMealImage(config: AiConfig, imageDataUrls: string[] = []): Promise<FoodAnalysis> {
+  if (imageDataUrls.length === 0) {
     return {
       foods: [],
       total: { calories: 0, protein: 0, fat: 0, carbs: 0 },
@@ -273,7 +274,7 @@ export async function analyzeMealImage(config: AiConfig, imageDataUrl?: string):
     };
   }
 
-  return requestMealImageAnalysis(config, imageDataUrl);
+  return requestMealImageAnalysis(config, imageDataUrls);
 }
 
 // Self-consistency for the photo flow: run the same image several times and keep
@@ -285,15 +286,15 @@ export async function analyzeMealImage(config: AiConfig, imageDataUrl?: string):
 // when sampling is disabled or no image is given.
 export async function analyzeMealImageStable(
   config: AiConfig,
-  imageDataUrl?: string,
+  imageDataUrls: string[] = [],
   samples = PRECISE_SAMPLES
 ): Promise<FoodAnalysis> {
   const count = Math.max(1, Math.min(Math.round(samples), 5));
-  if (!imageDataUrl || count === 1) return analyzeMealImage(config, imageDataUrl);
+  if (imageDataUrls.length === 0 || count === 1) return analyzeMealImage(config, imageDataUrls);
 
   const settled = await Promise.allSettled(
     Array.from({ length: count }, (_unused, index) =>
-      requestMealImageAnalysis(config, imageDataUrl, { temperature: PRECISE_TEMPERATURE, seed: ANALYSIS_SEED + index })
+      requestMealImageAnalysis(config, imageDataUrls, { temperature: PRECISE_TEMPERATURE, seed: ANALYSIS_SEED + index })
     )
   );
   const analyses = settled
@@ -315,7 +316,7 @@ export async function analyzeMealImageStable(
   };
 }
 
-export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrl: string): Promise<FoodAnalysis> {
+export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrls: string[]): Promise<FoodAnalysis> {
   const response = await client(config).chat.completions.create({
     model: config.visionModel,
     ...completionOptions({ json: true }),
@@ -327,7 +328,7 @@ export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrl:
             type: "text",
             text: promptFromEnv("AI_NUTRITION_LABEL_ANALYSIS_PROMPT", defaultNutritionLabelAnalysisPrompt)
           },
-          { type: "image_url", image_url: { url: imageDataUrl, detail: "high" } }
+          ...imageDataUrls.map((url) => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } }))
         ]
       }
     ]

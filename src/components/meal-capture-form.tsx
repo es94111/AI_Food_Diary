@@ -37,12 +37,15 @@ const CAPTURE_MODES: { id: CaptureMode; label: string }[] = [
   { id: "manual", label: "⌨️ 手動" }
 ];
 
+const MAX_IMAGES = 5;
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+
 export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMealAdvice?: string }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nutritionLabelInputRef = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<CaptureMode>("photo");
-  const [preview, setPreview] = useState<string>();
+  const [previews, setPreviews] = useState<string[]>([]);
   const [preciseMode, setPreciseMode] = useState(false);
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
@@ -67,48 +70,52 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     setNextMealAdvice(initialNextMealAdvice);
   }, [initialNextMealAdvice]);
 
-  async function onFileChange(file?: File) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
+  // Validates a batch of picked/dropped files against the per-image size limit and
+  // the overall count limit, returning only the data URLs that fit (and surfacing a
+  // message when some were skipped).
+  async function readImageFiles(files: File[], existingCount: number) {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) {
       setError("請選擇圖片檔案。");
-      return;
+      return [];
     }
-    if (file.size > 6 * 1024 * 1024) {
-      setError("圖片不可超過 6MB");
-      return;
-    }
+    const messages: string[] = [];
+    if (imageFiles.length < files.length) messages.push("已略過非圖片檔案。");
 
-    setError("");
-    const reader = new FileReader();
-    reader.onload = () => setPreview(String(reader.result));
-    reader.readAsDataURL(file);
+    const withinSize = imageFiles.filter((file) => file.size <= MAX_IMAGE_BYTES);
+    if (withinSize.length < imageFiles.length) messages.push(`部分圖片超過 6MB 已略過。`);
+
+    const room = Math.max(0, MAX_IMAGES - existingCount);
+    const accepted = withinSize.slice(0, room);
+    if (withinSize.length > room) messages.push(`最多上傳 ${MAX_IMAGES} 張圖片。`);
+
+    setError(messages.join(" "));
+    return Promise.all(accepted.map((file) => fileToDataUrl(file)));
+  }
+
+  async function onFilesChange(fileList?: FileList | null) {
+    if (!fileList?.length) return;
+    const dataUrls = await readImageFiles(Array.from(fileList), previews.length);
+    if (dataUrls.length) setPreviews((current) => [...current, ...dataUrls]);
   }
 
   function onImageDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDraggingImage(false);
-    onFileChange(event.dataTransfer.files?.[0]);
+    onFilesChange(event.dataTransfer.files);
   }
 
-  async function analyzeNutritionLabel(file?: File) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("請選擇營養標示圖片檔案。");
-      return;
-    }
-    if (file.size > 6 * 1024 * 1024) {
-      setError("營養標示圖片不可超過 6MB");
-      return;
-    }
+  async function analyzeNutritionLabel(fileList?: FileList | null) {
+    if (!fileList?.length) return;
+    const imageDataUrls = await readImageFiles(Array.from(fileList), 0);
+    if (imageDataUrls.length === 0) return;
 
-    setError("");
     setNutritionLabelLoading(true);
     try {
-      const imageDataUrl = await fileToDataUrl(file);
       const response = await fetch("/api/meals/analyze-nutrition-label", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageDataUrl })
+        body: JSON.stringify({ imageDataUrls })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -140,12 +147,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     let endpoint: string;
     let payload: Record<string, unknown>;
     if (mode === "photo") {
-      if (!preview) {
+      if (previews.length === 0) {
         setError("請先拍照或上傳餐點圖片。");
         return;
       }
       endpoint = "/api/meals/analyze";
-      payload = { mealType, imageDataUrl: preview, precise: preciseMode };
+      payload = { mealType, imageDataUrls: previews, precise: preciseMode };
     } else if (mode === "describe") {
       const mealDescription = description.trim();
       if (!mealDescription) {
@@ -200,7 +207,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mealType: confirmMealType,
-          imageDataUrl: mode === "photo" ? preview : undefined,
+          imageDataUrls: mode === "photo" && previews.length ? previews : undefined,
           description: mode === "describe" ? description.trim() || undefined : undefined,
           manualItems: items,
           eatenAt: new Date().toISOString()
@@ -211,7 +218,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         setError(data.error ?? "儲存失敗，請稍後再試");
         return;
       }
-      setPreview(undefined);
+      setPreviews([]);
       setDescription("");
       setManualItems([emptyManualItem()]);
       setConfirmItems([]);
@@ -353,21 +360,40 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h3 className="font-bold text-amber-950">從圖片上傳食物</h3>
-            <p className="mt-1 text-xs text-stone-500">拍照或上傳餐點照片，AI 會辨識食物、估算營養並產生評分。</p>
+            <p className="mt-1 text-xs text-stone-500">可一次拍照或上傳多張餐點照片（最多 {MAX_IMAGES} 張），AI 會綜合所有照片辨識食物、估算營養並產生評分。</p>
           </div>
           <div className="flex gap-2">
-            {preview ? (
-              <button className="rounded-xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setPreview(undefined)} type="button">移除圖片</button>
+            {previews.length ? (
+              <button className="rounded-xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setPreviews([])} type="button">全部移除</button>
             ) : null}
-            <button className="cursor-pointer rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-800" onClick={() => fileInputRef.current?.click()} type="button">選擇圖片</button>
+            <button className="cursor-pointer rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={previews.length >= MAX_IMAGES} onClick={() => fileInputRef.current?.click()} type="button">選擇圖片</button>
           </div>
         </div>
-        <input ref={fileInputRef} accept="image/*" capture="environment" className="sr-only" type="file" onChange={(event) => onFileChange(event.target.files?.[0])} />
-        {preview ? (
-          <img alt="餐點預覽" className="mt-4 max-h-64 w-full rounded-2xl object-cover" src={preview} />
+        <input ref={fileInputRef} accept="image/*" capture="environment" multiple className="sr-only" type="file" onChange={(event) => { onFilesChange(event.target.files); event.target.value = ""; }} />
+        {previews.length ? (
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {previews.map((src, index) => (
+              <div className="group relative" key={`${src.slice(0, 32)}-${index}`}>
+                <img alt={`餐點預覽 ${index + 1}`} className="h-32 w-full rounded-2xl object-cover" src={src} />
+                <button
+                  aria-label={`移除圖片 ${index + 1}`}
+                  className="absolute right-1.5 top-1.5 rounded-full bg-stone-950/70 px-2 py-0.5 text-xs font-semibold text-white"
+                  onClick={() => setPreviews((current) => current.filter((_, i) => i !== index))}
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            {previews.length < MAX_IMAGES ? (
+              <button className="flex h-32 w-full items-center justify-center rounded-2xl border border-dashed border-amber-300 bg-amber-50 text-sm font-semibold text-amber-800" onClick={() => fileInputRef.current?.click()} type="button">
+                + 新增圖片
+              </button>
+            ) : null}
+          </div>
         ) : (
           <button className="mt-4 w-full rounded-2xl bg-amber-50 px-4 py-8 text-center text-sm font-semibold text-amber-800" onClick={() => fileInputRef.current?.click()} type="button">
-            點此拍照/上傳，或將圖片拖放到這裡
+            點此拍照/上傳，或將圖片拖放到這裡（可多張）
           </button>
         )}
         <label className="mt-4 flex cursor-pointer items-start gap-2 rounded-xl bg-amber-50 p-3 text-sm">
@@ -421,13 +447,13 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-bold text-amber-950">拍攝或上傳營養標示</p>
-              <p className="mt-1 text-xs text-amber-700">AI 會讀取每份熱量、蛋白質、脂肪與碳水，快速新增成一項食物。</p>
+              <p className="mt-1 text-xs text-amber-700">可一次上傳多張不同商品的標示（最多 {MAX_IMAGES} 張），AI 會讀取每份熱量、蛋白質、脂肪與碳水，各自新增成一項食物。</p>
             </div>
             <button className="cursor-pointer rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-60" disabled={nutritionLabelLoading} onClick={() => nutritionLabelInputRef.current?.click()} type="button">
               {nutritionLabelLoading ? "辨識中..." : "上傳營養標示"}
             </button>
           </div>
-          <input ref={nutritionLabelInputRef} accept="image/*" capture="environment" className="sr-only" type="file" onChange={(event) => analyzeNutritionLabel(event.target.files?.[0])} />
+          <input ref={nutritionLabelInputRef} accept="image/*" capture="environment" multiple className="sr-only" type="file" onChange={(event) => analyzeNutritionLabel(event.target.files)} />
         </div>
         <div className="mt-3 space-y-3">
           {manualItems.map((item, index) => (
@@ -489,7 +515,13 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
               </div>
               <button className="rounded-full bg-stone-100 px-3 py-1 font-semibold" onClick={() => setShowConfirm(false)} type="button">關閉</button>
             </div>
-            {preview ? <img alt="待確認餐點" className="mt-4 max-h-64 w-full rounded-2xl object-cover" src={preview} /> : null}
+            {previews.length ? (
+              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {previews.map((src, index) => (
+                  <img alt={`待確認餐點 ${index + 1}`} className="h-32 w-full rounded-2xl object-cover" key={`${src.slice(0, 32)}-${index}`} src={src} />
+                ))}
+              </div>
+            ) : null}
             <div className="mt-4 space-y-3">
               {confirmItems.map((item, index) => <FoodEditor key={item.id} item={item} index={index} items={confirmItems} setItems={setConfirmItems} />)}
             </div>

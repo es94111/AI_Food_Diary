@@ -6,9 +6,14 @@ import { requireUser } from "@/lib/auth";
 import { apiError, HttpError } from "@/lib/http";
 import { enforceAiRateLimit } from "@/lib/rate-limit";
 
-const nutritionLabelSchema = z.object({
-  imageDataUrl: z.string().startsWith("data:image/")
-});
+const nutritionLabelSchema = z
+  .object({
+    imageDataUrl: z.string().startsWith("data:image/").optional(),
+    imageDataUrls: z.array(z.string().startsWith("data:image/")).min(1).max(5).optional()
+  })
+  .refine((v) => !!v.imageDataUrl || !!v.imageDataUrls?.length, {
+    message: "請先上傳營養標示圖片。"
+  });
 
 export async function POST(request: Request) {
   try {
@@ -16,7 +21,8 @@ export async function POST(request: Request) {
     const limited = await enforceAiRateLimit(user.id);
     if (limited) return limited;
     const body = nutritionLabelSchema.parse(await request.json());
-    const analysis = await analyzeNutritionLabelImage(resolveUserAiConfig(user), body.imageDataUrl);
+    const images = body.imageDataUrls?.length ? body.imageDataUrls : body.imageDataUrl ? [body.imageDataUrl] : [];
+    const analysis = await analyzeNutritionLabelImage(resolveUserAiConfig(user), images);
     return NextResponse.json({ analysis });
   } catch (error) {
     if (error instanceof HttpError) return apiError(error);
