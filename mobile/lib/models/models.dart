@@ -312,6 +312,46 @@ class HealthMetricValue {
   }
 }
 
+/// One reading in a metric's history time series (from /api/health/history).
+class HealthHistoryPoint {
+  final DateTime at;
+  final double value;
+
+  HealthHistoryPoint({required this.at, required this.value});
+
+  factory HealthHistoryPoint.fromJson(Map<String, dynamic> j) =>
+      HealthHistoryPoint(
+        at: DateTime.tryParse(j['at']?.toString() ?? '')?.toLocal() ??
+            DateTime.now(),
+        value: _toDouble(j['value']),
+      );
+}
+
+/// A single metric type's historical readings (oldest→newest), backing the
+/// tap-to-drill-down trend charts on the health page.
+class HealthHistorySeries {
+  final String type;
+  final String unit;
+  final List<HealthHistoryPoint> points;
+
+  HealthHistorySeries({
+    required this.type,
+    required this.unit,
+    required this.points,
+  });
+
+  factory HealthHistorySeries.fromJson(Map<String, dynamic> j) =>
+      HealthHistorySeries(
+        type: (j['type'] as String?) ?? '',
+        unit: (j['unit'] as String?) ?? '',
+        points: (j['points'] as List?)
+                ?.whereType<Map<String, dynamic>>()
+                .map(HealthHistoryPoint.fromJson)
+                .toList() ??
+            const [],
+      );
+}
+
 class HealthConnection {
   final String id;
   final String provider;

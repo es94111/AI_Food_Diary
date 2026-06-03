@@ -438,7 +438,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
               crossAxisSpacing: 8,
               children: [
                 for (final m in present)
-                  _metricTile(m, group.color, showTime: showHistory),
+                  _metricTile(group, m, showTime: showHistory),
               ],
             ),
           ],
@@ -471,7 +471,30 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     return null;
   }
 
-  Widget _metricTile(_MetricDef def, Color color, {bool showTime = false}) {
+  /// Opens the tap-to-drill-down history sheet for a metric. Tapping any sleep
+  /// tile shows every stage together (stacked per night), mirroring the web.
+  void _openHistory(_MetricGroup group, _MetricDef def) {
+    final isSleep = group.id == 'sleep';
+    final types =
+        isSleep ? group.metrics.map((m) => m.type).toList() : [def.type];
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => _HistorySheet(
+        title: isSleep ? group.title : def.label,
+        types: types,
+        sleep: isSleep,
+        metric: def,
+        color: group.color,
+      ),
+    );
+  }
+
+  Widget _metricTile(_MetricGroup group, _MetricDef def,
+      {bool showTime = false}) {
+    final color = group.color;
     final m = _metric(def.type);
     final status = m == null ? null : _metricStatus(def.type, m.value);
     final valueColor = status != null ? _statusColor(status) : Colors.black87;
@@ -479,7 +502,10 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     final pct = (m != null && target != null)
         ? (m.value / target).clamp(0.0, 1.0)
         : null;
-    return Container(
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _openHistory(group, def),
+      child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.08),
@@ -520,6 +546,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
             ),
           ],
         ],
+      ),
       ),
     );
   }
@@ -830,4 +857,364 @@ class _SparkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_SparkPainter old) => old.points != points;
+}
+
+// ---- Tap-to-drill-down history ----
+
+const _historyChartHeight = 140.0;
+
+// Sleep stage label + colour, mirroring the web history view.
+const _sleepStageMeta = <String, (String, Color)>{
+  'SLEEP_DEEP': ('深睡', Color(0xFF4338CA)),
+  'SLEEP_LIGHT': ('淺睡', Color(0xFF818CF8)),
+  'SLEEP_REM': ('REM', Color(0xFFC4B5FD)),
+  'SLEEP_AWAKE': ('清醒', Color(0xFFFCD34D)),
+};
+// Stacking order top→bottom, so deep sleep sits at the base of each night's bar.
+const _sleepStackOrder = ['SLEEP_AWAKE', 'SLEEP_REM', 'SLEEP_LIGHT', 'SLEEP_DEEP'];
+
+String _histDayLabel(DateTime at) => DateFormat('M/d').format(at);
+
+String _fmtSleepMins(double mins) {
+  final t = mins.round();
+  return '${t ~/ 60}:${(t % 60).toString().padLeft(2, '0')}';
+}
+
+/// Bottom sheet charting a metric's recent readings. A single metric shows a bar
+/// chart + stats + reading list; the sleep tiles show every stage stacked per
+/// night. Fetches /api/health/history on open (cookie session).
+class _HistorySheet extends StatefulWidget {
+  const _HistorySheet({
+    required this.title,
+    required this.types,
+    required this.sleep,
+    required this.metric,
+    required this.color,
+  });
+
+  final String title;
+  final List<String> types;
+  final bool sleep;
+  final _MetricDef metric;
+  final Color color;
+
+  @override
+  State<_HistorySheet> createState() => _HistorySheetState();
+}
+
+class _HistorySheetState extends State<_HistorySheet> {
+  List<HealthHistorySeries>? _series;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await HealthService.history(widget.types, limit: 30);
+      if (mounted) setState(() => _series = s);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  String _fmtVal(String unit, double v) => widget.metric.sleep
+      ? _fmtSleepMins(v)
+      : '${v.toStringAsFixed(widget.metric.digits)} $unit'.trim();
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.7,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      builder: (ctx, controller) => ListView(
+        controller: controller,
+        padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16),
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration:
+                    BoxDecoration(color: widget.color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('${widget.title}歷史數據',
+                    style: const TextStyle(
+                        fontSize: 18, fontWeight: FontWeight.w900)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          const Text('最近 30 筆紀錄',
+              style: TextStyle(fontSize: 11, color: Colors.black45)),
+          const SizedBox(height: 16),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Center(
+                  child: Text(_error!,
+                      style: const TextStyle(color: Colors.red))),
+            )
+          else
+            _content(),
+        ],
+      ),
+    );
+  }
+
+  Widget _content() {
+    final series = _series ?? const <HealthHistorySeries>[];
+    final hasData = series.any((s) => s.points.isNotEmpty);
+    if (!hasData) return _empty();
+    return widget.sleep ? _sleepView(series) : _metricView(series.first);
+  }
+
+  Widget _empty() => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+            child: Text('尚無歷史數據',
+                style: TextStyle(color: Colors.black38))),
+      );
+
+  // ---- single-metric view: bar chart + stats + reading list ----
+
+  Widget _metricView(HealthHistorySeries s) {
+    final pts = s.points;
+    if (pts.isEmpty) return _empty();
+    final vals = pts.map((p) => p.value).toList();
+    var maxV = widget.metric.sleep ? 1.0 : 0.0;
+    for (final v in vals) {
+      maxV = max(maxV, v);
+    }
+    if (maxV <= 0) maxV = 1;
+    final avg = vals.reduce((a, b) => a + b) / vals.length;
+    final hi = vals.reduce(max);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: _historyChartHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (final p in pts)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                    child: Container(
+                      height: max(p.value / maxV * _historyChartHeight, 2),
+                      decoration: const BoxDecoration(
+                        color: Color(0xCC38BDF8),
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(3)),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        _axisLabels(pts.map((p) => p.at).toList()),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            _stat('平均', _fmtVal(s.unit, avg)),
+            const SizedBox(width: 8),
+            _stat('最高', _fmtVal(s.unit, hi)),
+            const SizedBox(width: 8),
+            _stat('最新', _fmtVal(s.unit, vals.last)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        for (final p in pts.reversed)
+          _readingRow(_histDayLabel(p.at), _fmtVal(s.unit, p.value)),
+      ],
+    );
+  }
+
+  // ---- sleep view: all stages stacked per night ----
+
+  Widget _sleepView(List<HealthHistorySeries> series) {
+    final dates = <DateTime>{};
+    final sleepTotal = <DateTime, double>{};
+    final stageByDate = <DateTime, Map<String, double>>{};
+    for (final s in series) {
+      for (final p in s.points) {
+        final d = DateTime(p.at.year, p.at.month, p.at.day);
+        dates.add(d);
+        if (s.type == 'SLEEP') {
+          sleepTotal[d] = p.value;
+        } else if (_sleepStageMeta.containsKey(s.type)) {
+          (stageByDate[d] ??= {})[s.type] = p.value;
+        }
+      }
+    }
+    if (dates.isEmpty) return _empty();
+    final ordered = dates.toList()..sort();
+    double total(DateTime d) =>
+        sleepTotal[d] ??
+        (stageByDate[d]?.values.fold<double>(0.0, (a, b) => a + b) ?? 0);
+    final hasStages = stageByDate.isNotEmpty;
+    var maxTotal = 1.0;
+    for (final d in ordered) {
+      maxTotal = max(maxTotal, total(d));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          height: _historyChartHeight,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              for (final d in ordered)
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 1.5),
+                    child: _sleepColumn(total(d), stageByDate[d] ?? const {},
+                        maxTotal, hasStages),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        _axisLabels(ordered),
+        if (hasStages) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 4,
+            children: [
+              for (final e in _sleepStageMeta.entries)
+                _legendDot(e.value.$1, e.value.$2),
+            ],
+          ),
+        ],
+        const SizedBox(height: 14),
+        for (final d in ordered.reversed)
+          _readingRow(_histDayLabel(d), _fmtSleepMins(total(d))),
+      ],
+    );
+  }
+
+  Widget _sleepColumn(double total, Map<String, double> stages, double maxTotal,
+      bool hasStages) {
+    final h = max(total / maxTotal * _historyChartHeight, 2.0);
+    final segs = hasStages && total > 0
+        ? [
+            for (final st in _sleepStackOrder)
+              if ((stages[st] ?? 0) > 0) st
+          ]
+        : const <String>[];
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+        child: SizedBox(
+          width: double.infinity,
+          height: h,
+          child: segs.isEmpty
+              ? const ColoredBox(color: Color(0xCC818CF8))
+              : Column(
+                  children: [
+                    for (final st in segs)
+                      Expanded(
+                        flex: ((stages[st]! / total) * 1000)
+                            .round()
+                            .clamp(1, 1000000),
+                        child: ColoredBox(color: _sleepStageMeta[st]!.$2),
+                      ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
+  // ---- shared pieces ----
+
+  Widget _axisLabels(List<DateTime> ats) {
+    if (ats.isEmpty) return const SizedBox.shrink();
+    final labels = <String>[_histDayLabel(ats.first)];
+    if (ats.length > 2) labels.add(_histDayLabel(ats[ats.length ~/ 2]));
+    labels.add(_histDayLabel(ats.last));
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        for (final l in labels)
+          Text(l, style: const TextStyle(fontSize: 10, color: Colors.black38)),
+      ],
+    );
+  }
+
+  Widget _stat(String label, String value) => Expanded(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.03),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            children: [
+              Text(value,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 14)),
+              const SizedBox(height: 2),
+              Text(label,
+                  style: const TextStyle(fontSize: 10, color: Colors.black45)),
+            ],
+          ),
+        ),
+      );
+
+  Widget _readingRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label,
+                style: const TextStyle(fontSize: 13, color: Colors.black54)),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 13, fontWeight: FontWeight.w700)),
+          ],
+        ),
+      );
+
+  Widget _legendDot(String label, Color color) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+              width: 8,
+              height: 8,
+              decoration:
+                  BoxDecoration(color: color, shape: BoxShape.circle)),
+          const SizedBox(width: 4),
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: Colors.black54)),
+        ],
+      );
 }

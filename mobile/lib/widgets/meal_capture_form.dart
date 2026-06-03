@@ -94,12 +94,16 @@ const _captureModeLabels = {
   CaptureMode.manual: '⌨️ 手動',
 };
 
+/// Mirrors the web form's MAX_MEAL_IMAGES / nutrition-label cap: one batch of a
+/// meal (different dishes or angles) is analysed together.
+const _maxImages = 5;
+
 class _MealCaptureFormState extends State<MealCaptureForm> {
   final _picker = ImagePicker();
   String _mealType = 'LUNCH';
   CaptureMode _mode = CaptureMode.photo;
   bool _preciseMode = false;
-  String? _imageDataUrl;
+  final List<String> _imageDataUrls = [];
   final _descriptionCtrl = TextEditingController();
   final List<EditableItem> _manualItems = [EditableItem()];
   List<SavedFood> _savedFoods = [];
@@ -127,25 +131,46 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     if (mounted) setState(() => _savedFoods = foods);
   }
 
-  Future<String?> _pickImageDataUrl(ImageSource source) async {
-    final file = await _picker.pickImage(
-        source: source, maxWidth: 1600, imageQuality: 80);
-    if (file == null) return null;
-    final bytes = await file.readAsBytes();
-    if (bytes.length > 6 * 1024 * 1024) {
-      setState(() => _error = '圖片不可超過 6MB');
-      return null;
+  /// Picks one (camera) or several (gallery) images and returns their data URLs,
+  /// honouring [room] remaining slots and the 6MB per-image cap. Surfaces a note
+  /// when some files were skipped, mirroring the web form's batch validation.
+  Future<List<String>> _pickImageDataUrls(ImageSource source, int room) async {
+    if (room <= 0) {
+      setState(() => _error = '最多上傳 $_maxImages 張圖片。');
+      return [];
     }
-    final mime = file.name.toLowerCase().endsWith('.png')
-        ? 'image/png'
-        : 'image/jpeg';
-    return 'data:$mime;base64,${base64Encode(bytes)}';
+    final List<XFile> files = source == ImageSource.gallery
+        ? await _picker.pickMultiImage(maxWidth: 1600, imageQuality: 80)
+        : await _picker
+            .pickImage(source: source, maxWidth: 1600, imageQuality: 80)
+            .then((f) => f == null ? <XFile>[] : [f]);
+    if (files.isEmpty) return [];
+
+    final messages = <String>[];
+    if (files.length > room) messages.add('最多上傳 $_maxImages 張圖片。');
+    var skippedSize = false;
+    final urls = <String>[];
+    for (final file in files) {
+      if (urls.length >= room) break;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 6 * 1024 * 1024) {
+        skippedSize = true;
+        continue;
+      }
+      final mime =
+          file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      urls.add('data:$mime;base64,${base64Encode(bytes)}');
+    }
+    if (skippedSize) messages.add('部分圖片超過 6MB 已略過。');
+    if (messages.isNotEmpty) setState(() => _error = messages.join(' '));
+    return urls;
   }
 
-  Future<void> _chooseMealImage(ImageSource source) async {
+  Future<void> _chooseMealImages(ImageSource source) async {
     setState(() => _error = null);
-    final url = await _pickImageDataUrl(source);
-    if (url != null) setState(() => _imageDataUrl = url);
+    final urls =
+        await _pickImageDataUrls(source, _maxImages - _imageDataUrls.length);
+    if (urls.isNotEmpty) setState(() => _imageDataUrls.addAll(urls));
   }
 
   Future<void> _scanNutritionLabel(ImageSource source) async {
@@ -154,9 +179,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       _labelLoading = true;
     });
     try {
-      final url = await _pickImageDataUrl(source);
-      if (url == null) return;
-      final items = await MealService.analyzeNutritionLabel(url);
+      final urls = await _pickImageDataUrls(source, _maxImages);
+      if (urls.isEmpty) return;
+      final items = await MealService.analyzeNutritionLabel(urls);
       if (items.isEmpty) {
         setState(() => _error = 'AI 沒有辨識到營養標示內容，請換一張更清楚的圖片。');
         return;
@@ -180,7 +205,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final manual = _manualItems.where((e) => e.hasName).toList();
     switch (_mode) {
       case CaptureMode.photo:
-        if (_imageDataUrl == null) {
+        if (_imageDataUrls.isEmpty) {
           setState(() => _error = '請先拍照或上傳餐點圖片。');
           return;
         }
@@ -199,7 +224,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     try {
       final analyzed = switch (_mode) {
         CaptureMode.photo => await MealService.analyzeImage(
-            _mealType, _imageDataUrl!,
+            _mealType, _imageDataUrls,
             precise: _preciseMode),
         CaptureMode.describe =>
           await MealService.analyzeDescription(_mealType, desc),
@@ -225,7 +250,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       showDragHandle: true,
       builder: (ctx) => _ConfirmSheet(
         items: items,
-        imageDataUrl: _mode == CaptureMode.photo ? _imageDataUrl : null,
+        imageDataUrls:
+            _mode == CaptureMode.photo ? List.of(_imageDataUrls) : const [],
         onReestimate: (editedItems) async {
           final analyzed = await MealService.reestimate(
               _mealType, editedItems.map((e) => e.toMealItem()).toList());
@@ -239,7 +265,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           // "健康同步" flow (HealthService.syncNow), not at save time.
           await MealService.createMeal(
             mealType: _mealType,
-            imageDataUrl: _mode == CaptureMode.photo ? _imageDataUrl : null,
+            imageDataUrls:
+                _mode == CaptureMode.photo ? _imageDataUrls : null,
             description:
                 _mode == CaptureMode.describe && desc.isNotEmpty ? desc : null,
             items: items,
@@ -251,7 +278,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   Future<void> _afterSave() async {
     setState(() {
-      _imageDataUrl = null;
+      _imageDataUrls.clear();
       _descriptionCtrl.clear();
       _manualItems
         ..clear()
@@ -513,41 +540,74 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           const Text('從圖片上傳食物',
               style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text('拍照或上傳餐點照片，AI 會辨識食物、估算營養並產生評分。',
+          const Text('可一次拍照或上傳多張餐點照片（最多 $_maxImages 張），AI 會綜合所有照片辨識食物、估算營養並產生評分。',
               style: TextStyle(fontSize: 11, color: Colors.black54)),
-          const SizedBox(height: 10),
-          if (_imageDataUrl != null)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.memory(
-                base64Decode(_imageDataUrl!.split(',').last),
-                height: 180,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-            ),
+          if (_imageDataUrls.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _imageGrid(),
+          ],
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _imageSourceSheet(_chooseMealImage),
+                  onPressed: _imageDataUrls.length >= _maxImages
+                      ? null
+                      : () => _imageSourceSheet(_chooseMealImages),
                   icon: const Icon(Icons.add_a_photo),
-                  label: Text(_imageDataUrl == null ? '選擇圖片' : '更換圖片'),
+                  label: Text(_imageDataUrls.isEmpty ? '選擇圖片' : '新增圖片'),
                 ),
               ),
-              if (_imageDataUrl != null) ...[
+              if (_imageDataUrls.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                IconButton(
-                  onPressed: () => setState(() => _imageDataUrl = null),
-                  icon: const Icon(Icons.close),
-                  tooltip: '移除圖片',
+                TextButton(
+                  onPressed: () => setState(() => _imageDataUrls.clear()),
+                  child: const Text('全部移除'),
                 ),
               ],
             ],
           ),
         ],
       ),
+    );
+  }
+
+  /// Thumbnail grid of the picked meal photos, each with a remove button.
+  Widget _imageGrid() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _imageDataUrls.asMap().entries.map((entry) {
+        return Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.memory(
+                base64Decode(entry.value.split(',').last),
+                height: 96,
+                width: 96,
+                fit: BoxFit.cover,
+              ),
+            ),
+            Positioned(
+              top: 2,
+              right: 2,
+              child: GestureDetector(
+                onTap: () =>
+                    setState(() => _imageDataUrls.removeAt(entry.key)),
+                child: Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    color: Colors.black54,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, size: 16, color: Colors.white),
+                ),
+              ),
+            ),
+          ],
+        );
+      }).toList(),
     );
   }
 
@@ -812,13 +872,13 @@ class ItemEditor extends StatelessWidget {
 class _ConfirmSheet extends StatefulWidget {
   const _ConfirmSheet({
     required this.items,
-    required this.imageDataUrl,
+    required this.imageDataUrls,
     required this.onSave,
     required this.onReestimate,
   });
 
   final List<EditableItem> items;
-  final String? imageDataUrl;
+  final List<String> imageDataUrls;
   final Future<void> Function(List<EditableItem>) onSave;
   final Future<List<EditableItem>> Function(List<EditableItem>) onReestimate;
 
@@ -898,6 +958,24 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
             const SizedBox(height: 4),
             const Text('請確認食物是否正確，可先修正、刪除或新增後再儲存。',
                 style: TextStyle(fontSize: 12, color: Colors.black54)),
+            if (widget.imageDataUrls.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: widget.imageDataUrls
+                    .map((url) => ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            base64Decode(url.split(',').last),
+                            height: 96,
+                            width: 96,
+                            fit: BoxFit.cover,
+                          ),
+                        ))
+                    .toList(),
+              ),
+            ],
             const SizedBox(height: 12),
             ..._items.asMap().entries.map((entry) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),

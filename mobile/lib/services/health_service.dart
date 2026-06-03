@@ -531,6 +531,23 @@ class HealthService {
     return HealthSyncStatus.fromJson(res.data as Map<String, dynamic>);
   }
 
+  /// Recent history time series for one or more metric [types] (joined into the
+  /// `types` query param server-side), backing the tap-to-drill-down trend
+  /// charts. Cookie-session auth, same as [status].
+  static Future<List<HealthHistorySeries>> history(List<String> types,
+      {int limit = 30}) async {
+    final res = await _api.get('/api/health/history',
+        query: {'types': types.join(','), 'limit': '$limit'});
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '歷史數據讀取失敗'));
+    }
+    final list = res.data['series'] as List? ?? [];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(HealthHistorySeries.fromJson)
+        .toList();
+  }
+
   static Future<List<HealthConnection>> connections() async {
     final res = await _api.get('/api/health/connections');
     if (!ApiClient.ok(res)) return [];

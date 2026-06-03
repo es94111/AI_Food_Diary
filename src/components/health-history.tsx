@@ -174,7 +174,7 @@ function MetricHistory({ metric, series, tz }: { metric: HistoryMetric; series: 
     <div>
       <div className="flex h-36 items-end gap-1">
         {points.map((p) => (
-          <div key={p.at} className="flex flex-1 items-end" title={`${dayLabel(p.at, tz)} · ${fmtValue(metric, series.unit, p.value)}`}>
+          <div key={p.at} className="flex h-full flex-1 items-end" title={`${dayLabel(p.at, tz)} · ${fmtValue(metric, series.unit, p.value)}`}>
             <div
               className="w-full rounded-t-sm bg-sky-400/80"
               style={{ height: `${Math.max((p.value / max) * 100, 2)}%` }}
@@ -255,7 +255,7 @@ function SleepHistory({ series, tz }: { series: Series[]; tz: string }) {
           const colHeight = Math.max((total / maxTotal) * 100, 2);
           const entry = stageByDate.get(label) ?? {};
           return (
-            <div key={iso} className="flex flex-1 items-end" title={`${label} · ${fmtSleep(total)}`}>
+            <div key={iso} className="flex h-full flex-1 items-end" title={`${label} · ${fmtSleep(total)}`}>
               <div className="flex w-full flex-col overflow-hidden rounded-t-sm" style={{ height: `${colHeight}%` }}>
                 {hasStages
                   ? // Top→bottom: awake, rem, light, deep (deep at the base).

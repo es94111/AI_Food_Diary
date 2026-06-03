@@ -28,11 +28,11 @@ class MealService {
   // ---- AI analysis (returns items to confirm, does NOT persist) ----
 
   static Future<List<FoodAnalysisItem>> analyzeImage(
-      String mealType, String imageDataUrl,
+      String mealType, List<String> imageDataUrls,
       {bool precise = false}) {
     return _analyze('/api/meals/analyze', {
       'mealType': mealType,
-      'imageDataUrl': imageDataUrl,
+      'imageDataUrls': imageDataUrls,
       'precise': precise,
       'eatenAt': DateTime.now().toUtc().toIso8601String(),
     }, '分析失敗，請稍後再試');
@@ -69,9 +69,9 @@ class MealService {
   }
 
   static Future<List<FoodAnalysisItem>> analyzeNutritionLabel(
-      String imageDataUrl) {
+      List<String> imageDataUrls) {
     return _analyze('/api/meals/analyze-nutrition-label', {
-      'imageDataUrl': imageDataUrl,
+      'imageDataUrls': imageDataUrls,
     }, '營養標示分析失敗，請稍後再試');
   }
 
@@ -92,13 +92,14 @@ class MealService {
 
   static Future<void> createMeal({
     required String mealType,
-    String? imageDataUrl,
+    List<String>? imageDataUrls,
     String? description,
     required List<MealItem> items,
   }) async {
     final res = await _api.post('/api/meals', data: {
       'mealType': mealType,
-      if (imageDataUrl != null) 'imageDataUrl': imageDataUrl,
+      if (imageDataUrls != null && imageDataUrls.isNotEmpty)
+        'imageDataUrls': imageDataUrls,
       if (description != null && description.isNotEmpty) 'description': description,
       'manualItems': items.map((e) => e.toPayload()).toList(),
       'eatenAt': DateTime.now().toUtc().toIso8601String(),
