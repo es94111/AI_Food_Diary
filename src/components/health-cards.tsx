@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { HistoryTrigger, type HistoryMetric, type HistoryRequest } from "@/components/health-history";
 
 // Presentational pieces for the health dashboard (grouped infographic cards,
 // activity rings, sleep hypnogram/bar, weight sparkline). Pure render functions
@@ -197,6 +198,19 @@ export function HealthGroupCard({
   tz: string;
 }) {
   const accent = HEALTH_ACCENTS[group.accent];
+  const toHistoryMetric = (m: HealthMetricDef): HistoryMetric => ({
+    type: m.type,
+    label: m.label,
+    emoji: m.emoji,
+    digits: m.digits ?? 0,
+    sleep: !!m.sleep
+  });
+  // Tapping any sleep tile opens every stage together; other tiles show just
+  // their own metric.
+  const isSleep = group.id === "sleep";
+  const sleepPayload: HistoryRequest = { title: group.title, emoji: group.emoji, sleep: true, metrics: group.metrics.map(toHistoryMetric) };
+  const payloadFor = (m: HealthMetricDef): HistoryRequest =>
+    isSleep ? sleepPayload : { title: m.label, emoji: m.emoji, sleep: false, metrics: [toHistoryMetric(m)] };
   // Body composition (weight, body fat, ...) changes slowly and is meaningful
   // even when it's days old, so it shows the latest reading with its exact
   // timestamp. Every other group is a daily snapshot — only today's data counts.
@@ -225,7 +239,7 @@ export function HealthGroupCard({
             const target = METRIC_TARGETS[m.type];
             const pct = target ? Math.min(metric.value / target, 1) : null;
             return (
-              <div className={`rounded-2xl p-3 ${accent.tile}`} key={m.type}>
+              <HistoryTrigger className={`rounded-2xl p-3 ${accent.tile}`} key={m.type} payload={payloadFor(m)}>
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm">{m.emoji}</span>
                   <p className="text-xs text-stone-500">{m.label}</p>
@@ -239,7 +253,7 @@ export function HealthGroupCard({
                     <div className={`h-full rounded-full ${accent.bar}`} style={{ width: `${pct * 100}%` }} />
                   </div>
                 ) : null}
-              </div>
+              </HistoryTrigger>
             );
           })}
         </div>

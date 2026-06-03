@@ -18,6 +18,7 @@ import {
   Sparkline,
   type SleepSegment
 } from "@/components/health-cards";
+import { HealthHistoryProvider } from "@/components/health-history";
 
 export default async function HealthPage() {
   const user = await getCurrentUser();
@@ -81,33 +82,35 @@ export default async function HealthPage() {
           <p className="mt-1 text-xs text-stone-500">資料由 Android App 透過 Health Connect 自動同步（步數、熱量、睡眠、運動、心率、體脂等）。請在手機 App 的「健康」分頁完成同步。</p>
         </div>
         <ActivityHero metrics={latestHealthMetrics} todayStart={todayStart} todayEnd={todayEnd} />
-        {HEALTH_GROUPS.map((group) => (
-          <HealthGroupCard
-            key={group.id}
-            group={group}
-            metrics={latestHealthMetrics}
-            todayStart={todayStart}
-            todayEnd={todayEnd}
-            tz={tzName(tz)}
-            chart={
-              group.id === "sleep" ? (
-                sleepIsToday ? (
-                  <div className="space-y-4">
-                    {sleepStages.length >= 2 ? <SleepHypnogram segments={sleepStages} tz={tzName(tz)} /> : null}
-                    <SleepBar
-                      deep={latestHealthMetrics.SLEEP_DEEP?.value}
-                      light={latestHealthMetrics.SLEEP_LIGHT?.value}
-                      rem={latestHealthMetrics.SLEEP_REM?.value}
-                      awake={latestHealthMetrics.SLEEP_AWAKE?.value}
-                    />
-                  </div>
+        <HealthHistoryProvider tz={tzName(tz)}>
+          {HEALTH_GROUPS.map((group) => (
+            <HealthGroupCard
+              key={group.id}
+              group={group}
+              metrics={latestHealthMetrics}
+              todayStart={todayStart}
+              todayEnd={todayEnd}
+              tz={tzName(tz)}
+              chart={
+                group.id === "sleep" ? (
+                  sleepIsToday ? (
+                    <div className="space-y-4">
+                      {sleepStages.length >= 2 ? <SleepHypnogram segments={sleepStages} tz={tzName(tz)} /> : null}
+                      <SleepBar
+                        deep={latestHealthMetrics.SLEEP_DEEP?.value}
+                        light={latestHealthMetrics.SLEEP_LIGHT?.value}
+                        rem={latestHealthMetrics.SLEEP_REM?.value}
+                        awake={latestHealthMetrics.SLEEP_AWAKE?.value}
+                      />
+                    </div>
+                  ) : undefined
+                ) : group.id === "body" ? (
+                  <Sparkline points={weightSeries} label="體重趨勢（近 14 筆）" unit="kg" />
                 ) : undefined
-              ) : group.id === "body" ? (
-                <Sparkline points={weightSeries} label="體重趨勢（近 14 筆）" unit="kg" />
-              ) : undefined
-            }
-          />
-        ))}
+              }
+            />
+          ))}
+        </HealthHistoryProvider>
         <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">代謝估算</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
