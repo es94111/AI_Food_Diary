@@ -1,11 +1,17 @@
 .env
 .env.local
 .next
+build
 node_modules
 coverage
 dist
+out
 src/generated/prisma
+tsconfig.tsbuildinfo
 flutter
+mobile/build
+mobile/android/build
+mobile/android/app/build
 *.log
 postgres_data
 minio_data
