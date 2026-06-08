@@ -111,7 +111,7 @@ function keyFor(id: string): Buffer {
 export function encryptJson(value: unknown): EncryptedPayload {
   const { activeId } = getKeyRing();
   const iv = randomBytes(12);
-  const cipher = createCipheriv("aes-256-gcm", keyFor(activeId), iv);
+  const cipher = createCipheriv("aes-256-gcm", keyFor(activeId), iv, { authTagLength: 16 });
   const ciphertext = Buffer.concat([
     cipher.update(JSON.stringify(value), "utf8"),
     cipher.final()
@@ -128,10 +128,13 @@ export function encryptJson(value: unknown): EncryptedPayload {
 export function decryptJson<T>(payload: EncryptedPayload): T {
   // Legacy payloads predate versioning; they were written with the legacy key.
   const keyId = payload.v ?? LEGACY_KEY_ID;
+  // Pin the GCM auth tag to 16 bytes so a truncated tag can't be accepted.
+  // Existing ciphertext already uses 16-byte tags, so this stays compatible.
   const decipher = createDecipheriv(
     "aes-256-gcm",
     keyFor(keyId),
-    Buffer.from(payload.iv, "base64")
+    Buffer.from(payload.iv, "base64"),
+    { authTagLength: 16 }
   );
   decipher.setAuthTag(Buffer.from(payload.tag, "base64"));
 
