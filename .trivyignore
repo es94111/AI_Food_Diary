@@ -1,0 +1,13 @@
+# CVE-2026-33671 — picomatch <4.0.4 ReDoS via crafted extglob patterns.
+#
+# The flagged copy is the picomatch bundled inside the Node base image's own
+# npm CLI (/usr/local/lib/node_modules/npm/node_modules/picomatch), NOT our app
+# dependencies — our package-lock.json pins picomatch 4.0.4 / 2.3.2 (both clean).
+#
+# It is only reachable if npm itself parses attacker-controlled glob patterns,
+# which the production container never does (it runs `next start`). No runtime
+# exposure.
+#
+# Remove this entry once the node:22-alpine base image ships an npm whose
+# bundled picomatch is >= 4.0.4 (then a rebuild clears it on its own).
+CVE-2026-33671

@@ -42,3 +42,5 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           exit-code: "1"
+          # 已 triage 的 CVE 放 .trivyignore（含原因與移除條件）
+          trivyignores: .trivyignore
