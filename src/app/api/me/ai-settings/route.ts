@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { encryptJson } from "@/lib/encryption";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { apiRoute } from "@/lib/http";
+import { apiRoute, HttpError } from "@/lib/http";
 import { assertSafeCompatibleBaseUrl } from "@/lib/url-guard";
 import { aiSettingsSchema } from "@/lib/validators";
 
@@ -36,6 +36,18 @@ export const PATCH = apiRoute(async (request: Request) => {
   const textModel = body.textModel?.trim() || visionModel;
 
   const apiKey = body.apiKey?.trim();
+  const profile = user.profile;
+  const hasStoredKey = Boolean(profile?.encryptedAiApiKey);
+  const providerChanged = (profile?.aiProvider ?? "openai") !== body.provider;
+  const baseUrlChanged = (profile?.aiBaseUrl ?? "") !== (baseUrl ?? "");
+  if (!apiKey && (!hasStoredKey || providerChanged || baseUrlChanged)) {
+    throw new HttpError(
+      400,
+      "AI_KEY_REQUIRED_FOR_PROVIDER_CHANGE",
+      "更換 AI 服務商或 Base URL 時，請重新輸入對應的 API 金鑰，避免沿用舊金鑰。"
+    );
+  }
+
   // Only overwrite the stored key when a new one is supplied; otherwise keep it.
   const encryptedAiApiKey = apiKey ? encryptJson(apiKey) : undefined;
 

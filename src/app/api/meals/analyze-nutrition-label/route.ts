@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "尚未設定 OPENAI_API_KEY，請先在 .env 填入 API Key 後重啟 app/worker。" }, { status: 400 });
     }
     if (message === "OPENAI_RESPONSE_MISSING_CHOICES") {
-      return NextResponse.json({ error: "AI 服務回應格式不相容，請確認 OPENAI_BASE_URL 是否為 OpenAI-compatible /v1 API。" }, { status: 502 });
+      return NextResponse.json({ error: "AI 服務回應格式不相容，請確認 AI 服務商、Base URL、模型名稱與 API 金鑰是否屬於同一個平台，且端點為 OpenAI-compatible chat completions API。" }, { status: 502 });
     }
     if (message === "OPENAI_RESPONSE_EMPTY_CONTENT") {
       return NextResponse.json({ error: "AI 服務沒有回傳分析內容，請確認模型是否支援圖片輸入。" }, { status: 502 });

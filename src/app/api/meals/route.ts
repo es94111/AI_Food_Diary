@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     }
     if (message === "OPENAI_RESPONSE_MISSING_CHOICES") {
       return NextResponse.json(
-        { error: "AI 服務回應格式不相容，請確認 OPENAI_BASE_URL 是否為 OpenAI-compatible /v1 API。" },
+        { error: "AI 服務回應格式不相容，請確認 AI 服務商、Base URL、模型名稱與 API 金鑰是否屬於同一個平台，且端點為 OpenAI-compatible chat completions API。" },
         { status: 502 }
       );
     }

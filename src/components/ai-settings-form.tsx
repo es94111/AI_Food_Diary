@@ -12,6 +12,8 @@ export function AiSettingsForm() {
   const [baseUrl, setBaseUrl] = useState("");
   const [model, setModel] = useState("");
   const [hasKey, setHasKey] = useState(false);
+  const [savedProvider, setSavedProvider] = useState<AiProviderId>("openai");
+  const [savedBaseUrl, setSavedBaseUrl] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -26,6 +28,8 @@ export function AiSettingsForm() {
           const p: AiProviderId = AI_PROVIDER_IDS.includes(settings.provider) ? settings.provider : "openai";
           setProvider(p);
           setBaseUrl(settings.baseUrl ?? "");
+          setSavedProvider(p);
+          setSavedBaseUrl(settings.baseUrl ?? "");
           setModel(settings.visionModel || AI_PROVIDERS[p].defaultVisionModel);
           setHasKey(Boolean(settings.hasKey));
         }
@@ -48,13 +52,19 @@ export function AiSettingsForm() {
     setMessage("");
     const def = AI_PROVIDERS[provider];
     const modelValue = model.trim() || def.defaultVisionModel;
+    const nextBaseUrl = provider === "compatible" ? baseUrl.trim() : "";
+    if (!apiKey.trim() && (!hasKey || savedProvider !== provider || savedBaseUrl !== nextBaseUrl)) {
+      setSaving(false);
+      setMessage("更換 AI 服務商或 Base URL 時，請重新輸入對應的 API 金鑰，避免沿用舊金鑰。");
+      return;
+    }
     const response = await fetch("/api/me/ai-settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         provider,
         apiKey: apiKey.trim() || undefined,
-        baseUrl: provider === "compatible" ? baseUrl.trim() : undefined,
+        baseUrl: provider === "compatible" ? nextBaseUrl : undefined,
         visionModel: modelValue,
         textModel: modelValue
       })
@@ -65,7 +75,9 @@ export function AiSettingsForm() {
       setMessage(data?.error ?? data?.issues?.[0]?.message ?? "儲存失敗，請確認欄位是否正確。");
       return;
     }
-    if (apiKey.trim()) setHasKey(true);
+    setHasKey(true);
+    setSavedProvider(provider);
+    setSavedBaseUrl(nextBaseUrl);
     setApiKey("");
     setMessage("已儲存 AI 設定。");
     setTimeout(() => setMessage(""), 2500);

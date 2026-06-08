@@ -186,10 +186,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         setState(() => _error = 'AI 沒有辨識到營養標示內容，請換一張更清楚的圖片。');
         return;
       }
+      final analyzedItems = items.map(EditableItem.fromAnalysis).toList();
       setState(() {
         _manualItems.removeWhere((e) => !e.hasName);
-        _manualItems.addAll(items.map(EditableItem.fromAnalysis));
+        _manualItems.addAll(analyzedItems);
+        _labelLoading = false;
       });
+      if (!mounted) return;
+      final confirmed = await _showConfirmDialog(analyzedItems);
+      if (confirmed == true) await _afterSave();
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
