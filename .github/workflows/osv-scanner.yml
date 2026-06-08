@@ -1,0 +1,30 @@
+# Flutter/Dart 相依漏洞掃描（Dependabot 不支援 pub.dev，由 OSV-Scanner 補這塊）。
+# 掃 mobile/pubspec.lock，掃到已知 CVE 就讓 CI 失敗、結果印在 log（不需 GHAS）。
+name: OSV Scanner (Flutter deps)
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    - cron: "40 1 * * 1"   # 每週一 09:40 Asia/Taipei
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan pubspec.lock
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Run OSV-Scanner
+        # 官方 docker image，CLI 介面穩定；有漏洞時 exit-code 非 0 → CI fail。
+        # 首次太吵可改報告模式：在 docker run 後加 `|| true`。
+        run: |
+          docker run --rm -v "${{ github.workspace }}:/src" \
+            ghcr.io/google/osv-scanner:latest \
+            --lockfile=/src/mobile/pubspec.lock
