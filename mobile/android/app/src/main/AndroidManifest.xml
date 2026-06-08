@@ -64,7 +64,11 @@
             </intent-filter>
         </activity>
 
-        <!-- Health Connect rationale entry point for Android 14+ (API 34+). -->
+        <!-- Health Connect rationale entry point for Android 14+ (API 34+).
+             Must be exported so the system can launch it; access is restricted by
+             the system-only permission START_VIEW_PERMISSION_USAGE below, so this
+             is the documented-safe pattern (not a real export exposure). -->
+        <!-- nosemgrep: java.android.security.exported_activity.exported_activity -->
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
