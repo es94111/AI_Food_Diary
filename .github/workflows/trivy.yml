@@ -1,0 +1,44 @@
+# 容器掃描（private 免費版）：掃到 CRITICAL/HIGH 就讓 CI 失敗，結果印在 log，
+# 不上傳 Security 頁籤（故不需 GHAS）。
+name: Trivy (container scan)
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  schedule:
+    - cron: "0 3 * * 1"   # 每週一 11:00 Asia/Taipei
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Build & scan image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build image (load locally)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: app:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: app:scan
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: "1"
