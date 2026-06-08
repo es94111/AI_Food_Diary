@@ -1,7 +1,9 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+# Use the committed lockfile so the image installs the exact audited versions
+# (reproducible builds; keeps OSV/Dependabot pins effective). npm ci needs both.
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM node:22-alpine AS builder
 WORKDIR /app
