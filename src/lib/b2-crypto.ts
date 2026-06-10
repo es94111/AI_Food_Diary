@@ -121,7 +121,7 @@ export function encryptSavedFoodWrite(food: {
   carbs: number;
 }) {
   return {
-    barcode: food.barcode,
+    barcode: food.barcode ?? null,
     name: null,
     estimatedAmount: null,
     encName: encryptJson(food.name),
