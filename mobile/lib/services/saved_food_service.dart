@@ -29,6 +29,8 @@ class SavedFoodService {
     required double protein,
     required double fat,
     required double carbs,
+    String source = 'MANUAL',
+    bool isFavorite = false,
   }) async {
     final res = await _api.post(
       '/api/saved-foods',
@@ -41,6 +43,8 @@ class SavedFoodService {
         'protein': protein,
         'fat': fat,
         'carbs': carbs,
+        'source': source,
+        'isFavorite': isFavorite,
       },
     );
     if (!ApiClient.ok(res)) {
@@ -57,6 +61,8 @@ class SavedFoodService {
     required double protein,
     required double fat,
     required double carbs,
+    String source = 'MANUAL',
+    bool isFavorite = false,
   }) async {
     final res = await _api.patch(
       '/api/saved-foods/$id',
@@ -69,6 +75,8 @@ class SavedFoodService {
         'protein': protein,
         'fat': fat,
         'carbs': carbs,
+        'source': source,
+        'isFavorite': isFavorite,
       },
     );
     if (!ApiClient.ok(res)) {
@@ -78,5 +86,12 @@ class SavedFoodService {
 
   static Future<void> delete(String id) async {
     await _api.delete('/api/saved-foods/$id');
+  }
+
+  static Future<void> markUsed(String id) async {
+    final res = await _api.post('/api/saved-foods/$id');
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '更新常用食物使用紀錄失敗'));
+    }
   }
 }

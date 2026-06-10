@@ -145,11 +145,17 @@ model SavedFood {
   protein         Decimal  @default(0) @db.Decimal(8, 2)
   fat             Decimal  @default(0) @db.Decimal(8, 2)
   carbs           Decimal  @default(0) @db.Decimal(8, 2)
+  source          String   @default("MANUAL")
+  isFavorite      Boolean  @default(false)
+  useCount        Int      @default(0)
+  lastUsedAt      DateTime?
+  archivedAt      DateTime?
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([userId, name])
+  @@index([userId, archivedAt, isFavorite, lastUsedAt])
   @@unique([userId, barcode])
 }
 

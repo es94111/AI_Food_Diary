@@ -3,6 +3,15 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/saved_food_service.dart';
 
+const _sourceLabels = {
+  'MANUAL': '手動新增',
+  'NUTRITION_LABEL': '營養標示',
+  'BARCODE': '條碼綁定',
+  'MEAL_ITEM': '從餐點保存',
+};
+
+enum _FoodTab { favorites, mine, barcoded, recent }
+
 class SavedFoodsManagerCard extends StatefulWidget {
   const SavedFoodsManagerCard({super.key});
 
@@ -13,8 +22,11 @@ class SavedFoodsManagerCard extends StatefulWidget {
 class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
   List<SavedFood> _foods = [];
   SavedFood? _editing;
+  _FoodTab _tab = _FoodTab.favorites;
   bool _loading = true;
   bool _saving = false;
+  bool _favorite = false;
+  String _source = 'MANUAL';
   String? _error;
 
   final _name = TextEditingController();
@@ -24,6 +36,21 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
   final _protein = TextEditingController(text: '0');
   final _fat = TextEditingController(text: '0');
   final _carbs = TextEditingController(text: '0');
+
+  List<SavedFood> get _visibleFoods {
+    return _foods.where((food) {
+      switch (_tab) {
+        case _FoodTab.favorites:
+          return food.isFavorite;
+        case _FoodTab.barcoded:
+          return food.barcode != null && food.barcode!.isNotEmpty;
+        case _FoodTab.recent:
+          return food.lastUsedAt != null || food.useCount > 0;
+        case _FoodTab.mine:
+          return true;
+      }
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -64,6 +91,8 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
       _protein.text = food.protein.toString();
       _fat.text = food.fat.toString();
       _carbs.text = food.carbs.toString();
+      _source = food.source;
+      _favorite = food.isFavorite;
       _error = null;
     });
   }
@@ -78,6 +107,8 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
       _protein.text = '0';
       _fat.text = '0';
       _carbs.text = '0';
+      _source = 'MANUAL';
+      _favorite = false;
       _error = null;
     });
   }
@@ -95,38 +126,35 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
       final barcode = _barcode.text.trim().isEmpty
           ? null
           : _barcode.text.trim();
-      final args = (
-        barcode: barcode,
-        name: _name.text.trim(),
-        estimatedAmount: _amount.text.trim().isEmpty
-            ? '1 份'
-            : _amount.text.trim(),
-        calories: int.tryParse(_calories.text.trim()) ?? 0,
-        protein: double.tryParse(_protein.text.trim()) ?? 0,
-        fat: double.tryParse(_fat.text.trim()) ?? 0,
-        carbs: double.tryParse(_carbs.text.trim()) ?? 0,
-      );
       final editing = _editing;
       if (editing == null) {
         await SavedFoodService.create(
-          barcode: args.barcode,
-          name: args.name,
-          estimatedAmount: args.estimatedAmount,
-          calories: args.calories,
-          protein: args.protein,
-          fat: args.fat,
-          carbs: args.carbs,
+          barcode: barcode,
+          name: _name.text.trim(),
+          estimatedAmount: _amount.text.trim().isEmpty
+              ? '1 份'
+              : _amount.text.trim(),
+          calories: int.tryParse(_calories.text.trim()) ?? 0,
+          protein: double.tryParse(_protein.text.trim()) ?? 0,
+          fat: double.tryParse(_fat.text.trim()) ?? 0,
+          carbs: double.tryParse(_carbs.text.trim()) ?? 0,
+          source: _source,
+          isFavorite: _favorite,
         );
       } else {
         await SavedFoodService.update(
           editing.id,
-          barcode: args.barcode,
-          name: args.name,
-          estimatedAmount: args.estimatedAmount,
-          calories: args.calories,
-          protein: args.protein,
-          fat: args.fat,
-          carbs: args.carbs,
+          barcode: barcode,
+          name: _name.text.trim(),
+          estimatedAmount: _amount.text.trim().isEmpty
+              ? '1 份'
+              : _amount.text.trim(),
+          calories: int.tryParse(_calories.text.trim()) ?? 0,
+          protein: double.tryParse(_protein.text.trim()) ?? 0,
+          fat: double.tryParse(_fat.text.trim()) ?? 0,
+          carbs: double.tryParse(_carbs.text.trim()) ?? 0,
+          source: _source,
+          isFavorite: _favorite,
         );
       }
       _reset();
@@ -138,7 +166,23 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
     }
   }
 
-  Future<void> _delete(SavedFood food) async {
+  Future<void> _toggleFavorite(SavedFood food) async {
+    await SavedFoodService.update(
+      food.id,
+      barcode: food.barcode,
+      name: food.name,
+      estimatedAmount: food.estimatedAmount,
+      calories: food.calories,
+      protein: food.protein,
+      fat: food.fat,
+      carbs: food.carbs,
+      source: food.source,
+      isFavorite: !food.isFavorite,
+    );
+    await _load();
+  }
+
+  Future<void> _archive(SavedFood food) async {
     await SavedFoodService.delete(food.id);
     await _load();
   }
@@ -155,7 +199,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
               children: [
                 const Expanded(
                   child: Text(
-                    '常用食物管理',
+                    '我的食物管理',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -165,13 +209,27 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
             ),
             const SizedBox(height: 4),
             const Text(
-              '管理你自己新增的食物與產品條碼。',
+              '管理常用食物、自建食物與產品條碼。封存不會影響過去餐點紀錄。',
               style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
             const SizedBox(height: 12),
             _field(_name, '食物名稱'),
             _field(_barcode, '產品條碼（選填）', keyboard: TextInputType.number),
             _field(_amount, '份量，例如：1 份 / 100g'),
+            DropdownButtonFormField<String>(
+              initialValue: _source,
+              decoration: const InputDecoration(
+                labelText: '來源',
+                border: OutlineInputBorder(),
+              ),
+              items: _sourceLabels.entries
+                  .map(
+                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _source = v ?? 'MANUAL'),
+            ),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -202,6 +260,13 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
                 ),
               ],
             ),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _favorite,
+              onChanged: (v) => setState(() => _favorite = v ?? false),
+              title: const Text('加入常用'),
+              controlAffinity: ListTileControlAffinity.leading,
+            ),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
@@ -222,44 +287,84 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
               Text(_error!, style: const TextStyle(color: Colors.red)),
             ],
             const Divider(height: 24),
+            _tabs(),
+            const SizedBox(height: 8),
             if (_loading)
               const Center(child: CircularProgressIndicator())
-            else if (_foods.isEmpty)
-              const Text('尚無常用食物。', style: TextStyle(color: Colors.black54))
+            else if (_visibleFoods.isEmpty)
+              const Text('這個分類目前沒有食物。', style: TextStyle(color: Colors.black54))
             else
-              ..._foods.map(
-                (food) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text('${food.name} · ${food.calories} kcal'),
-                  subtitle: Text(
-                    [
-                      food.estimatedAmount,
-                      if (food.barcode != null) '條碼 ${food.barcode}',
-                      'P ${food.protein}g / F ${food.fat}g / C ${food.carbs}g',
-                    ].join(' · '),
-                  ),
-                  trailing: Wrap(
-                    spacing: 4,
-                    children: [
-                      IconButton(
-                        tooltip: '編輯',
-                        icon: const Icon(Icons.edit),
-                        onPressed: () => _edit(food),
-                      ),
-                      IconButton(
-                        tooltip: '刪除',
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          color: Colors.red,
-                        ),
-                        onPressed: () => _delete(food),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+              ..._visibleFoods.map(_foodTile),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _tabs() {
+    return Wrap(
+      spacing: 8,
+      children: [
+        ChoiceChip(
+          label: const Text('常用'),
+          selected: _tab == _FoodTab.favorites,
+          onSelected: (_) => setState(() => _tab = _FoodTab.favorites),
+        ),
+        ChoiceChip(
+          label: const Text('我的新增'),
+          selected: _tab == _FoodTab.mine,
+          onSelected: (_) => setState(() => _tab = _FoodTab.mine),
+        ),
+        ChoiceChip(
+          label: const Text('有條碼'),
+          selected: _tab == _FoodTab.barcoded,
+          onSelected: (_) => setState(() => _tab = _FoodTab.barcoded),
+        ),
+        ChoiceChip(
+          label: const Text('最近使用'),
+          selected: _tab == _FoodTab.recent,
+          onSelected: (_) => setState(() => _tab = _FoodTab.recent),
+        ),
+      ],
+    );
+  }
+
+  Widget _foodTile(SavedFood food) {
+    final lastUsed = food.lastUsedAt == null
+        ? ''
+        : ' · 上次 ${food.lastUsedAt!.month}/${food.lastUsedAt!.day}';
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        '${food.isFavorite ? '★ ' : ''}${food.name} · ${food.calories} kcal',
+      ),
+      subtitle: Text(
+        [
+          food.estimatedAmount,
+          if (food.barcode != null) '條碼 ${food.barcode}',
+          'P ${food.protein}g / F ${food.fat}g / C ${food.carbs}g',
+          '${_sourceLabels[food.source] ?? '手動新增'} · 使用 ${food.useCount} 次$lastUsed',
+        ].join(' · '),
+      ),
+      trailing: Wrap(
+        spacing: 4,
+        children: [
+          IconButton(
+            tooltip: food.isFavorite ? '取消常用' : '設為常用',
+            icon: Icon(food.isFavorite ? Icons.star : Icons.star_border),
+            onPressed: () => _toggleFavorite(food),
+          ),
+          IconButton(
+            tooltip: '編輯',
+            icon: const Icon(Icons.edit),
+            onPressed: () => _edit(food),
+          ),
+          IconButton(
+            tooltip: '封存',
+            icon: const Icon(Icons.archive_outlined, color: Colors.red),
+            onPressed: () => _archive(food),
+          ),
+        ],
       ),
     );
   }

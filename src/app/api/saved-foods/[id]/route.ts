@@ -3,17 +3,32 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
 import { apiRoute } from "@/lib/http";
-import { savedFoodSchema } from "@/lib/validators";
+import { savedFoodPatchSchema } from "@/lib/validators";
 
 export const PATCH = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
-  const body = savedFoodSchema.parse(await request.json());
+  const body = savedFoodPatchSchema.parse(await request.json());
   const existing = await prisma.savedFood.findFirst({ where: { id, userId: user.id } });
   if (!existing) return NextResponse.json({ error: "找不到常用食物。" }, { status: 404 });
   const food = await prisma.savedFood.update({
     where: { id },
-    data: encryptSavedFoodWrite(body)
+    data: {
+      ...encryptSavedFoodWrite(body),
+      archivedAt: body.archived ? new Date() : null
+    }
+  });
+  return NextResponse.json({ food: decryptSavedFood(food) });
+});
+
+export const POST = apiRoute(async (_request: Request, context: { params: Promise<{ id: string }> }) => {
+  const user = await requireUser();
+  const { id } = await context.params;
+  const existing = await prisma.savedFood.findFirst({ where: { id, userId: user.id, archivedAt: null } });
+  if (!existing) return NextResponse.json({ error: "找不到常用食物。" }, { status: 404 });
+  const food = await prisma.savedFood.update({
+    where: { id },
+    data: { useCount: { increment: 1 }, lastUsedAt: new Date() }
   });
   return NextResponse.json({ food: decryptSavedFood(food) });
 });
@@ -21,6 +36,6 @@ export const PATCH = apiRoute(async (request: Request, context: { params: Promis
 export const DELETE = apiRoute(async (_request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
-  await prisma.savedFood.deleteMany({ where: { id, userId: user.id } });
+  await prisma.savedFood.updateMany({ where: { id, userId: user.id }, data: { archivedAt: new Date() } });
   return NextResponse.json({ ok: true });
 });

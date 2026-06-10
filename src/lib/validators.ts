@@ -84,7 +84,13 @@ export const savedFoodSchema = z.object({
   calories: z.coerce.number().int().min(0).max(10000),
   protein: z.coerce.number().min(0).max(1000),
   fat: z.coerce.number().min(0).max(1000),
-  carbs: z.coerce.number().min(0).max(1000)
+  carbs: z.coerce.number().min(0).max(1000),
+  source: z.enum(["MANUAL", "NUTRITION_LABEL", "BARCODE", "MEAL_ITEM"]).optional(),
+  isFavorite: z.coerce.boolean().optional()
+});
+
+export const savedFoodPatchSchema = savedFoodSchema.extend({
+  archived: z.coerce.boolean().optional()
 });
 
 export const aiSettingsSchema = z

@@ -102,6 +102,14 @@ const _captureModeLabels = {
 /// meal (different dishes or angles) is analysed together.
 const _maxImages = 5;
 
+const _productBarcodeFormats = [
+  BarcodeFormat.ean13,
+  BarcodeFormat.ean8,
+  BarcodeFormat.upcA,
+  BarcodeFormat.upcE,
+  BarcodeFormat.code128,
+];
+
 class _MealCaptureFormState extends State<MealCaptureForm> {
   final _picker = ImagePicker();
   String _mealType = 'LUNCH';
@@ -208,6 +216,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           protein: item.protein,
           fat: item.fat,
           carbs: item.carbs,
+          source: 'NUTRITION_LABEL',
+          isFavorite: true,
         );
         await _loadSavedFoods();
       }
@@ -351,11 +361,13 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       protein: mi.protein,
       fat: mi.fat,
       carbs: mi.carbs,
+      source: 'MEAL_ITEM',
+      isFavorite: true,
     );
     await _loadSavedFoods();
   }
 
-  void _addSavedFood(SavedFood food) {
+  void _addSavedFood(SavedFood food, {bool markUsed = true}) {
     setState(() {
       _manualItems.removeWhere((e) => !e.hasName);
       _manualItems.add(
@@ -369,6 +381,21 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           carbs: food.carbs.toString(),
         ),
       );
+    });
+    if (markUsed) {
+      SavedFoodService.markUsed(food.id).then((_) => _loadSavedFoods());
+    }
+  }
+
+  Future<void> _handleProductBarcode(String code) async {
+    final food = await SavedFoodService.findByBarcode(code);
+    if (food != null) {
+      _addSavedFood(food, markUsed: false);
+      return;
+    }
+    setState(() {
+      _pendingBarcode = code;
+      _error = '尚未紀錄此條碼。請上傳營養標示，系統會把辨識結果綁定到這個條碼，下次掃描即可帶入。';
     });
   }
 
@@ -385,19 +412,41 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         ),
       );
       if (barcode == null || barcode.trim().isEmpty) return;
-      final code = barcode.trim();
-      final food = await SavedFoodService.findByBarcode(code);
-      if (food != null) {
-        _addSavedFood(food);
-        return;
-      }
-      setState(() {
-        _pendingBarcode = code;
-        _error = '尚未紀錄此條碼。請上傳營養標示，系統會把辨識結果綁定到這個條碼，下次掃描即可帶入。';
-      });
+      await _handleProductBarcode(barcode.trim());
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
+      if (mounted) setState(() => _barcodeLoading = false);
+    }
+  }
+
+  Future<void> _scanProductBarcodeFromImage() async {
+    setState(() {
+      _barcodeLoading = true;
+      _error = null;
+    });
+    final controller = MobileScannerController(formats: _productBarcodeFormats);
+    try {
+      final image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image == null) return;
+      final capture = await controller.analyzeImage(
+        image.path,
+        formats: _productBarcodeFormats,
+      );
+      final code = capture?.barcodes
+          .map((barcode) => barcode.rawValue?.trim())
+          .whereType<String>()
+          .where((value) => value.isNotEmpty)
+          .firstOrNull;
+      if (code == null) {
+        setState(() => _error = '圖片中沒有讀到產品條碼，請換一張更清楚、條碼完整的圖片。');
+        return;
+      }
+      await _handleProductBarcode(code);
+    } catch (e) {
+      setState(() => _error = '圖片條碼讀取失敗：$e');
+    } finally {
+      controller.dispose();
       if (mounted) setState(() => _barcodeLoading = false);
     }
   }
@@ -746,6 +795,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                         await SavedFoodService.delete(f.id);
                         await _loadSavedFoods();
                       },
+                      deleteIcon: const Icon(Icons.archive_outlined),
                     ),
                   )
                   .toList(),
@@ -762,16 +812,27 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         const SizedBox(height: 8),
         const Text('手動新增食物', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _barcodeLoading ? null : _scanProductBarcode,
-          icon: _barcodeLoading
-              ? const SizedBox(
-                  height: 16,
-                  width: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.qr_code_scanner),
-          label: Text(_barcodeLoading ? '查詢中...' : '掃描產品條碼'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _barcodeLoading ? null : _scanProductBarcode,
+              icon: _barcodeLoading
+                  ? const SizedBox(
+                      height: 16,
+                      width: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.qr_code_scanner),
+              label: Text(_barcodeLoading ? '查詢中...' : '掃描產品條碼'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _barcodeLoading ? null : _scanProductBarcodeFromImage,
+              icon: const Icon(Icons.image_search),
+              label: const Text('上傳條碼圖片'),
+            ),
+          ],
         ),
         if (_pendingBarcode != null) ...[
           const SizedBox(height: 6),
@@ -1220,15 +1281,7 @@ class _BarcodeScannerPage extends StatefulWidget {
 }
 
 class _BarcodeScannerPageState extends State<_BarcodeScannerPage> {
-  final _controller = MobileScannerController(
-    formats: [
-      BarcodeFormat.ean13,
-      BarcodeFormat.ean8,
-      BarcodeFormat.upcA,
-      BarcodeFormat.upcE,
-      BarcodeFormat.code128,
-    ],
-  );
+  final _controller = MobileScannerController(formats: _productBarcodeFormats);
   bool _handled = false;
 
   @override

@@ -223,6 +223,10 @@ class SavedFood {
   final double protein;
   final double fat;
   final double carbs;
+  final String source;
+  final bool isFavorite;
+  final int useCount;
+  final DateTime? lastUsedAt;
 
   SavedFood({
     required this.id,
@@ -233,6 +237,10 @@ class SavedFood {
     required this.protein,
     required this.fat,
     required this.carbs,
+    this.source = 'MANUAL',
+    this.isFavorite = false,
+    this.useCount = 0,
+    this.lastUsedAt,
   });
 
   factory SavedFood.fromJson(Map<String, dynamic> j) => SavedFood(
@@ -244,6 +252,12 @@ class SavedFood {
     protein: _toDouble(j['protein']),
     fat: _toDouble(j['fat']),
     carbs: _toDouble(j['carbs']),
+    source: (j['source'] as String?) ?? 'MANUAL',
+    isFavorite: j['isFavorite'] == true,
+    useCount: _toInt(j['useCount']),
+    lastUsedAt: j['lastUsedAt'] is String
+        ? DateTime.tryParse(j['lastUsedAt'] as String)
+        : null,
   );
 }
 

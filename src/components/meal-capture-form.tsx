@@ -25,6 +25,8 @@ type SavedFood = {
   protein: number;
   fat: number;
   carbs: number;
+  source?: "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM";
+  isFavorite?: boolean;
 };
 
 function emptyManualItem(): ManualItem {
@@ -133,7 +135,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       const pendingBarcode = barcode.trim();
       if (pendingBarcode && items[0]) {
         items[0].barcode = pendingBarcode;
-        await saveAsSavedFoodInternal(items[0], { silent: true });
+        await saveAsSavedFoodInternal(items[0], { silent: true, source: "NUTRITION_LABEL" });
         await loadSavedFoods();
         setBarcode("");
       }
@@ -288,10 +290,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   }
 
   async function saveAsSavedFood(item: ManualItem) {
-    return saveAsSavedFoodInternal(item, { silent: false });
+    return saveAsSavedFoodInternal(item, { silent: false, source: "MEAL_ITEM" });
   }
 
-  async function saveAsSavedFoodInternal(item: ManualItem, options: { silent: boolean }) {
+  async function saveAsSavedFoodInternal(item: ManualItem, options: { silent: boolean; source: SavedFood["source"] }) {
     if (!item.name.trim()) {
       if (!options.silent) setError("請先填寫食物名稱再儲存為常用食物。");
       return;
@@ -306,7 +308,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         calories: Number(item.calories || 0),
         protein: Number(item.protein || 0),
         fat: Number(item.fat || 0),
-        carbs: Number(item.carbs || 0)
+        carbs: Number(item.carbs || 0),
+        source: options.source,
+        isFavorite: true
       })
     });
     if (response.ok) await loadSavedFoods();
@@ -322,7 +326,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     const response = await fetch(`/api/saved-foods?barcode=${encodeURIComponent(code)}`);
     const data = await response.json().catch(() => ({}));
     if (response.ok && data.food) {
-      addSavedFood(data.food);
+      addSavedFood(data.food, { markUsed: false });
       setBarcode("");
       return;
     }
@@ -334,7 +338,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     if (response.ok) setSavedFoods((foods) => foods.filter((food) => food.id !== id));
   }
 
-  function addSavedFood(food: SavedFood) {
+  async function markSavedFoodUsed(id: string) {
+    await fetch(`/api/saved-foods/${id}`, { method: "POST" });
+    await loadSavedFoods();
+  }
+
+  function addSavedFood(food: SavedFood, options: { markUsed: boolean } = { markUsed: true }) {
     setManualItems((items) => [
       ...items.filter((item) => item.name.trim()),
       {
@@ -348,6 +357,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         aiRating: "MANUAL"
       }
     ]);
+    if (options.markUsed) markSavedFoodUsed(food.id);
   }
 
   return (
@@ -464,7 +474,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
             {savedFoods.map((food) => (
               <div className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 p-2 text-sm" key={food.id}>
                 <button className="text-left font-semibold text-stone-800" onClick={() => addSavedFood(food)} type="button">+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</button>
-                <button className="shrink-0 text-red-600" onClick={() => deleteSavedFood(food.id)} type="button">刪除</button>
+                <button className="shrink-0 text-red-600" onClick={() => deleteSavedFood(food.id)} type="button">封存</button>
               </div>
             ))}
           </div>
