@@ -7,7 +7,9 @@ import { AiSettingsForm } from "@/components/ai-settings-form";
 import { LogoutButton } from "@/components/logout-button";
 import { GoogleLinkPanel } from "@/components/google-link-panel";
 import { AdminPanel } from "@/components/admin-panel";
+import { SavedFoodsManager } from "@/components/saved-foods-manager";
 import { Metric } from "@/components/health-cards";
+import { decryptSavedFood } from "@/lib/b2-crypto";
 import { WEB_VERSION } from "@/lib/version";
 import { getLatestAppRelease } from "@/lib/app-release";
 
@@ -30,6 +32,10 @@ export default async function SettingsPage() {
     ? await prisma.appConfig.findUnique({ where: { id: "singleton" } })
     : null;
   const appRelease = await getLatestAppRelease();
+  const savedFoods = await prisma.savedFood.findMany({
+    where: { userId: user.id },
+    orderBy: { updatedAt: "desc" }
+  });
 
   return (
     <>
@@ -48,6 +54,21 @@ export default async function SettingsPage() {
         <div className="glass glass-lift rounded-[2rem] p-6">
           <AiSettingsForm />
         </div>
+        <SavedFoodsManager
+          initialFoods={savedFoods.map((food) => {
+            const decrypted = decryptSavedFood(food);
+            return {
+              id: decrypted.id,
+              barcode: decrypted.barcode,
+              name: decrypted.name,
+              estimatedAmount: decrypted.estimatedAmount,
+              calories: decrypted.calories,
+              protein: decrypted.protein,
+              fat: decrypted.fat,
+              carbs: decrypted.carbs
+            };
+          })}
+        />
         <GoogleLinkPanel clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID} linked={!!user.googleId} />
         {user.isAdmin && <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />}
         <div className="glass glass-lift rounded-[2rem] p-6">

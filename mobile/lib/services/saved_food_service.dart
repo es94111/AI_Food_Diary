@@ -48,6 +48,34 @@ class SavedFoodService {
     }
   }
 
+  static Future<void> update(
+    String id, {
+    String? barcode,
+    required String name,
+    required String estimatedAmount,
+    required int calories,
+    required double protein,
+    required double fat,
+    required double carbs,
+  }) async {
+    final res = await _api.patch(
+      '/api/saved-foods/$id',
+      data: {
+        if (barcode != null && barcode.trim().isNotEmpty)
+          'barcode': barcode.trim(),
+        'name': name,
+        'estimatedAmount': estimatedAmount,
+        'calories': calories,
+        'protein': protein,
+        'fat': fat,
+        'carbs': carbs,
+      },
+    );
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '更新常用食物失敗'));
+    }
+  }
+
   static Future<void> delete(String id) async {
     await _api.delete('/api/saved-foods/$id');
   }

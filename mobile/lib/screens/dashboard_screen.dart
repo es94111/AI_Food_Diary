@@ -13,6 +13,7 @@ import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
 import '../widgets/water_card.dart';
 import '../widgets/profile_form.dart';
+import '../widgets/saved_foods_manager.dart';
 import '../widgets/update_card.dart';
 import 'login_screen.dart';
 
@@ -82,8 +83,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // Only today's expenditure is meaningful for today's net calories.
         _todayTotalCalories =
             (total != null && total.value > 0 && isToday(total.measuredAt))
-                ? total.value
-                : null;
+            ? total.value
+            : null;
       });
     } catch (_) {}
   }
@@ -135,8 +136,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       isoDate(_selectedDate) == isoDate(startOfLocalDay(DateTime.now()));
 
   bool get _canGoForward {
-    final next =
-        startOfLocalDay(_selectedDate.add(Duration(days: _weekView ? 7 : 1)));
+    final next = startOfLocalDay(
+      _selectedDate.add(Duration(days: _weekView ? 7 : 1)),
+    );
     return !next.isAfter(startOfLocalDay(DateTime.now()));
   }
 
@@ -170,15 +172,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
             rawTotals.carbs / 7,
           )
         : rawTotals;
-    final metabolism =
-        metabolismFor(_user?.profile,
-            syncedWeightKg: _syncedWeight, syncedHeightCm: _syncedHeight);
+    final metabolism = metabolismFor(
+      _user?.profile,
+      syncedWeightKg: _syncedWeight,
+      syncedHeightCm: _syncedHeight,
+    );
     final target = metabolism.target;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('AI Food Diary · ${_tabTitles[_tabIndex]}',
-            style: const TextStyle(fontWeight: FontWeight.w900)),
+        title: Text(
+          'AI Food Diary · ${_tabTitles[_tabIndex]}',
+          style: const TextStyle(fontWeight: FontWeight.w900),
+        ),
       ),
       body: IndexedStack(
         index: _tabIndex,
@@ -193,17 +199,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onDestinationSelected: (i) => setState(() => _tabIndex = i),
         destinations: const [
           NavigationDestination(
-              icon: Icon(Icons.restaurant_menu_outlined),
-              selectedIcon: Icon(Icons.restaurant_menu),
-              label: '飲食'),
+            icon: Icon(Icons.restaurant_menu_outlined),
+            selectedIcon: Icon(Icons.restaurant_menu),
+            label: '飲食',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.favorite_outline),
-              selectedIcon: Icon(Icons.favorite),
-              label: '健康'),
+            icon: Icon(Icons.favorite_outline),
+            selectedIcon: Icon(Icons.favorite),
+            label: '健康',
+          ),
           NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings),
-              label: '設定'),
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: '設定',
+          ),
         ],
       ),
     );
@@ -239,9 +248,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
           const SizedBox(height: 12),
           MealCaptureForm(
-              onSaved: _loadMeals,
-              initialAdvice: _nextMealAdvice,
-              showAdvice: !_weekView && _isToday),
+            onSaved: _loadMeals,
+            initialAdvice: _nextMealAdvice,
+            showAdvice: !_weekView && _isToday,
+          ),
           const SizedBox(height: 12),
           _mealsSection(),
           const SizedBox(height: 12),
@@ -276,6 +286,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _bodyDataCard(metabolism),
         const SizedBox(height: 12),
         const AiSettingsCard(),
+        const SizedBox(height: 12),
+        const SavedFoodsManagerCard(),
         if (GoogleAuth.isConfigured) ...[
           const SizedBox(height: 12),
           _GoogleLinkCard(
@@ -311,7 +323,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text(_user?.name?.isNotEmpty == true ? _user!.name! : '使用者'),
         subtitle: Text(_user?.email ?? ''),
         trailing: _user?.isAdmin == true
-            ? const Chip(label: Text('管理員'), visualDensity: VisualDensity.compact)
+            ? const Chip(
+                label: Text('管理員'),
+                visualDensity: VisualDensity.compact,
+              )
             : null,
       ),
     );
@@ -324,13 +339,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('身體資料 / 代謝',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const Text(
+              '身體資料 / 代謝',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
             const SizedBox(height: 10),
             Row(
               children: [
-                _metricBox('BMR 基礎代謝',
-                    metabolism.bmr != null ? '${metabolism.bmr} kcal' : '資料不足'),
+                _metricBox(
+                  'BMR 基礎代謝',
+                  metabolism.bmr != null ? '${metabolism.bmr} kcal' : '資料不足',
+                ),
                 const SizedBox(width: 10),
                 _metricBox('熱量目標', '${metabolism.target} kcal'),
               ],
@@ -362,11 +381,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final profile = _user?.profile;
     final height = _syncedHeight?.round();
 
-    final weightChanged = weight != null &&
-        (profile?.weightKg == null || (profile!.weightKg! - weight).abs() >= 0.05);
-    final heightChanged = height != null &&
-        height > 0 &&
-        profile?.heightCm != height;
+    final weightChanged =
+        weight != null &&
+        (profile?.weightKg == null ||
+            (profile!.weightKg! - weight).abs() >= 0.05);
+    final heightChanged =
+        height != null && height > 0 && profile?.heightCm != height;
     if (!weightChanged && !heightChanged) return;
 
     try {
@@ -377,7 +397,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         weightKg: weight ?? profile?.weightKg,
       );
       final target = calorieTargetFromGoal(
-          calculateTdee(bmr, profile?.activityLevel), profile?.goal);
+        calculateTdee(bmr, profile?.activityLevel),
+        profile?.goal,
+      );
       await AuthService.updateProfile(
         weightKg: weightChanged ? weight : null,
         heightCm: heightChanged ? height : null,
@@ -391,7 +413,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _dateSwitcher() {
     final label = _weekView
         ? '${isoDate(startOfLocalWeek(_selectedDate))} — '
-            '${isoDate(startOfLocalWeek(_selectedDate).add(const Duration(days: 6)))}'
+              '${isoDate(startOfLocalWeek(_selectedDate).add(const Duration(days: 6)))}'
         : '${isoDate(_selectedDate)} (${_weekdayZh(_selectedDate)})';
     return Card(
       child: Padding(
@@ -418,21 +440,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                    onPressed: () => _changeDate(_weekView ? -7 : -1),
-                    icon: const Icon(Icons.chevron_left)),
+                  onPressed: () => _changeDate(_weekView ? -7 : -1),
+                  icon: const Icon(Icons.chevron_left),
+                ),
                 TextButton(
                   onPressed: () {
-                    setState(() =>
-                        _selectedDate = startOfLocalDay(DateTime.now()));
+                    setState(
+                      () => _selectedDate = startOfLocalDay(DateTime.now()),
+                    );
                     _loadMeals();
                   },
                   child: Text(label),
                 ),
                 IconButton(
-                    onPressed: _canGoForward
-                        ? () => _changeDate(_weekView ? 7 : 1)
-                        : null,
-                    icon: const Icon(Icons.chevron_right)),
+                  onPressed: _canGoForward
+                      ? () => _changeDate(_weekView ? 7 : 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_right),
+                ),
               ],
             ),
           ],
@@ -444,8 +469,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _calorieCard(Totals totals, int target) {
     final macroTotal = totals.protein + totals.fat + totals.carbs;
     int pct(double v) => macroTotal == 0 ? 0 : ((v / macroTotal) * 100).round();
-    final progress =
-        target == 0 ? 0.0 : (totals.calories / target).clamp(0.0, 1.0);
+    final progress = target == 0
+        ? 0.0
+        : (totals.calories / target).clamp(0.0, 1.0);
     return Card(
       color: const Color(0xFF1C1917),
       child: Padding(
@@ -453,29 +479,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_weekView ? '本週平均攝取' : '當日攝取',
-                style: const TextStyle(color: Colors.white60)),
+            Text(
+              _weekView ? '本週平均攝取' : '當日攝取',
+              style: const TextStyle(color: Colors.white60),
+            ),
             const SizedBox(height: 4),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text('${totals.calories}',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 44,
-                        fontWeight: FontWeight.w900)),
+                Text(
+                  '${totals.calories}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 44,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8, left: 4),
-                  child: Text('kcal',
-                      style: TextStyle(
-                          color: Colors.white60,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'kcal',
+                    style: TextStyle(
+                      color: Colors.white60,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),
-            Text('每日目標 $target kcal · ${(progress * 100).round()}%',
-                style: const TextStyle(color: Colors.white38, fontSize: 13)),
+            Text(
+              '每日目標 $target kcal · ${(progress * 100).round()}%',
+              style: const TextStyle(color: Colors.white38, fontSize: 13),
+            ),
             const SizedBox(height: 12),
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -483,8 +519,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: progress.toDouble(),
                 minHeight: 8,
                 backgroundColor: Colors.white12,
-                valueColor:
-                    const AlwaysStoppedAnimation(Color(0xFFF59E0B)),
+                valueColor: const AlwaysStoppedAnimation(Color(0xFFF59E0B)),
               ),
             ),
             const SizedBox(height: 16),
@@ -492,12 +527,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                _macro('蛋白質 ${pct(totals.protein)}%',
-                    '${totals.protein.toStringAsFixed(1)}g'),
-                _macro('脂肪 ${pct(totals.fat)}%',
-                    '${totals.fat.toStringAsFixed(1)}g'),
-                _macro('碳水 ${pct(totals.carbs)}%',
-                    '${totals.carbs.toStringAsFixed(1)}g'),
+                _macro(
+                  '蛋白質 ${pct(totals.protein)}%',
+                  '${totals.protein.toStringAsFixed(1)}g',
+                ),
+                _macro(
+                  '脂肪 ${pct(totals.fat)}%',
+                  '${totals.fat.toStringAsFixed(1)}g',
+                ),
+                _macro(
+                  '碳水 ${pct(totals.carbs)}%',
+                  '${totals.carbs.toStringAsFixed(1)}g',
+                ),
               ],
             ),
           ],
@@ -516,8 +557,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final color = deficit
         ? const Color(0xFF059669)
         : net > 0
-            ? const Color(0xFFE11D48)
-            : Colors.black54;
+        ? const Color(0xFFE11D48)
+        : Colors.black54;
     final label = deficit ? '熱量赤字' : (net > 0 ? '熱量盈餘' : '持平');
     return Card(
       child: Padding(
@@ -530,17 +571,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 const Text('當日淨熱量', style: TextStyle(color: Colors.black54)),
                 const Spacer(),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
                   ),
-                  child: Text(label,
-                      style: TextStyle(
-                          color: color,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12)),
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -548,26 +594,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(net > 0 ? '+$net' : '$net',
-                    style: TextStyle(
-                        color: color,
-                        fontSize: 40,
-                        fontWeight: FontWeight.w900)),
+                Text(
+                  net > 0 ? '+$net' : '$net',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 40,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
                 const Padding(
                   padding: EdgeInsets.only(bottom: 6, left: 4),
-                  child: Text('kcal',
-                      style: TextStyle(
-                          color: Colors.black45,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'kcal',
+                    style: TextStyle(
+                      color: Colors.black45,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 2),
-            Text('攝取 $intake − 實測總消耗 $burn kcal',
-                style: const TextStyle(color: Colors.black54, fontSize: 13)),
-            const Text('總消耗為 Health Connect 同步的實測值（基礎＋活動）。',
-                style: TextStyle(color: Colors.black38, fontSize: 11)),
+            Text(
+              '攝取 $intake − 實測總消耗 $burn kcal',
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+            const Text(
+              '總消耗為 Health Connect 同步的實測值（基礎＋活動）。',
+              style: TextStyle(color: Colors.black38, fontSize: 11),
+            ),
           ],
         ),
       ),
@@ -585,14 +641,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         child: Column(
           children: [
-            Text(value,
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16)),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                style: const TextStyle(color: Colors.white60, fontSize: 11)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white60, fontSize: 11),
+            ),
           ],
         ),
       ),
@@ -611,14 +672,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Row(
           children: [
             Expanded(
-                flex: macroFlex(protein),
-                child: Container(color: const Color(0xFF0EA5E9))),
+              flex: macroFlex(protein),
+              child: Container(color: const Color(0xFF0EA5E9)),
+            ),
             Expanded(
-                flex: macroFlex(fat),
-                child: Container(color: const Color(0xFFF59E0B))),
+              flex: macroFlex(fat),
+              child: Container(color: const Color(0xFFF59E0B)),
+            ),
             Expanded(
-                flex: macroFlex(carbs),
-                child: Container(color: const Color(0xFFE11D48))),
+              flex: macroFlex(carbs),
+              child: Container(color: const Color(0xFFE11D48)),
+            ),
           ],
         ),
       ),
@@ -632,21 +696,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('代謝估算',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const Text(
+              '代謝估算',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
                 _metricBox(
-                    'BMR 基礎代謝', m.bmr != null ? '${m.bmr} kcal' : '資料不足'),
+                  'BMR 基礎代謝',
+                  m.bmr != null ? '${m.bmr} kcal' : '資料不足',
+                ),
                 const SizedBox(width: 10),
                 _metricBox(
-                    'TDEE 每日消耗', m.tdee != null ? '${m.tdee} kcal' : '資料不足'),
+                  'TDEE 每日消耗',
+                  m.tdee != null ? '${m.tdee} kcal' : '資料不足',
+                ),
               ],
             ),
             const SizedBox(height: 8),
-            const Text('使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。',
-                style: TextStyle(fontSize: 11, color: Colors.black45)),
+            const Text(
+              '使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。',
+              style: TextStyle(fontSize: 11, color: Colors.black45),
+            ),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
@@ -672,12 +744,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w900)),
+            Text(
+              value,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                style: const TextStyle(fontSize: 11, color: Colors.black54)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Colors.black54),
+            ),
           ],
         ),
       ),
@@ -691,9 +766,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_weekView ? '本週餐點' : '當日餐點',
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w900)),
+            Text(
+              _weekView ? '本週餐點' : '當日餐點',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
             const SizedBox(height: 8),
             MealList(meals: _meals, onChanged: _loadMeals),
           ],
@@ -748,8 +824,9 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
 
   @override
   Widget build(BuildContext context) {
-    final canGenerate =
-        startOfLocalDay(widget.date).isBefore(startOfLocalDay(DateTime.now()));
+    final canGenerate = startOfLocalDay(
+      widget.date,
+    ).isBefore(startOfLocalDay(DateTime.now()));
 
     return Card(
       child: Padding(
@@ -759,27 +836,33 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
           children: [
             Row(
               children: [
-                const Text('今日總結',
-                    style: TextStyle(
-                        fontSize: 18, fontWeight: FontWeight.w900)),
+                const Text(
+                  '今日總結',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
                 const Spacer(),
                 if (_summary == null && !_loading)
                   TextButton(
-                      onPressed: canGenerate ? _load : null,
-                      child: const Text('產生 AI 總結')),
+                    onPressed: canGenerate ? _load : null,
+                    child: const Text('產生 AI 總結'),
+                  ),
               ],
             ),
             if (_summary == null && !_loading && !canGenerate)
               const Padding(
                 padding: EdgeInsets.only(top: 8),
-                child: Text('今日總結需等今天結束後才能產生。',
-                    style: TextStyle(color: Colors.black54, fontSize: 13)),
+                child: Text(
+                  '今日總結需等今天結束後才能產生。',
+                  style: TextStyle(color: Colors.black54, fontSize: 13),
+                ),
               ),
             if (_loading)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 12),
-                child: Text('AI 正在分析今日飲食...',
-                    style: TextStyle(color: Color(0xFFB45309))),
+                child: Text(
+                  'AI 正在分析今日飲食...',
+                  style: TextStyle(color: Color(0xFFB45309)),
+                ),
               ),
             if (_error != null)
               Text(_error!, style: const TextStyle(color: Colors.red)),
@@ -797,13 +880,18 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('建議',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF92400E))),
+                    const Text(
+                      '建議',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF92400E),
+                      ),
+                    ),
                     const SizedBox(height: 4),
-                    MarkdownText(_summary!.aiRecommendation,
-                        style: const TextStyle(color: Color(0xFF78350F))),
+                    MarkdownText(
+                      _summary!.aiRecommendation,
+                      style: const TextStyle(color: Color(0xFF78350F)),
+                    ),
                   ],
                 ),
               ),
@@ -858,8 +946,10 @@ class _AdminPanelState extends State<_AdminPanel> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('管理員設定',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const Text(
+              '管理員設定',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
             SwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('開放公開註冊'),
@@ -897,13 +987,14 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
       await widget.onChanged();
       if (!mounted) return;
       setState(() => _linked = true);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已綁定 Google 帳號')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已綁定 Google 帳號')));
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('綁定失敗：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('綁定失敗：$e')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -919,8 +1010,9 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
       if (mounted) setState(() => _linked = false);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('解除綁定失敗：$e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('解除綁定失敗：$e')));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -935,8 +1027,10 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Google 帳號綁定',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+            const Text(
+              'Google 帳號綁定',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            ),
             const SizedBox(height: 8),
             if (_linked)
               Row(
@@ -946,14 +1040,18 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
                   const Expanded(child: Text('已綁定 Google 帳號')),
                   TextButton(
                     onPressed: _busy ? null : _unbind,
-                    child: const Text('解除綁定',
-                        style: TextStyle(color: Colors.red)),
+                    child: const Text(
+                      '解除綁定',
+                      style: TextStyle(color: Colors.red),
+                    ),
                   ),
                 ],
               )
             else ...[
-              const Text('綁定後即可使用 Google 一鍵登入。',
-                  style: TextStyle(fontSize: 12, color: Colors.black54)),
+              const Text(
+                '綁定後即可使用 Google 一鍵登入。',
+                style: TextStyle(fontSize: 12, color: Colors.black54),
+              ),
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
@@ -963,7 +1061,8 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
                       ? const SizedBox(
                           height: 16,
                           width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2))
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
                       : const Icon(Icons.link),
                   label: const Text('綁定 Google 帳號'),
                 ),
