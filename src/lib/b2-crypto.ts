@@ -119,6 +119,8 @@ export function encryptSavedFoodWrite(food: {
   protein: number;
   fat: number;
   carbs: number;
+  source?: string;
+  isFavorite?: boolean;
 }) {
   return {
     barcode: food.barcode ?? null,
@@ -129,7 +131,9 @@ export function encryptSavedFoodWrite(food: {
     calories: food.calories,
     protein: food.protein,
     fat: food.fat,
-    carbs: food.carbs
+    carbs: food.carbs,
+    source: food.source ?? "MANUAL",
+    isFavorite: food.isFavorite ?? false
   };
 }
 

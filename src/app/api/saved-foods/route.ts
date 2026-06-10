@@ -9,12 +9,18 @@ export const GET = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const barcode = new URL(request.url).searchParams.get("barcode")?.trim();
   if (barcode) {
-    const food = await prisma.savedFood.findFirst({ where: { userId: user.id, barcode } });
+    const food = await prisma.savedFood.findFirst({ where: { userId: user.id, barcode, archivedAt: null } });
+    if (food) {
+      await prisma.savedFood.update({
+        where: { id: food.id },
+        data: { useCount: { increment: 1 }, lastUsedAt: new Date() }
+      });
+    }
     return NextResponse.json({ food: food ? decryptSavedFood(food) : null });
   }
   const foods = await prisma.savedFood.findMany({
-    where: { userId: user.id },
-    orderBy: { updatedAt: "desc" }
+    where: { userId: user.id, archivedAt: null },
+    orderBy: [{ isFavorite: "desc" }, { lastUsedAt: "desc" }, { useCount: "desc" }, { updatedAt: "desc" }]
   });
   return NextResponse.json({
     foods: foods.map(decryptSavedFood)
@@ -30,7 +36,7 @@ export const POST = apiRoute(async (request: Request) => {
   const food = existing
     ? await prisma.savedFood.update({
         where: { id: existing.id },
-        data: encryptSavedFoodWrite(body)
+        data: { ...encryptSavedFoodWrite(body), archivedAt: null }
       })
     : await prisma.savedFood.create({
         data: {

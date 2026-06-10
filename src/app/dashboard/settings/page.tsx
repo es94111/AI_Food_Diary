@@ -7,7 +7,7 @@ import { AiSettingsForm } from "@/components/ai-settings-form";
 import { LogoutButton } from "@/components/logout-button";
 import { GoogleLinkPanel } from "@/components/google-link-panel";
 import { AdminPanel } from "@/components/admin-panel";
-import { SavedFoodsManager } from "@/components/saved-foods-manager";
+import { SavedFoodsManager, type SavedFoodSource } from "@/components/saved-foods-manager";
 import { Metric } from "@/components/health-cards";
 import { decryptSavedFood } from "@/lib/b2-crypto";
 import { WEB_VERSION } from "@/lib/version";
@@ -33,8 +33,8 @@ export default async function SettingsPage() {
     : null;
   const appRelease = await getLatestAppRelease();
   const savedFoods = await prisma.savedFood.findMany({
-    where: { userId: user.id },
-    orderBy: { updatedAt: "desc" }
+    where: { userId: user.id, archivedAt: null },
+    orderBy: [{ isFavorite: "desc" }, { lastUsedAt: "desc" }, { useCount: "desc" }, { updatedAt: "desc" }]
   });
 
   return (
@@ -65,7 +65,11 @@ export default async function SettingsPage() {
               calories: decrypted.calories,
               protein: decrypted.protein,
               fat: decrypted.fat,
-              carbs: decrypted.carbs
+              carbs: decrypted.carbs,
+              source: decrypted.source as SavedFoodSource,
+              isFavorite: decrypted.isFavorite,
+              useCount: decrypted.useCount,
+              lastUsedAt: decrypted.lastUsedAt?.toISOString() ?? null
             };
           })}
         />
