@@ -135,6 +135,7 @@ model WaterLog {
 model SavedFood {
   id              String   @id @default(cuid())
   userId          String
+  barcode         String?
   // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
   name            String?
   estimatedAmount String?
@@ -149,6 +150,7 @@ model SavedFood {
   updatedAt       DateTime @updatedAt
 
   @@index([userId, name])
+  @@unique([userId, barcode])
 }
 
 model DailySummary {

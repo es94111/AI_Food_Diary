@@ -34,15 +34,17 @@ class UserProfile {
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> j) => UserProfile(
-        gender: j['gender'] as String?,
-        birthDate: j['birthDate'] as String?,
-        heightCm: j['heightCm'] == null ? null : _toInt(j['heightCm']),
-        weightKg: j['weightKg'] == null ? null : _toDouble(j['weightKg']),
-        activityLevel: j['activityLevel'] as String?,
-        goal: (j['goal'] as String?) ?? 'MAINTAIN',
-        calorieTarget: j['calorieTarget'] == null ? 2000 : _toInt(j['calorieTarget']),
-        waterGoalMl: j['waterGoalMl'] == null ? 2000 : _toInt(j['waterGoalMl']),
-      );
+    gender: j['gender'] as String?,
+    birthDate: j['birthDate'] as String?,
+    heightCm: j['heightCm'] == null ? null : _toInt(j['heightCm']),
+    weightKg: j['weightKg'] == null ? null : _toDouble(j['weightKg']),
+    activityLevel: j['activityLevel'] as String?,
+    goal: (j['goal'] as String?) ?? 'MAINTAIN',
+    calorieTarget: j['calorieTarget'] == null
+        ? 2000
+        : _toInt(j['calorieTarget']),
+    waterGoalMl: j['waterGoalMl'] == null ? 2000 : _toInt(j['waterGoalMl']),
+  );
 }
 
 class WaterLog {
@@ -53,11 +55,12 @@ class WaterLog {
   WaterLog({required this.id, required this.amountMl, required this.drankAt});
 
   factory WaterLog.fromJson(Map<String, dynamic> j) => WaterLog(
-        id: j['id'] as String,
-        amountMl: _toInt(j['amountMl']),
-        drankAt: DateTime.tryParse(j['drankAt']?.toString() ?? '')?.toLocal() ??
-            DateTime.now(),
-      );
+    id: j['id'] as String,
+    amountMl: _toInt(j['amountMl']),
+    drankAt:
+        DateTime.tryParse(j['drankAt']?.toString() ?? '')?.toLocal() ??
+        DateTime.now(),
+  );
 }
 
 class AppUser {
@@ -78,15 +81,15 @@ class AppUser {
   });
 
   factory AppUser.fromJson(Map<String, dynamic> j) => AppUser(
-        id: j['id'] as String,
-        email: j['email'] as String,
-        name: j['name'] as String?,
-        isAdmin: j['isAdmin'] == true,
-        googleLinked: j['googleId'] != null,
-        profile: j['profile'] is Map<String, dynamic>
-            ? UserProfile.fromJson(j['profile'] as Map<String, dynamic>)
-            : null,
-      );
+    id: j['id'] as String,
+    email: j['email'] as String,
+    name: j['name'] as String?,
+    isAdmin: j['isAdmin'] == true,
+    googleLinked: j['googleId'] != null,
+    profile: j['profile'] is Map<String, dynamic>
+        ? UserProfile.fromJson(j['profile'] as Map<String, dynamic>)
+        : null,
+  );
 }
 
 class MealItem {
@@ -111,26 +114,26 @@ class MealItem {
   });
 
   factory MealItem.fromJson(Map<String, dynamic> j) => MealItem(
-        id: j['id'] as String?,
-        name: (j['name'] as String?) ?? '',
-        estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
-        calories: _toInt(j['calories']),
-        protein: _toDouble(j['protein']),
-        fat: _toDouble(j['fat']),
-        carbs: _toDouble(j['carbs']),
-        aiRating: (j['aiRating'] as String?) ?? 'MANUAL',
-      );
+    id: j['id'] as String?,
+    name: (j['name'] as String?) ?? '',
+    estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
+    calories: _toInt(j['calories']),
+    protein: _toDouble(j['protein']),
+    fat: _toDouble(j['fat']),
+    carbs: _toDouble(j['carbs']),
+    aiRating: (j['aiRating'] as String?) ?? 'MANUAL',
+  );
 
   Map<String, dynamic> toPayload() => {
-        if (id != null) 'id': id,
-        'name': name,
-        'estimatedAmount': estimatedAmount,
-        'calories': calories,
-        'protein': protein,
-        'fat': fat,
-        'carbs': carbs,
-        'aiRating': aiRating,
-      };
+    if (id != null) 'id': id,
+    'name': name,
+    'estimatedAmount': estimatedAmount,
+    'calories': calories,
+    'protein': protein,
+    'fat': fat,
+    'carbs': carbs,
+    'aiRating': aiRating,
+  };
 }
 
 class Meal {
@@ -161,21 +164,23 @@ class Meal {
   bool get hasImage => imageStorageKey != null;
 
   factory Meal.fromJson(Map<String, dynamic> j) => Meal(
-        id: j['id'] as String,
-        mealType: (j['mealType'] as String?) ?? 'LUNCH',
-        imageStorageKey: j['imageStorageKey'] as String?,
-        totalCalories: _toInt(j['totalCalories']),
-        totalProtein: _toDouble(j['totalProtein']),
-        totalFat: _toDouble(j['totalFat']),
-        totalCarbs: _toDouble(j['totalCarbs']),
-        aiNotes: j['aiNotes'] as String?,
-        eatenAt: DateTime.tryParse(j['eatenAt']?.toString() ?? '')?.toLocal() ??
-            DateTime.now(),
-        items: (j['items'] as List?)
-                ?.map((e) => MealItem.fromJson(e as Map<String, dynamic>))
-                .toList() ??
-            const [],
-      );
+    id: j['id'] as String,
+    mealType: (j['mealType'] as String?) ?? 'LUNCH',
+    imageStorageKey: j['imageStorageKey'] as String?,
+    totalCalories: _toInt(j['totalCalories']),
+    totalProtein: _toDouble(j['totalProtein']),
+    totalFat: _toDouble(j['totalFat']),
+    totalCarbs: _toDouble(j['totalCarbs']),
+    aiNotes: j['aiNotes'] as String?,
+    eatenAt:
+        DateTime.tryParse(j['eatenAt']?.toString() ?? '')?.toLocal() ??
+        DateTime.now(),
+    items:
+        (j['items'] as List?)
+            ?.map((e) => MealItem.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        const [],
+  );
 }
 
 /// AI analysis result returned by the analyze-* endpoints.
@@ -199,18 +204,19 @@ class FoodAnalysisItem {
   });
 
   factory FoodAnalysisItem.fromJson(Map<String, dynamic> j) => FoodAnalysisItem(
-        name: (j['name'] as String?) ?? '',
-        estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
-        calories: _toInt(j['calories']),
-        protein: _toDouble(j['protein']),
-        fat: _toDouble(j['fat']),
-        carbs: _toDouble(j['carbs']),
-        aiRating: (j['aiRating'] as String?) ?? 'OK',
-      );
+    name: (j['name'] as String?) ?? '',
+    estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
+    calories: _toInt(j['calories']),
+    protein: _toDouble(j['protein']),
+    fat: _toDouble(j['fat']),
+    carbs: _toDouble(j['carbs']),
+    aiRating: (j['aiRating'] as String?) ?? 'OK',
+  );
 }
 
 class SavedFood {
   final String id;
+  final String? barcode;
   final String name;
   final String estimatedAmount;
   final int calories;
@@ -220,6 +226,7 @@ class SavedFood {
 
   SavedFood({
     required this.id,
+    this.barcode,
     required this.name,
     required this.estimatedAmount,
     required this.calories,
@@ -229,14 +236,15 @@ class SavedFood {
   });
 
   factory SavedFood.fromJson(Map<String, dynamic> j) => SavedFood(
-        id: j['id'] as String,
-        name: (j['name'] as String?) ?? '',
-        estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
-        calories: _toInt(j['calories']),
-        protein: _toDouble(j['protein']),
-        fat: _toDouble(j['fat']),
-        carbs: _toDouble(j['carbs']),
-      );
+    id: j['id'] as String,
+    barcode: j['barcode'] as String?,
+    name: (j['name'] as String?) ?? '',
+    estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
+    calories: _toInt(j['calories']),
+    protein: _toDouble(j['protein']),
+    fat: _toDouble(j['fat']),
+    carbs: _toDouble(j['carbs']),
+  );
 }
 
 class DailySummary {
@@ -251,10 +259,10 @@ class DailySummary {
   });
 
   factory DailySummary.fromJson(Map<String, dynamic> j) => DailySummary(
-        aiSummary: (j['aiSummary'] as String?) ?? '',
-        aiRecommendation: (j['aiRecommendation'] as String?) ?? '',
-        totalCalories: _toInt(j['totalCalories']),
-      );
+    aiSummary: (j['aiSummary'] as String?) ?? '',
+    aiRecommendation: (j['aiRecommendation'] as String?) ?? '',
+    totalCalories: _toInt(j['totalCalories']),
+  );
 }
 
 /// One sleep stage interval (deep/light/REM/awake) with local-time bounds,
@@ -291,10 +299,14 @@ class HealthMetricValue {
       for (final e in raw) {
         if (e is Map) {
           final stage = e['stage']?.toString();
-          final start =
-              DateTime.tryParse(e['start']?.toString() ?? '')?.toLocal();
+          final start = DateTime.tryParse(
+            e['start']?.toString() ?? '',
+          )?.toLocal();
           final end = DateTime.tryParse(e['end']?.toString() ?? '')?.toLocal();
-          if (stage != null && start != null && end != null && end.isAfter(start)) {
+          if (stage != null &&
+              start != null &&
+              end != null &&
+              end.isAfter(start)) {
             stages.add(SleepSegment(stage: stage, start: start, end: end));
           }
         }
@@ -306,7 +318,7 @@ class HealthMetricValue {
       unit: (j['unit'] as String?) ?? '',
       measuredAt:
           DateTime.tryParse(j['measuredAt']?.toString() ?? '')?.toLocal() ??
-              DateTime.now(),
+          DateTime.now(),
       sleepStages: stages,
     );
   }
@@ -321,7 +333,8 @@ class HealthHistoryPoint {
 
   factory HealthHistoryPoint.fromJson(Map<String, dynamic> j) =>
       HealthHistoryPoint(
-        at: DateTime.tryParse(j['at']?.toString() ?? '')?.toLocal() ??
+        at:
+            DateTime.tryParse(j['at']?.toString() ?? '')?.toLocal() ??
             DateTime.now(),
         value: _toDouble(j['value']),
       );
@@ -344,7 +357,8 @@ class HealthHistorySeries {
       HealthHistorySeries(
         type: (j['type'] as String?) ?? '',
         unit: (j['unit'] as String?) ?? '',
-        points: (j['points'] as List?)
+        points:
+            (j['points'] as List?)
                 ?.whereType<Map<String, dynamic>>()
                 .map(HealthHistoryPoint.fromJson)
                 .toList() ??
@@ -370,16 +384,16 @@ class HealthConnection {
   bool get isActive => revokedAt == null;
 
   factory HealthConnection.fromJson(Map<String, dynamic> j) => HealthConnection(
-        id: j['id'] as String,
-        provider: (j['provider'] as String?) ?? 'HEALTH_CONNECT',
-        deviceName: j['deviceName'] as String?,
-        lastSyncedAt: j['lastSyncedAt'] == null
-            ? null
-            : DateTime.tryParse(j['lastSyncedAt'].toString())?.toLocal(),
-        revokedAt: j['revokedAt'] == null
-            ? null
-            : DateTime.tryParse(j['revokedAt'].toString())?.toLocal(),
-      );
+    id: j['id'] as String,
+    provider: (j['provider'] as String?) ?? 'HEALTH_CONNECT',
+    deviceName: j['deviceName'] as String?,
+    lastSyncedAt: j['lastSyncedAt'] == null
+        ? null
+        : DateTime.tryParse(j['lastSyncedAt'].toString())?.toLocal(),
+    revokedAt: j['revokedAt'] == null
+        ? null
+        : DateTime.tryParse(j['revokedAt'].toString())?.toLocal(),
+  );
 }
 
 class HealthSyncStatus {

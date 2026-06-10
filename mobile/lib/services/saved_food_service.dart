@@ -13,7 +13,16 @@ class SavedFoodService {
         .toList();
   }
 
+  static Future<SavedFood?> findByBarcode(String barcode) async {
+    final res = await _api.get('/api/saved-foods', query: {'barcode': barcode});
+    if (!ApiClient.ok(res)) return null;
+    final food = res.data['food'];
+    if (food is! Map<String, dynamic>) return null;
+    return SavedFood.fromJson(food);
+  }
+
   static Future<void> create({
+    String? barcode,
     required String name,
     required String estimatedAmount,
     required int calories,
@@ -21,14 +30,19 @@ class SavedFoodService {
     required double fat,
     required double carbs,
   }) async {
-    final res = await _api.post('/api/saved-foods', data: {
-      'name': name,
-      'estimatedAmount': estimatedAmount,
-      'calories': calories,
-      'protein': protein,
-      'fat': fat,
-      'carbs': carbs,
-    });
+    final res = await _api.post(
+      '/api/saved-foods',
+      data: {
+        if (barcode != null && barcode.trim().isNotEmpty)
+          'barcode': barcode.trim(),
+        'name': name,
+        'estimatedAmount': estimatedAmount,
+        'calories': calories,
+        'protein': protein,
+        'fat': fat,
+        'carbs': carbs,
+      },
+    );
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '儲存常用食物失敗'));
     }

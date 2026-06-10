@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/models.dart';
 import '../services/meal_service.dart';
@@ -24,6 +25,7 @@ const aiRatings = {
 
 /// Mutable, editable food row used by the form and confirm dialog.
 class EditableItem {
+  String? barcode;
   String name;
   String estimatedAmount;
   String calories;
@@ -33,6 +35,7 @@ class EditableItem {
   String aiRating;
 
   EditableItem({
+    this.barcode,
     this.name = '',
     this.estimatedAmount = '',
     this.calories = '',
@@ -43,27 +46,28 @@ class EditableItem {
   });
 
   factory EditableItem.fromAnalysis(FoodAnalysisItem f) => EditableItem(
-        name: f.name,
-        estimatedAmount: f.estimatedAmount,
-        calories: f.calories.toString(),
-        protein: f.protein.toString(),
-        fat: f.fat.toString(),
-        carbs: f.carbs.toString(),
-        aiRating: f.aiRating,
-      );
+    name: f.name,
+    estimatedAmount: f.estimatedAmount,
+    calories: f.calories.toString(),
+    protein: f.protein.toString(),
+    fat: f.fat.toString(),
+    carbs: f.carbs.toString(),
+    aiRating: f.aiRating,
+  );
 
   bool get hasName => name.trim().isNotEmpty;
 
   MealItem toMealItem() => MealItem(
-        name: name.trim(),
-        estimatedAmount:
-            estimatedAmount.trim().isEmpty ? '手動輸入' : estimatedAmount.trim(),
-        calories: int.tryParse(calories.trim()) ?? 0,
-        protein: double.tryParse(protein.trim()) ?? 0,
-        fat: double.tryParse(fat.trim()) ?? 0,
-        carbs: double.tryParse(carbs.trim()) ?? 0,
-        aiRating: aiRating,
-      );
+    name: name.trim(),
+    estimatedAmount: estimatedAmount.trim().isEmpty
+        ? '手動輸入'
+        : estimatedAmount.trim(),
+    calories: int.tryParse(calories.trim()) ?? 0,
+    protein: double.tryParse(protein.trim()) ?? 0,
+    fat: double.tryParse(fat.trim()) ?? 0,
+    carbs: double.tryParse(carbs.trim()) ?? 0,
+    aiRating: aiRating,
+  );
 }
 
 class MealCaptureForm extends StatefulWidget {
@@ -109,8 +113,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   List<SavedFood> _savedFoods = [];
   bool _loading = false;
   bool _labelLoading = false;
+  bool _barcodeLoading = false;
   bool _adviceLoading = false;
   String? _error;
+  String? _pendingBarcode;
   late String _advice = widget.initialAdvice;
   bool _adviceExpanded = true;
 
@@ -142,8 +148,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final List<XFile> files = source == ImageSource.gallery
         ? await _picker.pickMultiImage(maxWidth: 1600, imageQuality: 80)
         : await _picker
-            .pickImage(source: source, maxWidth: 1600, imageQuality: 80)
-            .then((f) => f == null ? <XFile>[] : [f]);
+              .pickImage(source: source, maxWidth: 1600, imageQuality: 80)
+              .then((f) => f == null ? <XFile>[] : [f]);
     if (files.isEmpty) return [];
 
     final messages = <String>[];
@@ -157,8 +163,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         skippedSize = true;
         continue;
       }
-      final mime =
-          file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      final mime = file.name.toLowerCase().endsWith('.png')
+          ? 'image/png'
+          : 'image/jpeg';
       urls.add('data:$mime;base64,${base64Encode(bytes)}');
     }
     if (skippedSize) messages.add('部分圖片超過 6MB 已略過。');
@@ -168,8 +175,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   Future<void> _chooseMealImages(ImageSource source) async {
     setState(() => _error = null);
-    final urls =
-        await _pickImageDataUrls(source, _maxImages - _imageDataUrls.length);
+    final urls = await _pickImageDataUrls(
+      source,
+      _maxImages - _imageDataUrls.length,
+    );
     if (urls.isNotEmpty) setState(() => _imageDataUrls.addAll(urls));
   }
 
@@ -187,9 +196,25 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         return;
       }
       final analyzedItems = items.map(EditableItem.fromAnalysis).toList();
+      final barcode = _pendingBarcode;
+      if (barcode != null && analyzedItems.isNotEmpty) {
+        analyzedItems.first.barcode = barcode;
+        final item = analyzedItems.first.toMealItem();
+        await SavedFoodService.create(
+          barcode: barcode,
+          name: item.name,
+          estimatedAmount: item.estimatedAmount,
+          calories: item.calories,
+          protein: item.protein,
+          fat: item.fat,
+          carbs: item.carbs,
+        );
+        await _loadSavedFoods();
+      }
       setState(() {
         _manualItems.removeWhere((e) => !e.hasName);
         _manualItems.addAll(analyzedItems);
+        _pendingBarcode = null;
         _labelLoading = false;
       });
       if (!mounted) return;
@@ -229,16 +254,23 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     try {
       final analyzed = switch (_mode) {
         CaptureMode.photo => await MealService.analyzeImage(
-            _mealType, _imageDataUrls,
-            precise: _preciseMode),
-        CaptureMode.describe =>
-          await MealService.analyzeDescription(_mealType, desc),
+          _mealType,
+          _imageDataUrls,
+          precise: _preciseMode,
+        ),
+        CaptureMode.describe => await MealService.analyzeDescription(
+          _mealType,
+          desc,
+        ),
         CaptureMode.manual => await MealService.analyzeManual(
-            _mealType, manual.map((e) => e.toMealItem()).toList()),
+          _mealType,
+          manual.map((e) => e.toMealItem()).toList(),
+        ),
       };
       if (!mounted) return;
       final confirmed = await _showConfirmDialog(
-          analyzed.map(EditableItem.fromAnalysis).toList());
+        analyzed.map(EditableItem.fromAnalysis).toList(),
+      );
       if (confirmed == true) await _afterSave();
     } catch (e) {
       setState(() => _error = e.toString());
@@ -255,11 +287,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       showDragHandle: true,
       builder: (ctx) => _ConfirmSheet(
         items: items,
-        imageDataUrls:
-            _mode == CaptureMode.photo ? List.of(_imageDataUrls) : const [],
+        imageDataUrls: _mode == CaptureMode.photo
+            ? List.of(_imageDataUrls)
+            : const [],
         onReestimate: (editedItems) async {
           final analyzed = await MealService.reestimate(
-              _mealType, editedItems.map((e) => e.toMealItem()).toList());
+            _mealType,
+            editedItems.map((e) => e.toMealItem()).toList(),
+          );
           return analyzed.map(EditableItem.fromAnalysis).toList();
         },
         onSave: (confirmedItems) async {
@@ -270,10 +305,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           // "健康同步" flow (HealthService.syncNow), not at save time.
           await MealService.createMeal(
             mealType: _mealType,
-            imageDataUrls:
-                _mode == CaptureMode.photo ? _imageDataUrls : null,
-            description:
-                _mode == CaptureMode.describe && desc.isNotEmpty ? desc : null,
+            imageDataUrls: _mode == CaptureMode.photo ? _imageDataUrls : null,
+            description: _mode == CaptureMode.describe && desc.isNotEmpty
+                ? desc
+                : null,
             items: items,
           );
         },
@@ -307,9 +342,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     }
     final mi = item.toMealItem();
     await SavedFoodService.create(
+      barcode: item.barcode,
       name: mi.name,
-      estimatedAmount:
-          item.estimatedAmount.trim().isEmpty ? '1 份' : item.estimatedAmount.trim(),
+      estimatedAmount: item.estimatedAmount.trim().isEmpty
+          ? '1 份'
+          : item.estimatedAmount.trim(),
       calories: mi.calories,
       protein: mi.protein,
       fat: mi.fat,
@@ -321,15 +358,48 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   void _addSavedFood(SavedFood food) {
     setState(() {
       _manualItems.removeWhere((e) => !e.hasName);
-      _manualItems.add(EditableItem(
-        name: food.name,
-        estimatedAmount: food.estimatedAmount,
-        calories: food.calories.toString(),
-        protein: food.protein.toString(),
-        fat: food.fat.toString(),
-        carbs: food.carbs.toString(),
-      ));
+      _manualItems.add(
+        EditableItem(
+          barcode: food.barcode,
+          name: food.name,
+          estimatedAmount: food.estimatedAmount,
+          calories: food.calories.toString(),
+          protein: food.protein.toString(),
+          fat: food.fat.toString(),
+          carbs: food.carbs.toString(),
+        ),
+      );
     });
+  }
+
+  Future<void> _scanProductBarcode() async {
+    setState(() {
+      _barcodeLoading = true;
+      _error = null;
+    });
+    try {
+      final barcode = await Navigator.of(context).push<String>(
+        MaterialPageRoute(
+          builder: (_) => const _BarcodeScannerPage(),
+          fullscreenDialog: true,
+        ),
+      );
+      if (barcode == null || barcode.trim().isEmpty) return;
+      final code = barcode.trim();
+      final food = await SavedFoodService.findByBarcode(code);
+      if (food != null) {
+        _addSavedFood(food);
+        return;
+      }
+      setState(() {
+        _pendingBarcode = code;
+        _error = '尚未紀錄此條碼。請上傳營養標示，系統會把辨識結果綁定到這個條碼，下次掃描即可帶入。';
+      });
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _barcodeLoading = false);
+    }
   }
 
   Future<void> _imageSourceSheet(Function(ImageSource) onPick) async {
@@ -364,19 +434,26 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('新增餐點',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            const Text(
+              '新增餐點',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
             const SizedBox(height: 4),
-            const Text('選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。',
-                style: TextStyle(fontSize: 12, color: Colors.black54)),
+            const Text(
+              '選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               initialValue: _mealType,
               decoration: const InputDecoration(
-                  labelText: '餐別', border: OutlineInputBorder()),
+                labelText: '餐別',
+                border: OutlineInputBorder(),
+              ),
               items: mealTypes.entries
-                  .map((e) =>
-                      DropdownMenuItem(value: e.key, child: Text(e.value)))
+                  .map(
+                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  )
                   .toList(),
               onChanged: (v) => setState(() => _mealType = v ?? 'LUNCH'),
             ),
@@ -403,24 +480,32 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               child: FilledButton(
                 onPressed: _loading ? null : _submit,
                 style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
                 child: _loading
                     ? const SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Text('AI 分析並確認'),
               ),
             ),
             const SizedBox(height: 6),
-            const Text('AI 分析為估算值，請依實際份量修正。',
-                style: TextStyle(fontSize: 11, color: Colors.black45)),
+            const Text(
+              'AI 分析為估算值，請依實際份量修正。',
+              style: TextStyle(fontSize: 11, color: Colors.black45),
+            ),
             if (widget.showAdvice && _adviceLoading)
               const Padding(
                 padding: EdgeInsets.only(top: 12),
-                child: Text('正在產生下一餐建議...',
-                    style: TextStyle(color: Color(0xFFB45309))),
+                child: Text(
+                  '正在產生下一餐建議...',
+                  style: TextStyle(color: Color(0xFFB45309)),
+                ),
               ),
             if (widget.showAdvice && _advice.isNotEmpty) _adviceCard(),
           ],
@@ -451,8 +536,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color:
-                      selected ? const Color(0xFFB45309) : Colors.transparent,
+                  color: selected
+                      ? const Color(0xFFB45309)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -486,11 +572,17 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         dense: true,
         activeColor: const Color(0xFFB45309),
         contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-        title: const Text('精準模式',
-            style: TextStyle(
-                fontWeight: FontWeight.bold, color: Color(0xFF78350F))),
-        subtitle: const Text('多次辨識取中位數，熱量更穩定（分析較慢、用量約 3 倍）。',
-            style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
+        title: const Text(
+          '精準模式',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF78350F),
+          ),
+        ),
+        subtitle: const Text(
+          '多次辨識取中位數，熱量更穩定（分析較慢、用量約 3 倍）。',
+          style: TextStyle(fontSize: 11, color: Color(0xFFB45309)),
+        ),
       ),
     );
   }
@@ -506,12 +598,18 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('用文字描述餐點',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold, color: Color(0xFF78350F))),
+          const Text(
+            '用文字描述餐點',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF78350F),
+            ),
+          ),
           const SizedBox(height: 4),
-          const Text('例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。',
-              style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
+          const Text(
+            '例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。',
+            style: TextStyle(fontSize: 11, color: Color(0xFFB45309)),
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _descriptionCtrl,
@@ -542,11 +640,12 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('從圖片上傳食物',
-              style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('從圖片上傳食物', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text('可一次拍照或上傳多張餐點照片（最多 $_maxImages 張），AI 會綜合所有照片辨識食物、估算營養並產生評分。',
-              style: TextStyle(fontSize: 11, color: Colors.black54)),
+          const Text(
+            '可一次拍照或上傳多張餐點照片（最多 $_maxImages 張），AI 會綜合所有照片辨識食物、估算營養並產生評分。',
+            style: TextStyle(fontSize: 11, color: Colors.black54),
+          ),
           if (_imageDataUrls.isNotEmpty) ...[
             const SizedBox(height: 10),
             _imageGrid(),
@@ -598,8 +697,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               top: 2,
               right: 2,
               child: GestureDetector(
-                onTap: () =>
-                    setState(() => _imageDataUrls.removeAt(entry.key)),
+                onTap: () => setState(() => _imageDataUrls.removeAt(entry.key)),
                 child: Container(
                   padding: const EdgeInsets.all(2),
                   decoration: const BoxDecoration(
@@ -631,21 +729,25 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           const Text('常用食物', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           if (_savedFoods.isEmpty)
-            const Text('尚無常用食物，可在下方食物列按「存常用」新增。',
-                style: TextStyle(fontSize: 12, color: Colors.black54))
+            const Text(
+              '尚無常用食物，可在下方食物列按「存常用」新增。',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            )
           else
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: _savedFoods
-                  .map((f) => InputChip(
-                        label: Text('${f.name} · ${f.calories}kcal'),
-                        onPressed: () => _addSavedFood(f),
-                        onDeleted: () async {
-                          await SavedFoodService.delete(f.id);
-                          await _loadSavedFoods();
-                        },
-                      ))
+                  .map(
+                    (f) => InputChip(
+                      label: Text('${f.name} · ${f.calories}kcal'),
+                      onPressed: () => _addSavedFood(f),
+                      onDeleted: () async {
+                        await SavedFoodService.delete(f.id);
+                        await _loadSavedFoods();
+                      },
+                    ),
+                  )
                   .toList(),
             ),
         ],
@@ -658,25 +760,51 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 8),
-        const Text('手動新增食物',
-            style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('手動新增食物', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed:
-              _labelLoading ? null : () => _imageSourceSheet(_scanNutritionLabel),
+          onPressed: _barcodeLoading ? null : _scanProductBarcode,
+          icon: _barcodeLoading
+              ? const SizedBox(
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.qr_code_scanner),
+          label: Text(_barcodeLoading ? '查詢中...' : '掃描產品條碼'),
+        ),
+        if (_pendingBarcode != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            '待綁定條碼：$_pendingBarcode',
+            style: const TextStyle(fontSize: 12, color: Color(0xFFB45309)),
+          ),
+        ],
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _labelLoading
+              ? null
+              : () => _imageSourceSheet(_scanNutritionLabel),
           icon: _labelLoading
               ? const SizedBox(
-                  height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  height: 16,
+                  width: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
               : const Icon(Icons.document_scanner),
           label: Text(_labelLoading ? '辨識中...' : '上傳營養標示'),
         ),
         const SizedBox(height: 8),
-        ..._manualItems.asMap().entries.map((entry) => _manualItemEditor(
-            entry.value, entry.key,
+        ..._manualItems.asMap().entries.map(
+          (entry) => _manualItemEditor(
+            entry.value,
+            entry.key,
             onSaveCommon: () => _saveAsSavedFood(entry.value),
             onDelete: _manualItems.length == 1
                 ? null
-                : () => setState(() => _manualItems.removeAt(entry.key)))),
+                : () => setState(() => _manualItems.removeAt(entry.key)),
+          ),
+        ),
         const SizedBox(height: 6),
         OutlinedButton.icon(
           onPressed: () => setState(() => _manualItems.add(EditableItem())),
@@ -687,8 +815,12 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     );
   }
 
-  Widget _manualItemEditor(EditableItem item, int index,
-      {VoidCallback? onSaveCommon, VoidCallback? onDelete}) {
+  Widget _manualItemEditor(
+    EditableItem item,
+    int index, {
+    VoidCallback? onSaveCommon,
+    VoidCallback? onDelete,
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: ItemEditor(
@@ -703,9 +835,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               TextButton(onPressed: onSaveCommon, child: const Text('存常用')),
             if (onDelete != null)
               TextButton(
-                  onPressed: onDelete,
-                  child: const Text('刪除',
-                      style: TextStyle(color: Colors.red))),
+                onPressed: onDelete,
+                child: const Text('刪除', style: TextStyle(color: Colors.red)),
+              ),
           ],
         ),
       ),
@@ -729,10 +861,13 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             child: Row(
               children: [
                 const Expanded(
-                  child: Text('下一餐建議',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF92400E))),
+                  child: Text(
+                    '下一餐建議',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF92400E),
+                    ),
+                  ),
                 ),
                 Icon(
                   _adviceExpanded ? Icons.expand_less : Icons.expand_more,
@@ -743,11 +878,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           ),
           if (_adviceExpanded) ...[
             const SizedBox(height: 2),
-            const Text('此建議會保留到今天結束；新增下一餐後會自動更新。',
-                style: TextStyle(fontSize: 11, color: Color(0xFFB45309))),
+            const Text(
+              '此建議會保留到今天結束；新增下一餐後會自動更新。',
+              style: TextStyle(fontSize: 11, color: Color(0xFFB45309)),
+            ),
             const SizedBox(height: 6),
-            MarkdownText(_advice,
-                style: const TextStyle(color: Color(0xFF78350F))),
+            MarkdownText(
+              _advice,
+              style: const TextStyle(color: Color(0xFF78350F)),
+            ),
           ],
         ],
       ),
@@ -785,10 +924,12 @@ class ItemEditor extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('食物 ${index + 1}',
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(
+                '食物 ${index + 1}',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
               const Spacer(),
-              if (trailing != null) trailing!,
+              ?trailing,
             ],
           ),
           _field('食物名稱', item.name, (v) {
@@ -807,8 +948,9 @@ class ItemEditor extends StatelessWidget {
               isDense: true,
               decoration: const InputDecoration(isDense: true),
               items: aiRatings.entries
-                  .map((e) =>
-                      DropdownMenuItem(value: e.key, child: Text(e.value)))
+                  .map(
+                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  )
                   .toList(),
               onChanged: (v) {
                 item.aiRating = v ?? 'MANUAL';
@@ -818,31 +960,35 @@ class ItemEditor extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                  child: _numField('熱量 kcal', item.calories, (v) {
-                item.calories = v;
-                onChanged();
-              })),
+                child: _numField('熱量 kcal', item.calories, (v) {
+                  item.calories = v;
+                  onChanged();
+                }),
+              ),
               const SizedBox(width: 8),
               Expanded(
-                  child: _numField('蛋白質 g', item.protein, (v) {
-                item.protein = v;
-                onChanged();
-              })),
+                child: _numField('蛋白質 g', item.protein, (v) {
+                  item.protein = v;
+                  onChanged();
+                }),
+              ),
             ],
           ),
           Row(
             children: [
               Expanded(
-                  child: _numField('脂肪 g', item.fat, (v) {
-                item.fat = v;
-                onChanged();
-              })),
+                child: _numField('脂肪 g', item.fat, (v) {
+                  item.fat = v;
+                  onChanged();
+                }),
+              ),
               const SizedBox(width: 8),
               Expanded(
-                  child: _numField('碳水 g', item.carbs, (v) {
-                item.carbs = v;
-                onChanged();
-              })),
+                child: _numField('碳水 g', item.carbs, (v) {
+                  item.carbs = v;
+                  onChanged();
+                }),
+              ),
             ],
           ),
         ],
@@ -952,55 +1098,66 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
       maxChildSize: 0.95,
       builder: (ctx, scrollController) => Padding(
         padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16),
+          left: 16,
+          right: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+        ),
         child: ListView(
           controller: scrollController,
           children: [
-            const Text('確認 AI 分析品項',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+            const Text(
+              '確認 AI 分析品項',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
+            ),
             const SizedBox(height: 4),
-            const Text('請確認食物是否正確，可先修正、刪除或新增後再儲存。',
-                style: TextStyle(fontSize: 12, color: Colors.black54)),
+            const Text(
+              '請確認食物是否正確，可先修正、刪除或新增後再儲存。',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
             if (widget.imageDataUrls.isNotEmpty) ...[
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 children: widget.imageDataUrls
-                    .map((url) => ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Image.memory(
-                            base64Decode(url.split(',').last),
-                            height: 96,
-                            width: 96,
-                            fit: BoxFit.cover,
-                          ),
-                        ))
+                    .map(
+                      (url) => ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.memory(
+                          base64Decode(url.split(',').last),
+                          height: 96,
+                          width: 96,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    )
                     .toList(),
               ),
             ],
             const SizedBox(height: 12),
-            ..._items.asMap().entries.map((entry) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: ItemEditor(
-                    // Keyed by item identity so the text fields rebuild with the
-                    // fresh values after a re-estimate swaps in new objects.
-                    key: ObjectKey(entry.value),
-                    item: entry.value,
-                    index: entry.key,
-                    onChanged: () => setState(() {}),
-                    trailing: _items.length == 1
-                        ? null
-                        : TextButton(
-                            onPressed: () =>
-                                setState(() => _items.removeAt(entry.key)),
-                            child: const Text('刪除',
-                                style: TextStyle(color: Colors.red)),
+            ..._items.asMap().entries.map(
+              (entry) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: ItemEditor(
+                  // Keyed by item identity so the text fields rebuild with the
+                  // fresh values after a re-estimate swaps in new objects.
+                  key: ObjectKey(entry.value),
+                  item: entry.value,
+                  index: entry.key,
+                  onChanged: () => setState(() {}),
+                  trailing: _items.length == 1
+                      ? null
+                      : TextButton(
+                          onPressed: () =>
+                              setState(() => _items.removeAt(entry.key)),
+                          child: const Text(
+                            '刪除',
+                            style: TextStyle(color: Colors.red),
                           ),
-                  ),
-                )),
+                        ),
+                ),
+              ),
+            ),
             OutlinedButton.icon(
               onPressed: () => setState(() => _items.add(EditableItem())),
               icon: const Icon(Icons.add),
@@ -1014,34 +1171,121 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
             OutlinedButton.icon(
               onPressed: _saving || _reanalyzing ? null : _reestimate,
               style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
               icon: _reanalyzing
                   ? const SizedBox(
                       height: 16,
                       width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   : const Icon(Icons.refresh),
               label: Text(_reanalyzing ? '重新辨識中...' : '依修改重新 AI 辨識'),
             ),
             const SizedBox(height: 4),
-            const Text('修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。',
-                style: TextStyle(fontSize: 11, color: Colors.black45)),
+            const Text(
+              '修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。',
+              style: TextStyle(fontSize: 11, color: Colors.black45),
+            ),
             const SizedBox(height: 8),
             FilledButton(
               onPressed: _saving || _reanalyzing ? null : _save,
               style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
               child: _saving
                   ? const SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
                   : const Text('確認並儲存餐點'),
             ),
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _BarcodeScannerPage extends StatefulWidget {
+  const _BarcodeScannerPage();
+
+  @override
+  State<_BarcodeScannerPage> createState() => _BarcodeScannerPageState();
+}
+
+class _BarcodeScannerPageState extends State<_BarcodeScannerPage> {
+  final _controller = MobileScannerController(
+    formats: [
+      BarcodeFormat.ean13,
+      BarcodeFormat.ean8,
+      BarcodeFormat.upcA,
+      BarcodeFormat.upcE,
+      BarcodeFormat.code128,
+    ],
+  );
+  bool _handled = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_handled) return;
+    final code = capture.barcodes
+        .map((barcode) => barcode.rawValue?.trim())
+        .whereType<String>()
+        .where((value) => value.isNotEmpty)
+        .firstOrNull;
+    if (code == null) return;
+    _handled = true;
+    Navigator.of(context).pop(code);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('掃描產品條碼')),
+      body: Stack(
+        children: [
+          MobileScanner(controller: _controller, onDetect: _onDetect),
+          Center(
+            child: Container(
+              width: 260,
+              height: 140,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.white, width: 3),
+                borderRadius: BorderRadius.circular(16),
+              ),
+            ),
+          ),
+          const Positioned(
+            left: 16,
+            right: 16,
+            bottom: 32,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.all(Radius.circular(16)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: Text(
+                  '將產品條碼對準框線。若第一次掃描未命中，回到手動紀錄上傳營養標示即可建立紀錄。',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

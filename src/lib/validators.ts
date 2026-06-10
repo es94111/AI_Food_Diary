@@ -78,6 +78,7 @@ export const mealUpdateSchema = z.object({
 });
 
 export const savedFoodSchema = z.object({
+  barcode: z.string().trim().min(4).max(80).optional(),
   name: z.string().min(1).max(120),
   estimatedAmount: z.string().min(1).max(120),
   calories: z.coerce.number().int().min(0).max(10000),

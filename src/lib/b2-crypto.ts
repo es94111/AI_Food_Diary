@@ -112,6 +112,7 @@ export function decryptMealItem<T extends MealItemLike>(item: T): DecryptedMealI
 }
 
 export function encryptSavedFoodWrite(food: {
+  barcode?: string;
   name: string;
   estimatedAmount: string;
   calories: number;
@@ -120,6 +121,7 @@ export function encryptSavedFoodWrite(food: {
   carbs: number;
 }) {
   return {
+    barcode: food.barcode,
     name: null,
     estimatedAmount: null,
     encName: encryptJson(food.name),

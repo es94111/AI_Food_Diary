@@ -6,6 +6,7 @@ import { MarkdownContent } from "@/components/markdown-content";
 
 type ManualItem = {
   id: string;
+  barcode?: string;
   name: string;
   estimatedAmount: string;
   calories: string;
@@ -17,6 +18,7 @@ type ManualItem = {
 
 type SavedFood = {
   id: string;
+  barcode?: string | null;
   name: string;
   estimatedAmount: string;
   calories: number;
@@ -56,6 +58,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [adviceExpanded, setAdviceExpanded] = useState(false);
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
+  const [barcode, setBarcode] = useState("");
   const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
@@ -126,6 +129,13 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       if (items.length === 0) {
         setError("AI 沒有辨識到營養標示內容，請換一張更清楚的圖片。");
         return;
+      }
+      const pendingBarcode = barcode.trim();
+      if (pendingBarcode && items[0]) {
+        items[0].barcode = pendingBarcode;
+        await saveAsSavedFoodInternal(items[0], { silent: true });
+        await loadSavedFoods();
+        setBarcode("");
       }
       setManualItems((current) => [...current.filter((item) => item.name.trim()), ...items]);
     } catch (error) {
@@ -278,14 +288,19 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   }
 
   async function saveAsSavedFood(item: ManualItem) {
+    return saveAsSavedFoodInternal(item, { silent: false });
+  }
+
+  async function saveAsSavedFoodInternal(item: ManualItem, options: { silent: boolean }) {
     if (!item.name.trim()) {
-      setError("請先填寫食物名稱再儲存為常用食物。");
+      if (!options.silent) setError("請先填寫食物名稱再儲存為常用食物。");
       return;
     }
     const response = await fetch("/api/saved-foods", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        barcode: item.barcode?.trim() || undefined,
         name: item.name.trim(),
         estimatedAmount: item.estimatedAmount.trim() || "1 份",
         calories: Number(item.calories || 0),
@@ -295,6 +310,23 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       })
     });
     if (response.ok) await loadSavedFoods();
+  }
+
+  async function lookupBarcode() {
+    const code = barcode.trim();
+    if (!code) {
+      setError("請先輸入或掃描產品條碼。");
+      return;
+    }
+    setError("");
+    const response = await fetch(`/api/saved-foods?barcode=${encodeURIComponent(code)}`);
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && data.food) {
+      addSavedFood(data.food);
+      setBarcode("");
+      return;
+    }
+    setError("尚未紀錄此條碼。請上傳營養標示，系統會把辨識結果綁定到這個條碼，下次掃描即可帶入。");
   }
 
   async function deleteSavedFood(id: string) {
@@ -443,6 +475,14 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
       <div className="mt-5 rounded-2xl bg-stone-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
         <p className="mt-1 text-xs text-stone-500">填寫以下欄位（或上傳營養標示／選用常用食物），AI 會先判斷推薦評分再讓你確認。</p>
+        <div className="mt-3 rounded-2xl border border-stone-200 bg-white p-3">
+          <p className="text-sm font-bold text-stone-900">產品條碼</p>
+          <p className="mt-1 text-xs text-stone-500">輸入或用手機掃描條碼；若尚未紀錄，先上傳營養標示後會自動綁定。</p>
+          <div className="mt-2 flex gap-2">
+            <input className="min-w-0 flex-1 rounded-xl border border-stone-200 px-3 py-2" inputMode="numeric" onChange={(event) => setBarcode(event.target.value)} placeholder="例如：471..." value={barcode} />
+            <button className="rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white" onClick={lookupBarcode} type="button">查詢</button>
+          </div>
+        </div>
         <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -564,7 +604,7 @@ function itemsForPayload(items: ManualItem[]) {
     }));
 }
 
-function itemsFromAnalysis(foods: Array<{ name: string; estimatedAmount: string; calories: number; protein: number; fat: number; carbs: number; aiRating?: string }>) {
+function itemsFromAnalysis(foods: Array<{ name: string; estimatedAmount: string; calories: number; protein: number; fat: number; carbs: number; aiRating?: string }>): ManualItem[] {
   return foods.map((food) => ({
     id: crypto.randomUUID(),
     name: food.name,
