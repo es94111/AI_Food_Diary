@@ -82,6 +82,28 @@ class AiSettingsService {
         settings is Map<String, dynamic> ? settings : <String, dynamic>{});
   }
 
+  /// Lists the models the provider exposes (via the backend's
+  /// `/api/me/ai-settings/models`, which proxies the OpenAI-compatible
+  /// `GET /models`). [apiKey] is optional — the server falls back to the saved
+  /// key when it's omitted, so the user need not re-type it.
+  static Future<List<String>> listModels({
+    required String provider,
+    String? apiKey,
+    String? baseUrl,
+  }) async {
+    final res = await _api.post('/api/me/ai-settings/models', data: {
+      'provider': provider,
+      if (apiKey != null && apiKey.isNotEmpty) 'apiKey': apiKey,
+      if (baseUrl != null && baseUrl.isNotEmpty) 'baseUrl': baseUrl,
+    });
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '無法載入模型清單'),
+          statusCode: res.statusCode);
+    }
+    final raw = res.data['models'];
+    return raw is List ? raw.whereType<String>().toList() : <String>[];
+  }
+
   static Future<void> save({
     required String provider,
     String? apiKey,

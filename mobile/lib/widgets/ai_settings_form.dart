@@ -24,6 +24,11 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  // Models fetched live from the provider; lets the user pick from a list or
+  // keep typing their own into the model field.
+  List<String> _models = const [];
+  bool _loadingModels = false;
+  String? _modelMessage;
 
   @override
   void initState() {
@@ -69,7 +74,39 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
       // Reset model/base to the new provider's defaults so the fields stay consistent.
       _modelCtrl.text = aiProviderById(value).defaultModel;
       _baseUrlCtrl.clear();
+      // The loaded list belongs to the previous provider/endpoint — drop it.
+      _models = const [];
+      _modelMessage = null;
     });
+  }
+
+  Future<void> _loadModels() async {
+    setState(() {
+      _loadingModels = true;
+      _modelMessage = null;
+    });
+    try {
+      final models = await AiSettingsService.listModels(
+        provider: _provider,
+        apiKey:
+            _apiKeyCtrl.text.trim().isNotEmpty ? _apiKeyCtrl.text.trim() : null,
+        baseUrl: _provider == 'compatible' ? _baseUrlCtrl.text.trim() : null,
+      );
+      if (!mounted) return;
+      setState(() {
+        _models = models;
+        _loadingModels = false;
+        _modelMessage = models.isEmpty
+            ? '此供應商沒有回傳模型清單，請自行輸入模型名稱。'
+            : '已載入 ${models.length} 個模型，可從清單挑選或自行輸入。';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadingModels = false;
+        _modelMessage = e.toString();
+      });
+    }
   }
 
   Future<void> _save() async {
@@ -201,6 +238,49 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   border: const OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  if (_loadingModels)
+                    const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: _loadModels,
+                      icon: const Icon(Icons.cloud_download_outlined, size: 18),
+                      label: const Text('載入模型清單'),
+                    ),
+                  if (_models.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    PopupMenuButton<String>(
+                      tooltip: '從清單選擇模型',
+                      onSelected: (value) =>
+                          setState(() => _modelCtrl.text = value),
+                      itemBuilder: (_) => _models
+                          .map((m) => PopupMenuItem<String>(
+                                value: m,
+                                child: Text(m,
+                                    overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      child: Chip(
+                        avatar: const Icon(Icons.arrow_drop_down, size: 18),
+                        label: Text('選擇 (${_models.length})'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              if (_modelMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(_modelMessage!,
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.black54)),
+                ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
                 Text(_error!, style: const TextStyle(color: Colors.red)),
