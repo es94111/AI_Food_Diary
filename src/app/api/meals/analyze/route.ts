@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { analyzeMealImage, analyzeMealImageStable } from "@/lib/ai";
 import { resolveUserAiConfig } from "@/lib/ai-config";
+import { aiErrorResponse } from "@/lib/ai-errors";
 import { requireUser } from "@/lib/auth";
-import { apiError, HttpError } from "@/lib/http";
 import { enforceAiRateLimit } from "@/lib/rate-limit";
 import { mealSchema } from "@/lib/validators";
 
@@ -22,24 +22,10 @@ export async function POST(request: Request) {
       : await analyzeMealImage(config, images);
     return NextResponse.json({ analysis });
   } catch (error) {
-    if (error instanceof HttpError) return apiError(error);
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("Meal preview analysis failed", error);
-    if (message === "AI_NOT_CONFIGURED") {
-      return NextResponse.json({ error: "尚未設定 AI 金鑰，請點右上角「使用者設定 → AI 設定」選擇服務商並輸入你的 API 金鑰。" }, { status: 400 });
-    }
-    if (message === "OPENAI_API_KEY is required") {
-      return NextResponse.json({ error: "尚未設定 OPENAI_API_KEY，請先在 .env 填入 API Key 後重啟 app/worker。" }, { status: 400 });
-    }
-    if (message === "OPENAI_RESPONSE_MISSING_CHOICES") {
-      return NextResponse.json({ error: "AI 服務回應格式不相容，請確認 AI 服務商、Base URL、模型名稱與 API 金鑰是否屬於同一個平台，且端點為 OpenAI-compatible chat completions API。" }, { status: 502 });
-    }
-    if (message === "OPENAI_RESPONSE_EMPTY_CONTENT") {
-      return NextResponse.json({ error: "AI 服務沒有回傳分析內容，請確認模型是否支援圖片輸入。" }, { status: 502 });
-    }
-    if (message.includes("Unexpected token") || message.includes("JSON") || message === "OPENAI_RESPONSE_NOT_PARSEABLE") {
-      return NextResponse.json({ error: "AI 回傳格式無法解析，請調整提示語要求只輸出 JSON。" }, { status: 502 });
-    }
-    return NextResponse.json({ error: "餐點分析失敗，請稍後再試。" }, { status: 500 });
+    return aiErrorResponse(error, {
+      logLabel: "Meal preview analysis failed",
+      fallbackMessage: "餐點分析失敗，請稍後再試。",
+      emptyContentMessage: "AI 服務沒有回傳分析內容，請確認模型是否支援圖片輸入。"
+    });
   }
 }
