@@ -110,3 +110,17 @@ export const aiSettingsSchema = z
     message: "OpenAI 相容 API 需要填寫模型名稱",
     path: ["visionModel"]
   });
+
+// Request body for listing a provider's available models. The apiKey is optional
+// so the user can fetch with their already-saved key without re-typing it; the
+// route falls back to the stored key when it's omitted.
+export const aiModelListSchema = z
+  .object({
+    provider: z.enum(["openai", "gemini", "compatible"]),
+    apiKey: z.string().max(400).optional(),
+    baseUrl: z.string().max(300).optional()
+  })
+  .refine((v) => v.provider !== "compatible" || !!v.baseUrl?.trim(), {
+    message: "OpenAI 相容 API 需要填寫 Base URL",
+    path: ["baseUrl"]
+  });

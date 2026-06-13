@@ -18,6 +18,11 @@ export function AiSettingsForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  // Models fetched live from the provider's /models endpoint. Merged with the
+  // hardcoded catalog suggestions so the picklist is useful even before fetching.
+  const [fetchedModels, setFetchedModels] = useState<string[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelMessage, setModelMessage] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -45,6 +50,37 @@ export function AiSettingsForm() {
     setProvider(id);
     setModel(AI_PROVIDERS[id].defaultVisionModel);
     setBaseUrl("");
+    // The fetched list belongs to the previous provider/endpoint — drop it.
+    setFetchedModels([]);
+    setModelMessage("");
+  }
+
+  async function loadModels() {
+    setLoadingModels(true);
+    setModelMessage("");
+    try {
+      const response = await fetch("/api/me/ai-settings/models", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider,
+          apiKey: apiKey.trim() || undefined,
+          baseUrl: provider === "compatible" ? baseUrl.trim() : undefined
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setModelMessage(data?.error ?? "無法載入模型清單。");
+        return;
+      }
+      const models: string[] = Array.isArray(data?.models) ? data.models : [];
+      setFetchedModels(models);
+      setModelMessage(models.length ? `已載入 ${models.length} 個模型，可從下拉選單挑選或自行輸入。` : "此供應商沒有回傳可用模型清單，請自行輸入模型名稱。");
+    } catch {
+      setModelMessage("載入模型清單失敗，請稍後再試。");
+    } finally {
+      setLoadingModels(false);
+    }
   }
 
   async function save() {
@@ -84,6 +120,9 @@ export function AiSettingsForm() {
   }
 
   const def = AI_PROVIDERS[provider];
+  // Live-fetched models first (most relevant), then the catalog suggestions,
+  // de-duplicated. Drives the model input's datalist.
+  const modelSuggestions = Array.from(new Set([...fetchedModels, ...def.models]));
 
   return (
     <div>
@@ -148,22 +187,33 @@ export function AiSettingsForm() {
 
           <div>
             <label className="mb-1 block text-xs font-semibold text-stone-500">模型</label>
-            <input
-              className={inputClass}
-              type="text"
-              value={model}
-              list={def.models.length ? "ai-model-suggestions" : undefined}
-              placeholder={provider === "compatible" ? "例如 gpt-4o" : def.defaultVisionModel}
-              onChange={(e) => setModel(e.target.value)}
-            />
-            {def.models.length ? (
+            <div className="flex gap-2">
+              <input
+                className={inputClass}
+                type="text"
+                value={model}
+                list={modelSuggestions.length ? "ai-model-suggestions" : undefined}
+                placeholder={provider === "compatible" ? "例如 gpt-4o" : def.defaultVisionModel}
+                onChange={(e) => setModel(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={loadModels}
+                disabled={loadingModels}
+                className="shrink-0 rounded-xl border border-stone-200 bg-white px-3 text-sm text-stone-600 transition-colors hover:bg-stone-50 disabled:opacity-60"
+              >
+                {loadingModels ? "載入中…" : "載入模型"}
+              </button>
+            </div>
+            {modelSuggestions.length ? (
               <datalist id="ai-model-suggestions">
-                {def.models.map((m) => (
+                {modelSuggestions.map((m) => (
                   <option key={m} value={m} />
                 ))}
               </datalist>
             ) : null}
-            <p className="mt-1 text-xs text-stone-400">需支援圖片輸入（vision）才能分析餐點照片。</p>
+            {modelMessage ? <p className="mt-1 text-xs text-stone-500">{modelMessage}</p> : null}
+            <p className="mt-1 text-xs text-stone-400">需支援圖片輸入（vision）才能分析餐點照片。點「載入模型」可從供應商取得可用清單。</p>
           </div>
 
           {message ? <p className="text-sm font-medium text-amber-700">{message}</p> : null}
