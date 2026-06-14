@@ -17,6 +17,9 @@ FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+# Patch OS packages (e.g. openssl/libcrypto3/libssl3) that lag behind the
+# node:22-alpine tag, so Trivy doesn't fail on already-fixed CVEs.
+RUN apk upgrade --no-cache
 # .next is owned by node so `next start` can write its runtime cache; the rest
 # stays read-only (root-owned, world-readable) for the unprivileged user.
 COPY --from=builder --chown=node:node /app/.next ./.next
