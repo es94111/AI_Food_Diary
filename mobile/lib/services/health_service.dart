@@ -580,7 +580,7 @@ class HealthService {
   static Future<bool> writeMealNutrition({
     required String mealType,
     required DateTime eatenAt,
-    required int calories,
+    required double calories,
     required double protein,
     required double fat,
     required double carbs,

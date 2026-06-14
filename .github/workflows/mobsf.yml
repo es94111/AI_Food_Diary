@@ -16,7 +16,7 @@ permissions:
 jobs:
   mobsf:
     name: Build & scan APK
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     env:
       # 固定的本機 API key（只在這個 job 內、對 localhost 的 MobSF 容器用，非機密）。
       MOBSF_API_KEY: ci-local-mobsf-key

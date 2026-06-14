@@ -17,7 +17,7 @@ permissions:
 jobs:
   scan:
     name: Build & scan image
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Checkout
         uses: actions/checkout@v6

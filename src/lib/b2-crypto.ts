@@ -6,6 +6,7 @@ type MealItemLike = {
   estimatedAmount?: string | null;
   encName?: unknown;
   encEstimatedAmount?: unknown;
+  calories?: unknown;
   protein?: unknown;
   fat?: unknown;
   carbs?: unknown;
@@ -18,6 +19,7 @@ type DailySummaryLike = {
   aiRecommendation?: string | null;
   encAiSummary?: unknown;
   encAiRecommendation?: unknown;
+  totalCalories?: unknown;
   totalProtein?: unknown;
   totalFat?: unknown;
   totalCarbs?: unknown;
@@ -25,10 +27,11 @@ type DailySummaryLike = {
 
 type DecryptedMealItem<T> = Omit<
   T,
-  "name" | "estimatedAmount" | "encName" | "encEstimatedAmount" | "protein" | "fat" | "carbs"
+  "name" | "estimatedAmount" | "encName" | "encEstimatedAmount" | "calories" | "protein" | "fat" | "carbs"
 > & {
   name: string;
   estimatedAmount: string;
+  calories: number;
   protein: number;
   fat: number;
   carbs: number;
@@ -36,10 +39,11 @@ type DecryptedMealItem<T> = Omit<
 
 type DecryptedDailySummary<T> = Omit<
   T,
-  "aiSummary" | "aiRecommendation" | "encAiSummary" | "encAiRecommendation" | "totalProtein" | "totalFat" | "totalCarbs"
+  "aiSummary" | "aiRecommendation" | "encAiSummary" | "encAiRecommendation" | "totalCalories" | "totalProtein" | "totalFat" | "totalCarbs"
 > & {
   aiSummary: string;
   aiRecommendation: string;
+  totalCalories: number;
   totalProtein: number;
   totalFat: number;
   totalCarbs: number;
@@ -96,6 +100,7 @@ export function decryptMealItem<T extends MealItemLike>(item: T): DecryptedMealI
     estimatedAmount,
     encName: _encName,
     encEstimatedAmount: _encEstimatedAmount,
+    calories,
     protein,
     fat,
     carbs,
@@ -105,6 +110,7 @@ export function decryptMealItem<T extends MealItemLike>(item: T): DecryptedMealI
     ...rest,
     name: decryptField<string>(_encName, name ?? ""),
     estimatedAmount: decryptField<string>(_encEstimatedAmount, estimatedAmount ?? ""),
+    calories: Number(calories ?? 0),
     protein: Number(protein ?? 0),
     fat: Number(fat ?? 0),
     carbs: Number(carbs ?? 0)
@@ -159,6 +165,7 @@ export function decryptDailySummary<T extends DailySummaryLike>(summary: T): Dec
     aiRecommendation,
     encAiSummary: _encAiSummary,
     encAiRecommendation: _encAiRecommendation,
+    totalCalories,
     totalProtein,
     totalFat,
     totalCarbs,
@@ -168,6 +175,7 @@ export function decryptDailySummary<T extends DailySummaryLike>(summary: T): Dec
     ...rest,
     aiSummary: decryptField<string>(_encAiSummary, aiSummary ?? ""),
     aiRecommendation: decryptField<string>(_encAiRecommendation, aiRecommendation ?? ""),
+    totalCalories: Number(totalCalories ?? 0),
     totalProtein: Number(totalProtein ?? 0),
     totalFat: Number(totalFat ?? 0),
     totalCarbs: Number(totalCarbs ?? 0)
@@ -177,6 +185,7 @@ export function decryptDailySummary<T extends DailySummaryLike>(summary: T): Dec
 export function decryptMeal<
   T extends {
     items?: MealItemLike[];
+    totalCalories?: unknown;
     totalProtein?: unknown;
     totalFat?: unknown;
     totalCarbs?: unknown;
@@ -185,16 +194,18 @@ export function decryptMeal<
   }
 >(
   meal: T
-): Omit<T, "items" | "totalProtein" | "totalFat" | "totalCarbs" | "aiNotes" | "encAiNotes"> & {
+): Omit<T, "items" | "totalCalories" | "totalProtein" | "totalFat" | "totalCarbs" | "aiNotes" | "encAiNotes"> & {
   items: DecryptedMealItem<MealItemOf<T>>[];
+  totalCalories: number;
   totalProtein: number;
   totalFat: number;
   totalCarbs: number;
   aiNotes: string | null;
 } {
-  const { items, totalProtein, totalFat, totalCarbs, aiNotes, encAiNotes: _encAiNotes, ...rest } = meal;
+  const { items, totalCalories, totalProtein, totalFat, totalCarbs, aiNotes, encAiNotes: _encAiNotes, ...rest } = meal;
   return {
     ...rest,
+    totalCalories: Number(totalCalories ?? 0),
     totalProtein: Number(totalProtein ?? 0),
     totalFat: Number(totalFat ?? 0),
     totalCarbs: Number(totalCarbs ?? 0),

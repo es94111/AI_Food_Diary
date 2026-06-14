@@ -1,5 +1,5 @@
 type MealTotals = {
-  totalCalories: number;
+  totalCalories: unknown;
   totalProtein: unknown;
   totalFat: unknown;
   totalCarbs: unknown;
@@ -8,7 +8,7 @@ type MealTotals = {
 export function sumMeals(meals: MealTotals[]) {
   return meals.reduce(
     (acc, meal) => ({
-      calories: acc.calories + meal.totalCalories,
+      calories: acc.calories + Number(meal.totalCalories),
       protein: acc.protein + Number(meal.totalProtein),
       fat: acc.fat + Number(meal.totalFat),
       carbs: acc.carbs + Number(meal.totalCarbs)

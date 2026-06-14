@@ -97,7 +97,7 @@ class _MealCard extends StatelessWidget {
                 Text(DateFormat('HH:mm').format(meal.eatenAt),
                     style: const TextStyle(color: Colors.black45, fontSize: 12)),
                 const Spacer(),
-                Text('${meal.totalCalories} kcal',
+                Text('${fmtNum(meal.totalCalories)} kcal',
                     style: const TextStyle(fontWeight: FontWeight.w900)),
               ],
             ),
@@ -130,7 +130,7 @@ class _MealCard extends StatelessWidget {
                       Expanded(
                           child: Text('${_ratingIcon(it.aiRating)} ${it.name}'
                               '${it.estimatedAmount.isNotEmpty ? ' · ${it.estimatedAmount}' : ''}')),
-                      Text('${it.calories} kcal',
+                      Text('${fmtNum(it.calories)} kcal',
                           style: const TextStyle(color: Colors.black54)),
                     ],
                   ),
@@ -236,7 +236,7 @@ class _EditMealSheetState extends State<_EditMealSheet> {
       .map((it) => EditableItem(
             name: it.name,
             estimatedAmount: it.estimatedAmount,
-            calories: it.calories.toString(),
+            calories: fmtNum(it.calories),
             protein: it.protein.toString(),
             fat: it.fat.toString(),
             carbs: it.carbs.toString(),

@@ -146,7 +146,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
         <select className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setDraft((v) => ({ ...v, source: event.target.value as SavedFoodSource }))} value={draft.source ?? "MANUAL"}>
           {Object.entries(sourceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
         </select>
-        <input className="rounded-xl border border-stone-200 px-3 py-2" min="0" onChange={(event) => setDraft((v) => ({ ...v, calories: Number(event.target.value) }))} placeholder="熱量 kcal" type="number" value={draft.calories} />
+        <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => setDraft((v) => ({ ...v, calories: Number(event.target.value) }))} placeholder="熱量 kcal" step="0.1" type="number" value={draft.calories} />
         <input className="rounded-xl border border-stone-200 px-3 py-2" min="0" onChange={(event) => setDraft((v) => ({ ...v, protein: Number(event.target.value) }))} placeholder="蛋白質 g" step="0.1" type="number" value={draft.protein} />
         <input className="rounded-xl border border-stone-200 px-3 py-2" min="0" onChange={(event) => setDraft((v) => ({ ...v, fat: Number(event.target.value) }))} placeholder="脂肪 g" step="0.1" type="number" value={draft.fat} />
         <input className="rounded-xl border border-stone-200 px-3 py-2" min="0" onChange={(event) => setDraft((v) => ({ ...v, carbs: Number(event.target.value) }))} placeholder="碳水 g" step="0.1" type="number" value={draft.carbs} />
