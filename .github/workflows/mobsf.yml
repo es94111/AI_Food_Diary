@@ -43,6 +43,9 @@ jobs:
 
       - name: Start MobSF
         run: |
+          # Self-hosted runner persists state between runs; drop any leftover
+          # container from a previous (failed/cancelled) run before starting.
+          docker rm -f mobsf >/dev/null 2>&1 || true
           docker run -d --name mobsf -p 8000:8000 \
             -e MOBSF_API_KEY="$MOBSF_API_KEY" \
             opensecurity/mobile-security-framework-mobsf:latest
@@ -100,6 +103,10 @@ jobs:
             mobsf-report.json
             mobsf-report.pdf
           if-no-files-found: warn
+
+      - name: Stop MobSF
+        if: always()
+        run: docker rm -f mobsf >/dev/null 2>&1 || true
 
       # ── 想改成 gate：取消註解，掃描分數低於門檻就 fail ──
       # - name: Enforce security score
