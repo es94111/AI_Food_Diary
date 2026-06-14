@@ -3,9 +3,8 @@
 name: OSV Scanner (Flutter deps)
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
+  schedule:
+    - cron: "0 19 * * *" # 每天 03:00 Asia/Taipei
   workflow_dispatch:
 
 permissions:
