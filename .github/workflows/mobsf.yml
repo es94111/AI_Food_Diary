@@ -17,6 +17,11 @@ jobs:
     name: Build & scan APK
     runs-on: self-hosted
     env:
+      # Self-hosted runner: point Flutter/Gradle at the pre-installed SDK + JDK
+      # (the runner service doesn't source /etc/profile.d or .bashrc).
+      ANDROID_HOME: /opt/android-sdk
+      ANDROID_SDK_ROOT: /opt/android-sdk
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
       # 固定的本機 API key（只在這個 job 內、對 localhost 的 MobSF 容器用，非機密）。
       MOBSF_API_KEY: ci-local-mobsf-key
     steps:

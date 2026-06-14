@@ -12,6 +12,12 @@ jobs:
   build-apk:
     runs-on: self-hosted
     env:
+      # Self-hosted runner: point Flutter/Gradle at the pre-installed SDK + JDK.
+      # The runner service doesn't source /etc/profile.d or .bashrc, so set these
+      # explicitly here instead of relying on the runner's shell environment.
+      ANDROID_HOME: /opt/android-sdk
+      ANDROID_SDK_ROOT: /opt/android-sdk
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
       S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
       S3_BUCKET: ${{ secrets.S3_BUCKET }}
       # Gate for the signing step (secrets can't be read directly in `if`).
