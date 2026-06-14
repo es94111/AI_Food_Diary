@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import '../services/auth_service.dart';
@@ -8,6 +9,7 @@ import '../services/meal_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/ai_settings_form.dart';
 import '../widgets/health_sync_card.dart';
+import '../widgets/daily_summary_popup.dart';
 import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
@@ -61,6 +63,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     // After the dashboard is up, check for a newer app version and prompt.
     if (mounted) UpdateCard.checkAndPrompt(context);
+    // Once per day, surface yesterday's pre-computed summary (peek only, no AI).
+    if (mounted) _maybeShowYesterdaySummary();
+  }
+
+  // On the first open of each local day, show yesterday's summary if the server
+  // has already generated it. Peek only — never triggers AI on open.
+  Future<void> _maybeShowYesterdaySummary() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final todayKey = '${now.year}-${now.month}-${now.day}';
+      if (prefs.getString('last_summary_popup_date') == todayKey) return;
+      final yesterday = DateTime(now.year, now.month, now.day - 1);
+      final summary = await MealService.dailySummary(yesterday); // peek, no AI
+      if (!mounted || summary == null) return;
+      await showDailySummaryPopup(context, summary);
+      await prefs.setString('last_summary_popup_date', todayKey);
+    } catch (_) {
+      // Non-critical: never block the dashboard if the popup check fails.
+    }
   }
 
   Future<void> _loadSyncedWeight() async {

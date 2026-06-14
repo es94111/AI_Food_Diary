@@ -10,6 +10,7 @@ import { decryptMetricValue } from "@/lib/field-crypto";
 import { decryptMeal } from "@/lib/b2-crypto";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MealCaptureForm } from "@/components/meal-capture-form";
+import { DailySummaryPopup } from "@/components/daily-summary-popup";
 import { AiInfoCard } from "@/components/ai-info-card";
 import { MealList } from "@/components/meal-list";
 import { WaterCard } from "@/components/water-card";
@@ -132,6 +133,7 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
 
   return (
     <>
+      <DailySummaryPopup />
       <header className="mt-6">
         <h1 className="text-4xl font-black tracking-tight">{view === "week" ? "星期飲食" : "每日飲食"}</h1>
         <p className="mt-1 text-sm text-stone-500">{title}</p>

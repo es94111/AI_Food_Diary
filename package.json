@@ -1,6 +1,6 @@
 {
   "name": "ai-food-diary",
-  "version": "0.38.1",
+  "version": "0.39.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -20,7 +20,7 @@
     "encryption:stage-d:apply": "tsx scripts/encryption-stage-d.ts apply",
     "encryption:stage-d:rollback": "tsx scripts/encryption-stage-d.ts rollback",
     "encryption:disk:check": "tsx scripts/disk-encryption-check.ts",
-    "worker": "tsx src/worker.ts"
+    "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1056.0",
