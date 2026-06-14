@@ -556,39 +556,41 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         </div>
       ) : null}
       {showConfirm ? (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/70 p-4">
-          <div className="mx-auto max-w-2xl rounded-[2rem] bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-black">確認 AI 分析品項</h2>
-                <p className="mt-1 text-sm text-stone-500">請確認食物是否正確，可先修正、刪除或新增後再儲存。</p>
-              </div>
-              <button className="rounded-full bg-stone-100 px-3 py-1 font-semibold" onClick={() => setShowConfirm(false)} type="button">關閉</button>
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+          <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-4 py-4 sm:px-6">
+            <div>
+              <h2 className="text-2xl font-black">確認 AI 分析品項</h2>
+              <p className="mt-1 text-sm text-stone-500">請確認食物是否正確，可先修正、刪除或新增後再儲存。</p>
             </div>
-            {previews.length ? (
-              <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {previews.map((src, index) => (
-                  <img alt={`待確認餐點 ${index + 1}`} className="h-32 w-full rounded-2xl object-cover" key={`${src.slice(0, 32)}-${index}`} src={src} />
-                ))}
+            <button className="shrink-0 rounded-full bg-stone-100 px-3 py-1 font-semibold" onClick={() => setShowConfirm(false)} type="button">關閉</button>
+          </div>
+          <div className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
+            <div className="mx-auto max-w-3xl">
+              {previews.length ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {previews.map((src, index) => (
+                    <img alt={`待確認餐點 ${index + 1}`} className="h-32 w-full rounded-2xl object-cover" key={`${src.slice(0, 32)}-${index}`} src={src} />
+                  ))}
+                </div>
+              ) : null}
+              <div className="mt-4 space-y-3">
+                {confirmItems.map((item, index) => <FoodEditor key={item.id} item={item} index={index} items={confirmItems} setItems={setConfirmItems} />)}
               </div>
-            ) : null}
-            <div className="mt-4 space-y-3">
-              {confirmItems.map((item, index) => <FoodEditor key={item.id} item={item} index={index} items={confirmItems} setItems={setConfirmItems} />)}
+              <button className="mt-3 w-full rounded-xl border border-dashed border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setConfirmItems((items) => [...items, emptyManualItem()])} type="button">新增食物品項</button>
+              {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
+              <button
+                className="mt-4 w-full cursor-pointer rounded-2xl border border-amber-700 px-4 py-3 font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:opacity-60"
+                disabled={loading || reanalyzing}
+                onClick={reanalyzeConfirmItems}
+                type="button"
+              >
+                {reanalyzing ? "重新辨識中..." : "依修改重新 AI 辨識"}
+              </button>
+              <p className="mt-2 text-xs text-stone-500">修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。</p>
+              <button className="mt-3 w-full cursor-pointer rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={loading || reanalyzing} onClick={saveConfirmedMeal} type="button">
+                {loading ? "儲存中..." : "確認並儲存餐點"}
+              </button>
             </div>
-            <button className="mt-3 w-full rounded-xl border border-dashed border-stone-300 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setConfirmItems((items) => [...items, emptyManualItem()])} type="button">新增食物品項</button>
-            {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-            <button
-              className="mt-4 w-full cursor-pointer rounded-2xl border border-amber-700 px-4 py-3 font-semibold text-amber-800 transition-colors hover:bg-amber-50 disabled:opacity-60"
-              disabled={loading || reanalyzing}
-              onClick={reanalyzeConfirmItems}
-              type="button"
-            >
-              {reanalyzing ? "重新辨識中..." : "依修改重新 AI 辨識"}
-            </button>
-            <p className="mt-2 text-xs text-stone-500">修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。</p>
-            <button className="mt-3 w-full cursor-pointer rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={loading || reanalyzing} onClick={saveConfirmedMeal} type="button">
-              {loading ? "儲存中..." : "確認並儲存餐點"}
-            </button>
           </div>
         </div>
       ) : null}

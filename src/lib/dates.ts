@@ -99,6 +99,19 @@ export function todayStr(spec: TzSpec, now = new Date()): string {
   }).format(now);
 }
 
+/** Current hour (0–23) as seen in the given zone. */
+export function hourInTz(spec: TzSpec, now = new Date()): number {
+  if (spec.kind === "offset") {
+    return new Date(now.getTime() + spec.minutes * 60000).getUTCHours();
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: spec.tz,
+    hourCycle: "h23",
+    hour: "2-digit"
+  }).formatToParts(now);
+  return Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+}
+
 /** Normalize a possibly-missing/invalid `date` param to `yyyy-MM-dd`, defaulting to today in `spec`. */
 export function normalizeDateStr(value: string | null | undefined, spec: TzSpec): string {
   return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : todayStr(spec);

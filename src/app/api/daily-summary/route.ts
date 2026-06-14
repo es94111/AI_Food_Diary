@@ -1,24 +1,20 @@
 import { NextResponse } from "next/server";
-import { generateDailySummary } from "@/lib/ai";
-import { resolveUserAiConfig } from "@/lib/ai-config";
+import { AiNotConfiguredError } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
-import { decryptProfile } from "@/lib/profile-crypto";
-import { decryptDailySummary, encryptDailySummaryWrite } from "@/lib/b2-crypto";
+import { decryptDailySummary } from "@/lib/b2-crypto";
+import { generateAndStoreDailySummary } from "@/lib/daily-summary";
 import { prisma } from "@/lib/db";
 import { dayRangeUtc, normalizeDateStr, todayStr } from "@/lib/dates";
 import { apiRoute } from "@/lib/http";
 import { enforceAiRateLimit } from "@/lib/rate-limit";
 import { resolveRequestTz } from "@/lib/timezone";
-import { getHealthContext, getLatestSyncedWeightKg, getLatestSyncedHeightCm } from "@/lib/health-context";
-import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
-import { sumMeals } from "@/lib/totals";
 
 export const GET = apiRoute(async (request: Request) => {
   const user = await requireUser();
   const url = new URL(request.url);
   const tz = resolveRequestTz(request, user.profile?.timezone);
   const dateStr = normalizeDateStr(url.searchParams.get("date"), tz);
-  const { start, end } = dayRangeUtc(dateStr, tz);
+  const { start } = dayRangeUtc(dateStr, tz);
   const summaryDate = start;
 
   const existing = await prisma.dailySummary.findUnique({
@@ -43,47 +39,17 @@ export const GET = apiRoute(async (request: Request) => {
   const limited = await enforceAiRateLimit(user.id);
   if (limited) return limited;
 
-  const meals = await prisma.meal.findMany({
-    where: { userId: user.id, eatenAt: { gte: start, lt: end } }
-  });
-  const totals = sumMeals(meals);
-  const healthContext = await getHealthContext(user.id, start, end);
-  const syncedWeight = await getLatestSyncedWeightKg(user.id, end);
-  const syncedHeight = await getLatestSyncedHeightCm(user.id, end);
-  const decProfile = decryptProfile(user.profile);
-  const effectiveProfile = decProfile
-    ? { ...decProfile, weightKg: syncedWeight ?? decProfile.weightKg, heightCm: syncedHeight ?? decProfile.heightCm }
-    : null;
-  // Prefer the target derived from the (synced) TDEE so it auto-updates with
-  // Health Connect data; fall back to the stored target only when TDEE is unknown.
-  const calorieTarget = calorieTargetFromGoal(calculateTdee(calculateBmr(effectiveProfile), effectiveProfile?.activityLevel), effectiveProfile?.goal) ?? effectiveProfile?.calorieTarget ?? 2000;
-  let aiConfig;
+  let summary;
   try {
-    aiConfig = resolveUserAiConfig(user);
-  } catch {
-    return NextResponse.json({ error: "尚未設定 AI 金鑰，請點右上角「使用者設定 → AI 設定」選擇服務商並輸入你的 API 金鑰。" }, { status: 400 });
-  }
-  const ai = await generateDailySummary(aiConfig, {
-    date: dateStr,
-    calorieTarget,
-    totals,
-    healthContext
-  });
-
-  const summary = await prisma.dailySummary.create({
-    data: {
-      userId: user.id,
-      summaryDate,
-      totalCalories: totals.calories,
-      totalProtein: totals.protein,
-      totalFat: totals.fat,
-      totalCarbs: totals.carbs,
-      ...encryptDailySummaryWrite({
-        aiSummary: ai.summary,
-        aiRecommendation: ai.recommendation
-      })
+    summary = await generateAndStoreDailySummary(user, dateStr, tz);
+  } catch (error) {
+    if (error instanceof AiNotConfiguredError) {
+      return NextResponse.json({ error: "尚未設定 AI 金鑰，請點右上角「使用者設定 → AI 設定」選擇服務商並輸入你的 API 金鑰。" }, { status: 400 });
     }
-  });
+    throw error;
+  }
+  // No meals that day → nothing to summarise.
+  if (!summary) return NextResponse.json({ summary: null });
 
   return NextResponse.json({ summary: decryptDailySummary(summary) });
 });
