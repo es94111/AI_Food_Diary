@@ -48,7 +48,7 @@ class EditableItem {
   factory EditableItem.fromAnalysis(FoodAnalysisItem f) => EditableItem(
     name: f.name,
     estimatedAmount: f.estimatedAmount,
-    calories: f.calories.toString(),
+    calories: fmtNum(f.calories),
     protein: f.protein.toString(),
     fat: f.fat.toString(),
     carbs: f.carbs.toString(),
@@ -62,7 +62,7 @@ class EditableItem {
     estimatedAmount: estimatedAmount.trim().isEmpty
         ? '手動輸入'
         : estimatedAmount.trim(),
-    calories: int.tryParse(calories.trim()) ?? 0,
+    calories: double.tryParse(calories.trim()) ?? 0,
     protein: double.tryParse(protein.trim()) ?? 0,
     fat: double.tryParse(fat.trim()) ?? 0,
     carbs: double.tryParse(carbs.trim()) ?? 0,
@@ -375,7 +375,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           barcode: food.barcode,
           name: food.name,
           estimatedAmount: food.estimatedAmount,
-          calories: food.calories.toString(),
+          calories: fmtNum(food.calories),
           protein: food.protein.toString(),
           fat: food.fat.toString(),
           carbs: food.carbs.toString(),
@@ -789,7 +789,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               children: _savedFoods
                   .map(
                     (f) => InputChip(
-                      label: Text('${f.name} · ${f.calories}kcal'),
+                      label: Text('${f.name} · ${fmtNum(f.calories)}kcal'),
                       onPressed: () => _addSavedFood(f),
                       onDeleted: () async {
                         await SavedFoodService.delete(f.id);

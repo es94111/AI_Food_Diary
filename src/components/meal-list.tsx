@@ -85,7 +85,7 @@ function MealCard({ meal }: { meal: Meal }) {
         manualItems: meal.items.map((item) => ({
           name: item.name,
           estimatedAmount: item.estimatedAmount || "未估算",
-          calories: Math.round(Number(item.calories) || 0),
+          calories: Number(item.calories) || 0,
           protein: Number(item.protein) || 0,
           fat: Number(item.fat) || 0,
           carbs: Number(item.carbs) || 0,
@@ -179,7 +179,7 @@ function MealCard({ meal }: { meal: Meal }) {
               <input className="w-full rounded-lg border border-stone-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "name", event.target.value)} placeholder="食物名稱" value={item.name} />
               <input className="mt-2 w-full rounded-lg border border-stone-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "estimatedAmount", event.target.value)} placeholder="份量" value={item.estimatedAmount} />
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <input className="rounded-lg border border-stone-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "calories", event.target.value)} placeholder="熱量" type="number" value={item.calories} />
+                <input className="rounded-lg border border-stone-200 px-3 py-2" inputMode="decimal" onChange={(event) => updateItem(item.clientId, "calories", event.target.value)} placeholder="熱量" step="0.1" type="number" value={item.calories} />
                 <input className="rounded-lg border border-stone-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "protein", event.target.value)} placeholder="蛋白質" step="0.1" type="number" value={item.protein} />
                 <input className="rounded-lg border border-stone-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "fat", event.target.value)} placeholder="脂肪" step="0.1" type="number" value={item.fat} />
                 <input className="rounded-lg border border-stone-200 px-3 py-2" onChange={(event) => updateItem(item.clientId, "carbs", event.target.value)} placeholder="碳水" step="0.1" type="number" value={item.carbs} />

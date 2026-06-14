@@ -12,6 +12,12 @@ int _toInt(dynamic v) {
   return 0;
 }
 
+/// Formats a numeric nutrient value for display, dropping a trailing ".0"
+/// (e.g. 150.0 → "150", 53.5 → "53.5"). Calories are stored as decimals so
+/// labels like "53.5 大卡" survive, but are usually whole numbers — this keeps
+/// "150 kcal" from rendering as "150.0 kcal".
+String fmtNum(num v) => v == v.roundToDouble() ? v.round().toString() : v.toString();
+
 class UserProfile {
   final String? gender;
   final String? birthDate; // ISO string
@@ -96,7 +102,7 @@ class MealItem {
   final String? id;
   final String name;
   final String estimatedAmount;
-  final int calories;
+  final double calories;
   final double protein;
   final double fat;
   final double carbs;
@@ -117,7 +123,7 @@ class MealItem {
     id: j['id'] as String?,
     name: (j['name'] as String?) ?? '',
     estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
-    calories: _toInt(j['calories']),
+    calories: _toDouble(j['calories']),
     protein: _toDouble(j['protein']),
     fat: _toDouble(j['fat']),
     carbs: _toDouble(j['carbs']),
@@ -140,7 +146,7 @@ class Meal {
   final String id;
   final String mealType;
   final String? imageStorageKey; // relative path like /api/meals/{id}/image
-  final int totalCalories;
+  final double totalCalories;
   final double totalProtein;
   final double totalFat;
   final double totalCarbs;
@@ -167,7 +173,7 @@ class Meal {
     id: j['id'] as String,
     mealType: (j['mealType'] as String?) ?? 'LUNCH',
     imageStorageKey: j['imageStorageKey'] as String?,
-    totalCalories: _toInt(j['totalCalories']),
+    totalCalories: _toDouble(j['totalCalories']),
     totalProtein: _toDouble(j['totalProtein']),
     totalFat: _toDouble(j['totalFat']),
     totalCarbs: _toDouble(j['totalCarbs']),
@@ -187,7 +193,7 @@ class Meal {
 class FoodAnalysisItem {
   final String name;
   final String estimatedAmount;
-  final int calories;
+  final double calories;
   final double protein;
   final double fat;
   final double carbs;
@@ -206,7 +212,7 @@ class FoodAnalysisItem {
   factory FoodAnalysisItem.fromJson(Map<String, dynamic> j) => FoodAnalysisItem(
     name: (j['name'] as String?) ?? '',
     estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
-    calories: _toInt(j['calories']),
+    calories: _toDouble(j['calories']),
     protein: _toDouble(j['protein']),
     fat: _toDouble(j['fat']),
     carbs: _toDouble(j['carbs']),
@@ -219,7 +225,7 @@ class SavedFood {
   final String? barcode;
   final String name;
   final String estimatedAmount;
-  final int calories;
+  final double calories;
   final double protein;
   final double fat;
   final double carbs;
@@ -248,7 +254,7 @@ class SavedFood {
     barcode: j['barcode'] as String?,
     name: (j['name'] as String?) ?? '',
     estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
-    calories: _toInt(j['calories']),
+    calories: _toDouble(j['calories']),
     protein: _toDouble(j['protein']),
     fat: _toDouble(j['fat']),
     carbs: _toDouble(j['carbs']),
@@ -264,7 +270,7 @@ class SavedFood {
 class DailySummary {
   final String aiSummary;
   final String aiRecommendation;
-  final int totalCalories;
+  final double totalCalories;
 
   DailySummary({
     required this.aiSummary,
@@ -275,7 +281,7 @@ class DailySummary {
   factory DailySummary.fromJson(Map<String, dynamic> j) => DailySummary(
     aiSummary: (j['aiSummary'] as String?) ?? '',
     aiRecommendation: (j['aiRecommendation'] as String?) ?? '',
-    totalCalories: _toInt(j['totalCalories']),
+    totalCalories: _toDouble(j['totalCalories']),
   );
 }
 
@@ -451,14 +457,14 @@ class HealthSyncStatus {
 }
 
 class Totals {
-  final int calories;
+  final double calories;
   final double protein;
   final double fat;
   final double carbs;
   const Totals(this.calories, this.protein, this.fat, this.carbs);
 
   static Totals fromMeals(List<Meal> meals) {
-    var c = 0;
+    var c = 0.0;
     var p = 0.0, f = 0.0, cb = 0.0;
     for (final m in meals) {
       c += m.totalCalories;

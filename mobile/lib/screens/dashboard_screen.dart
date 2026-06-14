@@ -166,7 +166,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final rawTotals = Totals.fromMeals(_meals);
     final totals = _weekView
         ? Totals(
-            (rawTotals.calories / 7).round(),
+            (rawTotals.calories / 7).roundToDouble(),
             rawTotals.protein / 7,
             rawTotals.fat / 7,
             rawTotals.carbs / 7,
@@ -234,7 +234,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _calorieCard(totals, target),
           if (!_weekView && _isToday && _todayTotalCalories != null) ...[
             const SizedBox(height: 12),
-            _netCalorieCard(totals.calories, _todayTotalCalories!),
+            _netCalorieCard(totals.calories.round(), _todayTotalCalories!),
           ],
           if (!_weekView) ...[
             const SizedBox(height: 12),
@@ -488,7 +488,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${totals.calories}',
+                  fmtNum(totals.calories),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 44,

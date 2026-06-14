@@ -87,7 +87,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
       _name.text = food.name;
       _barcode.text = food.barcode ?? '';
       _amount.text = food.estimatedAmount;
-      _calories.text = food.calories.toString();
+      _calories.text = fmtNum(food.calories);
       _protein.text = food.protein.toString();
       _fat.text = food.fat.toString();
       _carbs.text = food.carbs.toString();
@@ -134,7 +134,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
           estimatedAmount: _amount.text.trim().isEmpty
               ? '1 份'
               : _amount.text.trim(),
-          calories: int.tryParse(_calories.text.trim()) ?? 0,
+          calories: double.tryParse(_calories.text.trim()) ?? 0,
           protein: double.tryParse(_protein.text.trim()) ?? 0,
           fat: double.tryParse(_fat.text.trim()) ?? 0,
           carbs: double.tryParse(_carbs.text.trim()) ?? 0,
@@ -149,7 +149,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
           estimatedAmount: _amount.text.trim().isEmpty
               ? '1 份'
               : _amount.text.trim(),
-          calories: int.tryParse(_calories.text.trim()) ?? 0,
+          calories: double.tryParse(_calories.text.trim()) ?? 0,
           protein: double.tryParse(_protein.text.trim()) ?? 0,
           fat: double.tryParse(_fat.text.trim()) ?? 0,
           carbs: double.tryParse(_carbs.text.trim()) ?? 0,
@@ -236,7 +236,9 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
                   child: _field(
                     _calories,
                     '熱量 kcal',
-                    keyboard: TextInputType.number,
+                    keyboard: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -244,7 +246,9 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
                   child: _field(
                     _protein,
                     '蛋白質 g',
-                    keyboard: TextInputType.number,
+                    keyboard: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                   ),
                 ),
               ],
@@ -252,11 +256,23 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
             Row(
               children: [
                 Expanded(
-                  child: _field(_fat, '脂肪 g', keyboard: TextInputType.number),
+                  child: _field(
+                    _fat,
+                    '脂肪 g',
+                    keyboard: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _field(_carbs, '碳水 g', keyboard: TextInputType.number),
+                  child: _field(
+                    _carbs,
+                    '碳水 g',
+                    keyboard: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -336,7 +352,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(
-        '${food.isFavorite ? '★ ' : ''}${food.name} · ${food.calories} kcal',
+        '${food.isFavorite ? '★ ' : ''}${food.name} · ${fmtNum(food.calories)} kcal',
       ),
       subtitle: Text(
         [

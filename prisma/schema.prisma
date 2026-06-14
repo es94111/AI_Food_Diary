@@ -84,7 +84,7 @@ model Meal {
   userId          String
   mealType        MealType
   imageStorageKey String?
-  totalCalories   Int        @default(0)
+  totalCalories   Decimal    @default(0) @db.Decimal(8, 2)
   totalProtein    Decimal    @default(0) @db.Decimal(8, 2)
   totalFat        Decimal    @default(0) @db.Decimal(8, 2)
   totalCarbs      Decimal    @default(0) @db.Decimal(8, 2)
@@ -110,7 +110,7 @@ model MealItem {
   estimatedAmount String?
   encName         Json?
   encEstimatedAmount Json?
-  calories        Int
+  calories        Decimal  @default(0) @db.Decimal(8, 2)
   protein         Decimal  @default(0) @db.Decimal(8, 2)
   fat             Decimal  @default(0) @db.Decimal(8, 2)
   carbs           Decimal  @default(0) @db.Decimal(8, 2)
@@ -141,7 +141,7 @@ model SavedFood {
   estimatedAmount String?
   encName         Json?
   encEstimatedAmount Json?
-  calories        Int
+  calories        Decimal  @default(0) @db.Decimal(8, 2)
   protein         Decimal  @default(0) @db.Decimal(8, 2)
   fat             Decimal  @default(0) @db.Decimal(8, 2)
   carbs           Decimal  @default(0) @db.Decimal(8, 2)
@@ -163,7 +163,7 @@ model DailySummary {
   id               String   @id @default(cuid())
   userId           String
   summaryDate      DateTime
-  totalCalories    Int
+  totalCalories    Decimal  @default(0) @db.Decimal(8, 2)
   totalProtein     Decimal  @default(0) @db.Decimal(8, 2)
   totalFat         Decimal  @default(0) @db.Decimal(8, 2)
   totalCarbs       Decimal  @default(0) @db.Decimal(8, 2)
@@ -184,7 +184,7 @@ model DailyRecommendation {
   userId         String
   recommendationDate DateTime
   advice         String
-  totalCalories  Int
+  totalCalories  Decimal  @default(0) @db.Decimal(8, 2)
   totalProtein   Decimal  @default(0) @db.Decimal(8, 2)
   totalFat       Decimal  @default(0) @db.Decimal(8, 2)
   totalCarbs     Decimal  @default(0) @db.Decimal(8, 2)
