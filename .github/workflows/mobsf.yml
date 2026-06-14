@@ -4,10 +4,9 @@
 name: MobSF (APK scan)
 
 on:
-  pull_request:
-    branches: [main, dev]
   push:
     branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:

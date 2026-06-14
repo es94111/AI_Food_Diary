@@ -4,12 +4,8 @@ name: Semgrep SAST
 
 on:
   push:
-    branches: [main, dev]
-  pull_request:
-    branches: [main, dev]
-  schedule:
-    # Every Monday 01:20 UTC = 09:20 Asia/Taipei
-    - cron: "20 1 * * 1"
+    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
