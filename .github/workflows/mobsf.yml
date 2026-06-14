@@ -14,13 +14,8 @@ permissions:
 jobs:
   mobsf:
     name: Build & scan APK
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     env:
-      # Self-hosted runner: point Flutter/Gradle at the pre-installed SDK + JDK
-      # (the runner service doesn't source /etc/profile.d or .bashrc).
-      ANDROID_HOME: /opt/android-sdk
-      ANDROID_SDK_ROOT: /opt/android-sdk
-      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
       # 固定的本機 API key（只在這個 job 內、對 localhost 的 MobSF 容器用，非機密）。
       MOBSF_API_KEY: ci-local-mobsf-key
     steps:
@@ -43,9 +38,6 @@ jobs:
 
       - name: Start MobSF
         run: |
-          # Self-hosted runner persists state between runs; drop any leftover
-          # container from a previous (failed/cancelled) run before starting.
-          docker rm -f mobsf >/dev/null 2>&1 || true
           docker run -d --name mobsf -p 8000:8000 \
             -e MOBSF_API_KEY="$MOBSF_API_KEY" \
             opensecurity/mobile-security-framework-mobsf:latest
@@ -103,10 +95,6 @@ jobs:
             mobsf-report.json
             mobsf-report.pdf
           if-no-files-found: warn
-
-      - name: Stop MobSF
-        if: always()
-        run: docker rm -f mobsf >/dev/null 2>&1 || true
 
       # ── 想改成 gate：取消註解，掃描分數低於門檻就 fail ──
       # - name: Enforce security score

@@ -13,23 +13,18 @@ permissions:
 jobs:
   semgrep:
     name: Semgrep scan
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      # Run Semgrep via `docker run` (not a job-level `container:`). A container
-      # job on a self-hosted runner checks out as root into the *shared*
-      # workspace, leaving root-owned .git files that break every later job's
-      # checkout. --user keeps files owned by the runner; HOME=/tmp gives the
-      # arbitrary UID a writable home for Semgrep's settings.
       - name: Run Semgrep
         # --error: 有發現就讓 CI 失敗；首次導入太吵可先拿掉（純報告），
         # 或用 .semgrepignore / baseline 只擋新增問題。
         run: |
-          docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp \
-            -v "${{ github.workspace }}:/src" -w /src \
-            semgrep/semgrep semgrep scan \
+          semgrep scan \
             --config p/default \
             --config p/security-audit \
             --config p/secrets \

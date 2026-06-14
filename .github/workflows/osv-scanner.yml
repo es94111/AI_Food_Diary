@@ -13,7 +13,7 @@ permissions:
 jobs:
   scan:
     name: Scan pubspec.lock
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -21,6 +21,6 @@ jobs:
         # 官方 docker image，CLI 介面穩定；有漏洞時 exit-code 非 0 → CI fail。
         # 首次太吵可改報告模式：在 docker run 後加 `|| true`。
         run: |
-          docker run --rm --user "$(id -u):$(id -g)" -v "${{ github.workspace }}:/src" \
+          docker run --rm -v "${{ github.workspace }}:/src" \
             ghcr.io/google/osv-scanner:latest \
             --lockfile=/src/mobile/pubspec.lock
