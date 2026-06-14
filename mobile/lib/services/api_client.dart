@@ -23,7 +23,7 @@ class ApiClient {
     final dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 60), // AI analysis can be slow
+      receiveTimeout: const Duration(minutes: 3), // AI analysis can be slow
       // Accept all HTTP statuses as normal responses so callers can read the
       // backend's {error} body (including 5xx) instead of a raw DioException.
       validateStatus: (status) => status != null && status < 600,
