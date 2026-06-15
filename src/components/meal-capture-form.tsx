@@ -1,6 +1,7 @@
 "use client";
 
 import { type DragEvent, type FormEvent, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { MarkdownContent } from "@/components/markdown-content";
 
@@ -555,8 +556,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           ) : null}
         </div>
       ) : null}
-      {showConfirm ? (
-        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      {showConfirm && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex flex-col bg-white">
           <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-4 py-4 sm:px-6">
             <div>
               <h2 className="text-2xl font-black">確認 AI 分析品項</h2>
@@ -592,8 +594,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body
+          )
+        : null}
     </form>
   );
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MarkdownContent } from "@/components/markdown-content";
 
 type Summary = {
@@ -17,10 +18,14 @@ function localDateStr(d: Date) {
   return `${d.getFullYear()}-${month}-${day}`;
 }
 
-// On the first visit of each local calendar day, fetch yesterday's pre-computed
-// summary (peek — no `generate`, so it never triggers AI) and show it once.
+// On the first visit of each local calendar day, show yesterday's summary.
+// Normally the worker has already pre-computed it, so the peek is instant and
+// no AI runs. If it hasn't (first day after enabling, worker missed its window,
+// etc.) we generate it once on demand with a spinner so the user still sees it.
 export function DailySummaryPopup() {
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const dismissedRef = useRef(false);
 
   useEffect(() => {
     const today = localDateStr(new Date());
@@ -34,29 +39,66 @@ export function DailySummaryPopup() {
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const url = `/api/daily-summary?date=${localDateStr(yesterday)}${tz ? `&tz=${encodeURIComponent(tz)}` : ""}`;
+    const tzQuery = tz ? `&tz=${encodeURIComponent(tz)}` : "";
+    const dateQuery = `date=${localDateStr(yesterday)}`;
 
-    fetch(url)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled || !data?.summary) return;
-        setSummary(data.summary as Summary);
-        try {
-          localStorage.setItem(STORAGE_KEY, today);
-        } catch {
-          // ignore persistence failure
-        }
-      })
-      .catch(() => {});
+    const fetchSummary = (generate: boolean) =>
+      fetch(`/api/daily-summary?${dateQuery}${generate ? "&generate=1" : ""}${tzQuery}`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => ((data?.summary as Summary | undefined) ?? null))
+        .catch(() => null);
+
+    (async () => {
+      let result = await fetchSummary(false); // peek — no AI spend
+      if (cancelled || dismissedRef.current) return;
+      if (!result) {
+        // Not pre-computed yet → generate once on demand (spends AI this once).
+        setGenerating(true);
+        result = await fetchSummary(true);
+        if (cancelled || dismissedRef.current) return;
+        setGenerating(false);
+      }
+      // Mark handled for today so we don't re-fetch/re-generate on every visit.
+      try {
+        localStorage.setItem(STORAGE_KEY, today);
+      } catch {
+        // ignore persistence failure
+      }
+      if (result) setSummary(result);
+    })();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
+  if (typeof document === "undefined") return null;
+
+  if (generating && !summary) {
+    return createPortal(
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/70 p-4">
+        <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-3xl bg-white px-6 py-8 shadow-2xl">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-amber-200 border-t-amber-700" />
+          <p className="font-semibold text-stone-700">正在整理昨日總結…</p>
+          <button
+            className="mt-1 text-sm font-semibold text-stone-400"
+            onClick={() => {
+              dismissedRef.current = true;
+              setGenerating(false);
+            }}
+            type="button"
+          >
+            略過
+          </button>
+        </div>
+      </div>,
+      document.body
+    );
+  }
+
   if (!summary) return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/70 p-4">
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-6 py-4">
@@ -79,6 +121,7 @@ export function DailySummaryPopup() {
           <button className="w-full rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white" onClick={() => setSummary(null)} type="button">知道了</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
