@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
 import '../services/health_service.dart';
+import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/ai_settings_form.dart';
@@ -43,10 +44,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   static const _tabTitles = ['飲食', '健康', '設定'];
 
+  final _analysis = MealAnalysisController.instance;
+  MealAnalysisStatus _lastAnalysisStatus = MealAnalysisStatus.idle;
+
   @override
   void initState() {
     super.initState();
     _bootstrap();
+    _analysis.addListener(_onAnalysisChanged);
+  }
+
+  @override
+  void dispose() {
+    _analysis.removeListener(_onAnalysisChanged);
+    super.dispose();
+  }
+
+  /// Global notifier for the background meal analysis: when it finishes (on any
+  /// tab) show a SnackBar with a one-tap "查看" that jumps to the 飲食 tab and
+  /// opens the confirm sheet. Rebuilds for the cross-tab "分析中" progress bar.
+  void _onAnalysisChanged() {
+    if (!mounted) return;
+    final status = _analysis.status;
+    final changed = status != _lastAnalysisStatus;
+    _lastAnalysisStatus = status;
+    setState(() {});
+    if (!changed) return;
+    final messenger = ScaffoldMessenger.of(context);
+    if (status == MealAnalysisStatus.done) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: const Text('AI 分析完成'),
+          duration: const Duration(seconds: 8),
+          action: SnackBarAction(
+            label: '查看',
+            onPressed: () {
+              setState(() => _tabIndex = 0);
+              _analysis.requestReview();
+            },
+          ),
+        ));
+    } else if (status == MealAnalysisStatus.error) {
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text('AI 分析失敗：${_analysis.error ?? ''}'),
+          duration: const Duration(seconds: 6),
+        ));
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -250,6 +296,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'AI Food Diary · ${_tabTitles[_tabIndex]}',
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
+        // Cross-tab hint that a background meal analysis is in flight.
+        bottom: _analysis.isRunning
+            ? const PreferredSize(
+                preferredSize: Size.fromHeight(4),
+                child: LinearProgressIndicator(minHeight: 4),
+              )
+            : null,
       ),
       body: IndexedStack(
         index: _tabIndex,

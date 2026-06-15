@@ -113,6 +113,44 @@ function client(config: AiConfig) {
   });
 }
 
+function isGemini(config: AiConfig) {
+  return /generativelanguage\.googleapis\.com/i.test(config.baseUrl ?? "");
+}
+
+// Single chokepoint for chat-completion calls. Gemini's OpenAI-compatible
+// endpoint rejects a handful of OpenAI-only request fields with a bare
+// "400 status code (no body)" (the error body is gzipped and never surfaces):
+// notably `seed`, and it is picky about the image_url `detail` hint. Strip those
+// for Gemini so the identical request works across OpenAI, Gemini and generic
+// compatible endpoints. Other providers are passed through untouched.
+function createCompletion(config: AiConfig, params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming) {
+  let finalParams = params;
+  if (isGemini(config)) {
+    const { seed: _seed, messages, ...rest } = params;
+    finalParams = {
+      ...rest,
+      messages: messages.map((message) => {
+        const content = (message as { content?: unknown }).content;
+        if (!Array.isArray(content)) return message;
+        return {
+          ...message,
+          content: content.map((part) => {
+            if (part && typeof part === "object" && (part as { type?: string }).type === "image_url") {
+              const imagePart = part as { image_url?: Record<string, unknown> };
+              if (imagePart.image_url && "detail" in imagePart.image_url) {
+                const { detail: _detail, ...imageRest } = imagePart.image_url;
+                return { ...part, image_url: imageRest };
+              }
+            }
+            return part;
+          })
+        };
+      }) as OpenAI.Chat.Completions.ChatCompletionMessageParam[]
+    };
+  }
+  return client(config).chat.completions.create(finalParams);
+}
+
 // Only trim trailing slashes — the base URL must already include the correct
 // version path (e.g. ".../v1" for OpenAI, ".../v1beta/openai" for Gemini).
 function normalizeBaseUrl(baseUrl?: string) {
@@ -254,7 +292,7 @@ async function requestMealImageAnalysis(
   imageDataUrls: string[],
   options: { temperature?: number; seed?: number | null } = {}
 ): Promise<FoodAnalysis> {
-  const response = await client(config).chat.completions.create({
+  const response = await createCompletion(config, {
     model: config.visionModel,
     ...completionOptions({ json: true, ...options }),
     messages: [
@@ -330,7 +368,7 @@ export async function analyzeMealImageStable(
 }
 
 export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrls: string[]): Promise<FoodAnalysis> {
-  const response = await client(config).chat.completions.create({
+  const response = await createCompletion(config, {
     model: config.visionModel,
     ...completionOptions({ json: true }),
     messages: [
@@ -355,7 +393,7 @@ export async function analyzeMealDescription(config: AiConfig, description: stri
     description
   });
 
-  const response = await client(config).chat.completions.create({
+  const response = await createCompletion(config, {
     model: config.textModel,
     ...completionOptions({ json: true }),
     messages: [
@@ -374,7 +412,7 @@ export async function analyzeManualFoodItems(config: AiConfig, items: FoodAnalys
     items: JSON.stringify(items)
   });
 
-  const response = await client(config).chat.completions.create({
+  const response = await createCompletion(config, {
     model: config.textModel,
     ...completionOptions({ json: true }),
     messages: [
@@ -400,7 +438,7 @@ export async function reestimateFoodItems(
     items: JSON.stringify(items.map((item) => ({ name: item.name, estimatedAmount: item.estimatedAmount })))
   });
 
-  const response = await client(config).chat.completions.create({
+  const response = await createCompletion(config, {
     model: config.textModel,
     ...completionOptions({ json: true }),
     messages: [
@@ -431,7 +469,7 @@ export async function generateNextMealAdvice(config: AiConfig, input: {
   });
 
   // Plain-text advice — no JSON mode, but still temperature-bounded for stability.
-  const response = await client(config).chat.completions.create({
+  const response = await createCompletion(config, {
     model: config.textModel,
     ...completionOptions(),
     messages: [
@@ -461,7 +499,7 @@ export async function generateDailySummary(config: AiConfig, input: {
     healthContext: input.healthContext ?? "尚未同步"
   });
 
-  const response = await client(config).chat.completions.create({
+  const response = await createCompletion(config, {
     model: config.textModel,
     ...completionOptions({ json: true }),
     messages: [

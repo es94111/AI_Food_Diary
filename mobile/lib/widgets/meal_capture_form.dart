@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/models.dart';
+import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_service.dart';
 import 'markdown_text.dart';
@@ -119,7 +120,6 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   final _descriptionCtrl = TextEditingController();
   final List<EditableItem> _manualItems = [EditableItem()];
   List<SavedFood> _savedFoods = [];
-  bool _loading = false;
   bool _labelLoading = false;
   bool _barcodeLoading = false;
   bool _adviceLoading = false;
@@ -128,16 +128,36 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   late String _advice = widget.initialAdvice;
   bool _adviceExpanded = true;
 
+  // The shared, navigation-surviving AI analysis. The form observes it so the
+  // "AI 分析中 / 已完成" banner and the confirm sheet work even if the user
+  // switched tabs while the analysis was running.
+  final _analysis = MealAnalysisController.instance;
+  bool _reviewing = false;
+
   @override
   void initState() {
     super.initState();
     _loadSavedFoods();
+    _analysis.addListener(_onAnalysisChanged);
   }
 
   @override
   void dispose() {
+    _analysis.removeListener(_onAnalysisChanged);
     _descriptionCtrl.dispose();
     super.dispose();
+  }
+
+  /// Rebuilds for the status banner, and opens the confirm sheet when the user
+  /// has asked to review a finished analysis (via this form's button or the
+  /// global "查看" SnackBar action on another tab).
+  void _onAnalysisChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_analysis.isDone && _analysis.reviewRequested && !_reviewing) {
+      _analysis.clearReview();
+      _openReview();
+    }
   }
 
   Future<void> _loadSavedFoods() async {
@@ -260,36 +280,133 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           return;
         }
     }
-    setState(() => _loading = true);
+    if (_analysis.isRunning) return; // one analysis at a time
+    // Snapshot the inputs so the analysis is self-contained: the user can edit
+    // or clear the form (or switch tabs) while it runs in the background.
+    final mealType = _mealType;
+    final mode = _mode;
+    final images = List<String>.of(_imageDataUrls);
+    final manualItems = manual.map((e) => e.toMealItem()).toList();
+    final precise = _preciseMode;
+    setState(() => _error = null);
+    // Fire and forget — the controller owns the future. Navigating away no
+    // longer cancels or drops the result.
+    _analysis.start(
+      mealType: mealType,
+      mode: mode.name,
+      imageDataUrls: images,
+      description: desc,
+      run: () => switch (mode) {
+        CaptureMode.photo =>
+          MealService.analyzeImage(mealType, images, precise: precise),
+        CaptureMode.describe =>
+          MealService.analyzeDescription(mealType, desc),
+        CaptureMode.manual => MealService.analyzeManual(mealType, manualItems),
+      },
+    );
+  }
+
+  /// Opens the confirm/edit sheet for a finished background analysis, then saves
+  /// using the captured analysis context (not the live form, which may have
+  /// changed). Clears everything on a successful save.
+  Future<void> _openReview() async {
+    if (_reviewing || !_analysis.isDone) return;
+    _reviewing = true;
     try {
-      final analyzed = switch (_mode) {
-        CaptureMode.photo => await MealService.analyzeImage(
-          _mealType,
-          _imageDataUrls,
-          precise: _preciseMode,
-        ),
-        CaptureMode.describe => await MealService.analyzeDescription(
-          _mealType,
-          desc,
-        ),
-        CaptureMode.manual => await MealService.analyzeManual(
-          _mealType,
-          manual.map((e) => e.toMealItem()).toList(),
-        ),
-      };
-      if (!mounted) return;
       final confirmed = await _showConfirmDialog(
-        analyzed.map(EditableItem.fromAnalysis).toList(),
+        _analysis.result.map(EditableItem.fromAnalysis).toList(),
       );
-      if (confirmed == true) await _afterSave();
-    } catch (e) {
-      setState(() => _error = e.toString());
+      if (confirmed == true) {
+        _analysis.reset();
+        await _afterSave();
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      _reviewing = false;
     }
   }
 
+  /// Status banner for the background analysis: a live "分析中" hint, a "完成 →
+  /// 查看結果" call to action, or the error with a retry.
+  Widget _analysisBanner() {
+    if (_analysis.isRunning) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFF7ED),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFED7AA)),
+        ),
+        child: const Row(
+          children: [
+            SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('AI 正在分析這餐，完成後會通知你。可先切到其他分頁。',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF9A3412))),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_analysis.isError) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.red[50],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text('分析失敗：${_analysis.error ?? ''}',
+                  style: TextStyle(fontSize: 12, color: Colors.red[900])),
+            ),
+            TextButton(
+              onPressed: () => _analysis.reset(),
+              child: const Text('關閉'),
+            ),
+          ],
+        ),
+      );
+    }
+    // done
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green.shade200),
+      ),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Text('✅ AI 分析完成，點右側確認並儲存。',
+                style: TextStyle(fontSize: 12, color: Color(0xFF166534))),
+          ),
+          FilledButton.tonal(
+            onPressed: _reviewing ? null : _openReview,
+            child: const Text('查看結果'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<bool?> _showConfirmDialog(List<EditableItem> items) {
+    // Use the context captured when the analysis started (held in the
+    // controller), not the live form — the user may have changed the form while
+    // the analysis ran in the background.
+    final mealType = _analysis.mealType;
+    final mode = _analysis.mode; // 'photo' | 'describe' | 'manual'
+    final images = _analysis.imageDataUrls;
+    final desc = _analysis.description.trim();
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -297,29 +414,24 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       showDragHandle: true,
       builder: (ctx) => _ConfirmSheet(
         items: items,
-        imageDataUrls: _mode == CaptureMode.photo
-            ? List.of(_imageDataUrls)
-            : const [],
+        imageDataUrls: mode == 'photo' ? List.of(images) : const [],
         onReestimate: (editedItems) async {
           final analyzed = await MealService.reestimate(
-            _mealType,
+            mealType,
             editedItems.map((e) => e.toMealItem()).toList(),
           );
           return analyzed.map(EditableItem.fromAnalysis).toList();
         },
         onSave: (confirmedItems) async {
-          final items = confirmedItems.map((e) => e.toMealItem()).toList();
-          final desc = _descriptionCtrl.text.trim();
+          final saveItems = confirmedItems.map((e) => e.toMealItem()).toList();
           // Only the active mode's source is persisted, matching the web form.
           // Nutrition is mirrored into Health Connect later, during the
           // "健康同步" flow (HealthService.syncNow), not at save time.
           await MealService.createMeal(
-            mealType: _mealType,
-            imageDataUrls: _mode == CaptureMode.photo ? _imageDataUrls : null,
-            description: _mode == CaptureMode.describe && desc.isNotEmpty
-                ? desc
-                : null,
-            items: items,
+            mealType: mealType,
+            imageDataUrls: mode == 'photo' ? images : null,
+            description: mode == 'describe' && desc.isNotEmpty ? desc : null,
+            items: saveItems,
           );
         },
       ),
@@ -523,29 +635,40 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               const SizedBox(height: 10),
               Text(_error!, style: const TextStyle(color: Colors.red)),
             ],
+            if (_analysis.isRunning || _analysis.isDone || _analysis.isError) ...[
+              const SizedBox(height: 12),
+              _analysisBanner(),
+            ],
             const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _loading ? null : _submit,
+                onPressed: _analysis.isRunning ? null : _submit,
                 style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
-                child: _loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                child: _analysis.isRunning
+                    ? const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(width: 10),
+                          Text('AI 分析中（可切換分頁）'),
+                        ],
                       )
                     : const Text('AI 分析並確認'),
               ),
             ),
             const SizedBox(height: 6),
             const Text(
-              'AI 分析為估算值，請依實際份量修正。',
+              'AI 分析為估算值，請依實際份量修正。分析會在背景執行，切換分頁也不會中斷。',
               style: TextStyle(fontSize: 11, color: Colors.black45),
             ),
             if (widget.showAdvice && _adviceLoading)
