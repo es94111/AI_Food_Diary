@@ -358,7 +358,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
         [
           food.estimatedAmount,
           if (food.barcode != null) '條碼 ${food.barcode}',
-          'P ${food.protein}g / F ${food.fat}g / C ${food.carbs}g',
+          '蛋白質 ${food.protein}g / 脂肪 ${food.fat}g / 碳水 ${food.carbs}g',
           '${_sourceLabels[food.source] ?? '手動新增'} · 使用 ${food.useCount} 次$lastUsed',
         ].join(' · '),
       ),
