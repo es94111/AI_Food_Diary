@@ -640,9 +640,14 @@ class HealthService {
     required double fat,
     required double carbs,
     String? name,
+    String? clientRecordId,
   }) async {
     try {
       await _health.configure();
+      // Tag the record with the meal id as Health Connect's clientRecordId so
+      // re-writing the same meal upserts instead of creating a duplicate. The
+      // version must be non-null for HC to honour the client id; a constant is
+      // fine since we only need stable identity, not edit-tracking.
       Future<bool> doWrite() => _health.writeMeal(
             mealType: _mealTypeOf(mealType),
             startTime: eatenAt,
@@ -652,6 +657,8 @@ class HealthService {
             protein: protein,
             fatTotal: fat,
             name: (name != null && name.isNotEmpty) ? name : null,
+            clientRecordId: clientRecordId,
+            clientRecordVersion: clientRecordId == null ? null : 1,
           );
 
       var ok = await doWrite();
@@ -672,13 +679,16 @@ class HealthService {
     }
   }
 
-  // Meal ids already mirrored into Health Connect, so repeated syncs don't
-  // create duplicate nutrition records.
-  static const _writtenMealsKey = 'written_meal_hc_ids';
-
-  /// Mirrors recently logged meals' nutrition into Health Connect, skipping any
-  /// meal already written in a previous sync (tracked by id). Returns the
-  /// number newly written.
+  /// Mirrors recently logged meals' nutrition into Health Connect. Every recent
+  /// meal is (re-)written each sync, tagged with the meal id as Health Connect's
+  /// clientRecordId so HC upserts rather than duplicating. Returns the number
+  /// written.
+  ///
+  /// This deliberately does NOT keep a local "already-written" set: that set
+  /// could permanently skip a meal whose earlier write never actually landed in
+  /// Health Connect (e.g. before Samsung Health was linked, or after the user
+  /// cleared Health Connect data), leaving its nutrition stuck out forever.
+  /// Native clientRecordId dedup makes re-writing safe and self-healing.
   ///
   /// Called as part of the health-data sync so meals always flow into Health
   /// Connect during sync (no opt-in switch); requests the NUTRITION write
@@ -693,10 +703,6 @@ class HealthService {
       debugPrint('HealthWrite: NUTRITION write permission not granted');
       return 0;
     }
-
-    final prefs = await SharedPreferences.getInstance();
-    final written =
-        (prefs.getStringList(_writtenMealsKey) ?? const <String>[]).toSet();
 
     final now = DateTime.now();
     final meals = <Meal>[];
@@ -713,7 +719,7 @@ class HealthService {
 
     var count = 0;
     for (final meal in meals) {
-      if (written.contains(meal.id)) continue;
+      if (meal.totalCalories <= 0) continue;
       final name =
           meal.items.map((e) => e.name).where((n) => n.isNotEmpty).join('、');
       final ok = await writeMealNutrition(
@@ -724,14 +730,11 @@ class HealthService {
         fat: meal.totalFat,
         carbs: meal.totalCarbs,
         name: name,
+        clientRecordId: 'meal_${meal.id}',
       );
-      if (ok) {
-        written.add(meal.id);
-        count++;
-      }
+      if (ok) count++;
     }
 
-    await prefs.setStringList(_writtenMealsKey, written.toList());
     debugPrint('HealthWrite: mirrored $count meals to Health Connect');
     return count;
   }
