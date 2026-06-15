@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -79,7 +79,7 @@ jobs:
       # upload-artifact@v5 Node 20 deprecation warning (no Node 24 release yet).
       - name: Upload APK artifact
         if: ${{ env.S3_ENDPOINT == '' || env.S3_BUCKET == '' }}
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ai-food-mobile-apk
           path: mobile/build/app/outputs/flutter-apk/app-release.apk
