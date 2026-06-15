@@ -78,6 +78,17 @@ function numberEnv(name: string, fallback: number) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+// Hard ceiling on how long a single provider call may run, plus how many times
+// the SDK retries. Without these the OpenAI SDK waits up to its 600s default with
+// 2 retries, so a slow/stuck model keeps the request hanging long past the
+// reverse-proxy's own limit — the user sees the gateway's raw "504" HTML instead
+// of our friendly error. Capping the timeout below the gateway means a slow call
+// fails fast as a clean APIError (→ a translated 502 in aiErrorResponse) we can
+// show. Set AI_REQUEST_TIMEOUT_MS *below* your deployment's gateway timeout
+// (Zeabur/Cloudflare); raise the gateway timeout instead if your model is slow.
+const AI_REQUEST_TIMEOUT_MS = Math.max(1000, numberEnv("AI_REQUEST_TIMEOUT_MS", 90_000));
+const AI_REQUEST_MAX_RETRIES = Math.max(0, Math.round(numberEnv("AI_REQUEST_MAX_RETRIES", 1)));
+
 // Builds the shared request knobs. `seed: null` opts out of the fixed seed (used
 // when sampling, so the runs actually differ). `json` switches on JSON mode to
 // cut down on free-text parsing failures — only safe for prompts that already ask
@@ -96,7 +107,9 @@ function client(config: AiConfig) {
   }
   return new OpenAI({
     apiKey: config.apiKey,
-    baseURL: normalizeBaseUrl(config.baseUrl)
+    baseURL: normalizeBaseUrl(config.baseUrl),
+    timeout: AI_REQUEST_TIMEOUT_MS,
+    maxRetries: AI_REQUEST_MAX_RETRIES
   });
 }
 

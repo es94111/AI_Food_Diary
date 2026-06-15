@@ -158,13 +158,16 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     } catch (_) {}
   }
 
-  /// Auto-sync once when the app opens, but only if Health Connect read access
-  /// is already granted — so we never pop a permission dialog unprompted. The
-  /// meal-mirror write (which can itself prompt) is left to the manual button.
+  /// Auto-sync once when the app opens, but only if Health Connect access is
+  /// already granted — so we never pop a permission dialog unprompted. Because
+  /// the granted permission set now includes nutrition/water WRITE (see
+  /// HealthService._perms), mirroring logged meals/water into Health Connect no
+  /// longer triggers its own prompt, so it's safe to run on auto-sync too — that
+  /// way today's nutrition flows to Health Connect (and Samsung Health) on open.
   Future<void> _maybeAutoSync() async {
     try {
       if (await HealthService.hasPermissions() && mounted) {
-        await _sync(mirrorMeals: false);
+        await _sync(mirrorMeals: true);
       }
     } catch (_) {}
   }
