@@ -127,17 +127,19 @@ class HealthService {
     'BLOOD_GLUCOSE',
   };
 
-  // Nutrition and water are also *written* to Health Connect (logged meals /
-  // intake are mirrored in so Samsung Health and friends can read them back),
-  // so request READ_WRITE for those two up front — that way the single Health
-  // Connect permission dialog covers the write grant too, instead of a separate
-  // prompt later that's easy to miss or deny (and Health Connect stops showing a
-  // prompt after two denials, silently failing every write thereafter).
-  static List<HealthDataAccess> get _perms => _types
-      .map((t) => (t == HealthDataType.NUTRITION || t == HealthDataType.WATER)
-          ? HealthDataAccess.READ_WRITE
-          : HealthDataAccess.READ)
-      .toList();
+  // The sync *gate* only needs READ: the cloud upload depends on reading Health
+  // Connect metrics, nothing more. Nutrition/water WRITE (used only to mirror
+  // logged meals/water into Health Connect → Samsung Health) is requested
+  // separately and best-effort in requestPermissions, so a denied/locked write
+  // grant can never block the cloud sync (which previously aborted the whole
+  // sync — including the cloud nutrition upload — when write wasn't granted).
+  static List<HealthDataAccess> get _perms =>
+      List.filled(_types.length, HealthDataAccess.READ);
+
+  // Types we also write back to Health Connect (logged meals/water) so Samsung
+  // Health and other readers can pick them up.
+  static const _writeTypes = [HealthDataType.NUTRITION, HealthDataType.WATER];
+  static const _writePerms = [HealthDataAccess.WRITE, HealthDataAccess.WRITE];
 
   /// Ensures Health Connect is available and the read permissions are granted,
   /// requesting them if needed. Throws [ApiException] with a user-facing
@@ -155,19 +157,41 @@ class HealthService {
       throw ApiException('請先安裝或更新 Health Connect，再回到 App 重新同步。');
     }
 
-    // 2. If already granted, skip the dialog.
-    final has = await _health.hasPermissions(_types, permissions: _perms);
-    if (has == true) return true;
+    // 2. Ensure READ access — this is required; the cloud sync reads Health
+    //    Connect metrics. This is the only thing that gates a successful sync.
+    final hasRead = await _health.hasPermissions(_types, permissions: _perms);
+    final readGranted = hasRead == true
+        ? true
+        : await _health.requestAuthorization(_types, permissions: _perms);
 
-    // 3. Request authorization — this shows the Health Connect permission UI.
-    final granted =
-        await _health.requestAuthorization(_types, permissions: _perms);
-    return granted;
+    // 3. Best-effort: also ask for nutrition/water WRITE so logged meals/water
+    //    mirror into Health Connect (→ Samsung Health). A denied write must NOT
+    //    block the cloud sync, so the result is intentionally ignored here.
+    try {
+      final hasWrite =
+          await _health.hasPermissions(_writeTypes, permissions: _writePerms);
+      if (hasWrite != true) {
+        await _health.requestAuthorization(_writeTypes,
+            permissions: _writePerms);
+      }
+    } catch (_) {}
+
+    return readGranted;
   }
 
   static Future<bool> hasPermissions() async {
     await _health.configure();
     return (await _health.hasPermissions(_types, permissions: _perms)) ?? false;
+  }
+
+  /// Whether Health Connect has granted NUTRITION write access — required to
+  /// mirror logged meals into Health Connect (and onward to Samsung Health).
+  /// Used to warn the user when nutrition won't reach Samsung Health.
+  static Future<bool> hasNutritionWritePermission() async {
+    await _health.configure();
+    return (await _health.hasPermissions([HealthDataType.NUTRITION],
+            permissions: [HealthDataAccess.WRITE])) ??
+        false;
   }
 
   static Future<List<Map<String, dynamic>>> _fetchRecent(int days) async {

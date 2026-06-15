@@ -216,18 +216,29 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
         }
       }
       final count = await HealthService.syncNow(days: syncDays);
+      // When mirroring, check whether Health Connect actually granted nutrition
+      // write — if not, the meals never reach Samsung Health and we should say so.
+      final nutritionWriteOk =
+          mirrorMeals ? await HealthService.hasNutritionWritePermission() : true;
       await _load();
       await widget.onSynced();
       setState(() {
         _isError = false;
-        final base = count == 0 ? '近 7 天無健康資料' : '同步成功！已上傳 $count 筆資料';
+        final base = count == 0
+            ? '${_syncRangeLabel(syncDays)}無健康資料'
+            : '同步成功！已上傳 $count 筆資料';
         final mirrored = [
           if (meals > 0) '$meals 筆營養紀錄',
           if (water > 0) '$water 筆喝水紀錄',
         ];
-        _message = mirrored.isNotEmpty
+        var msg = mirrored.isNotEmpty
             ? '$base，並寫入 ${mirrored.join('、')}至 Health Connect'
             : base;
+        if (!nutritionWriteOk) {
+          msg = '$msg\n⚠️ 尚未授予 Health Connect 的「營養」寫入權限，營養不會出現在三星健康。'
+              '請至 Health Connect →「應用程式權限」→ 本 App，開啟「營養」的寫入。';
+        }
+        _message = msg;
       });
     } catch (e, stack) {
       debugPrint('HealthSync: ERROR $e');
