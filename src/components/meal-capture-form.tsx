@@ -34,6 +34,29 @@ function emptyManualItem(): ManualItem {
   return { id: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
 }
 
+// 依目前時間挑選「最近的餐期」：用各餐期的代表時間點，取時間距離最近者（跨午夜也算）。
+function nearestMealType(now: Date = new Date()): string {
+  const minutes = now.getHours() * 60 + now.getMinutes();
+  const anchors: { type: string; at: number }[] = [
+    { type: "BREAKFAST", at: 7 * 60 },
+    { type: "LUNCH", at: 12 * 60 },
+    { type: "SNACK", at: 15 * 60 },
+    { type: "DINNER", at: 18 * 60 },
+    { type: "SNACK", at: 21 * 60 + 30 }
+  ];
+  let best = anchors[0];
+  let bestDist = Infinity;
+  for (const a of anchors) {
+    const diff = Math.abs(minutes - a.at);
+    const dist = Math.min(diff, 1440 - diff);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = a;
+    }
+  }
+  return best.type;
+}
+
 type CaptureMode = "photo" | "describe" | "manual";
 
 const CAPTURE_MODES: { id: CaptureMode; label: string }[] = [
@@ -67,9 +90,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
   const [showConfirm, setShowConfirm] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [mealType, setMealType] = useState("LUNCH");
 
   useEffect(() => {
     loadSavedFoods();
+    // 掛載後依目前時間預選最近的餐期（放在 effect 內避免 SSR 與客戶端時間不一致）。
+    setMealType(nearestMealType());
   }, []);
 
   useEffect(() => {
@@ -365,7 +391,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
     <form onSubmit={onSubmit} className="glass glass-lift rounded-[2rem] p-6">
       <h2 className="text-2xl font-black">新增餐點</h2>
       <p className="mt-2 text-sm text-stone-600">選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。</p>
-      <select className="mt-5 w-full rounded-2xl border border-stone-200 px-4 py-3" name="mealType" defaultValue="LUNCH">
+      <select className="mt-5 w-full rounded-2xl border border-stone-200 px-4 py-3" name="mealType" value={mealType} onChange={(e) => setMealType(e.target.value)}>
         <option value="BREAKFAST">早餐</option>
         <option value="LUNCH">午餐</option>
         <option value="DINNER">晚餐</option>

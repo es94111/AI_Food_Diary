@@ -125,8 +125,17 @@ class HealthService {
     'BLOOD_GLUCOSE',
   };
 
-  static List<HealthDataAccess> get _perms =>
-      List.filled(_types.length, HealthDataAccess.READ);
+  // Nutrition and water are also *written* to Health Connect (logged meals /
+  // intake are mirrored in so Samsung Health and friends can read them back),
+  // so request READ_WRITE for those two up front — that way the single Health
+  // Connect permission dialog covers the write grant too, instead of a separate
+  // prompt later that's easy to miss or deny (and Health Connect stops showing a
+  // prompt after two denials, silently failing every write thereafter).
+  static List<HealthDataAccess> get _perms => _types
+      .map((t) => (t == HealthDataType.NUTRITION || t == HealthDataType.WATER)
+          ? HealthDataAccess.READ_WRITE
+          : HealthDataAccess.READ)
+      .toList();
 
   /// Ensures Health Connect is available and the read permissions are granted,
   /// requesting them if needed. Throws [ApiException] with a user-facing
