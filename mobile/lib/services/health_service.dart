@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:health/health.dart';
@@ -168,9 +170,9 @@ class HealthService {
     return (await _health.hasPermissions(_types, permissions: _perms)) ?? false;
   }
 
-  static Future<List<Map<String, dynamic>>> _fetchLast7Days() async {
+  static Future<List<Map<String, dynamic>>> _fetchRecent(int days) async {
     final now = DateTime.now();
-    final start = now.subtract(const Duration(days: 7));
+    final start = now.subtract(Duration(days: days));
     final data = await _health.getHealthDataFromTypes(
       startTime: start,
       endTime: now,
@@ -254,7 +256,7 @@ class HealthService {
       });
     }
 
-    await _appendSteps(out);
+    await _appendSteps(out, days);
     _appendSleep(points, out);
     return out;
   }
@@ -267,9 +269,9 @@ class HealthService {
   /// whenever more than one app writes steps (phone pedometer + watch + Google
   /// Fit, …): their records overlap in time and `removeDuplicates` only drops
   /// exactly-identical points, so the daily total climbs far past reality.
-  static Future<void> _appendSteps(List<Map<String, dynamic>> out) async {
+  static Future<void> _appendSteps(List<Map<String, dynamic>> out, int days) async {
     final now = DateTime.now();
-    for (var i = 0; i < 7; i++) {
+    for (var i = 0; i < days; i++) {
       final dayStart = _localDayStart(now.subtract(Duration(days: i)));
       final dayEnd = dayStart.add(const Duration(days: 1));
       try {
@@ -486,33 +488,53 @@ class HealthService {
     };
   }
 
+  // The backend caps each /api/health/sync request at 500 metrics, so longer
+  // ranges (a year aggregates ~30 types × 365 days) must be uploaded in batches.
+  static const _syncBatchSize = 500;
+
+  // Meals/water are the app's own data, backfilled one backend request per day,
+  // so a multi-year range would fire hundreds of round-trips for days the user
+  // never logged. The Health Connect history (steps/weight/vitals/sleep) is what
+  // a long range is really for; cap the app-owned backfill at this many days.
+  static const appDataMaxDays = 31;
+
   /// Ensures a sync device token exists, requests permissions, reads the last
-  /// 7 days, and uploads. Returns the number of metrics synced.
-  static Future<int> syncNow({String deviceName = 'Android'}) async {
+  /// [days] days, and uploads (in ≤500-metric batches). Returns the number of
+  /// metrics synced.
+  static Future<int> syncNow({String deviceName = 'Android', int days = 7}) async {
     final granted = await requestPermissions();
     if (!granted) {
       throw ApiException('請在 Health Connect 中授予讀取權限');
     }
-    final metrics = await _fetchLast7Days();
+    final metrics = await _fetchRecent(days);
+    final appDays = min(days, appDataMaxDays);
     // Nutrition comes straight from logged meals, not Health Connect.
-    metrics.addAll(await _mealNutritionMetrics());
+    metrics.addAll(await _mealNutritionMetrics(days: appDays));
     // Water comes straight from the app's logged intake, not Health Connect.
-    metrics.addAll(await _waterIntakeMetrics());
-    debugPrint('HealthSync: fetched ${metrics.length} metrics');
+    metrics.addAll(await _waterIntakeMetrics(days: appDays));
+    debugPrint('HealthSync: fetched ${metrics.length} metrics (${days}d)');
     if (metrics.isEmpty) return 0;
 
     final token = await _ensureToken(deviceName);
-    final res = await _api.post(
-      '/api/health/sync',
-      data: {'source': 'HEALTH_CONNECT', 'metrics': metrics},
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    debugPrint('HealthSync: sync response ${res.statusCode}: ${res.data}');
-    if (!ApiClient.ok(res)) {
-      throw ApiException(ApiClient.errorMessage(res, '健康資料同步失敗，請稍後再試。')
-          .toString());
+    // Upload in batches of at most _syncBatchSize so a long range doesn't trip
+    // the backend's 500-metric-per-request limit (which would 400 the whole lot).
+    var synced = 0;
+    for (var i = 0; i < metrics.length; i += _syncBatchSize) {
+      final batch = metrics.sublist(
+          i, min(i + _syncBatchSize, metrics.length));
+      final res = await _api.post(
+        '/api/health/sync',
+        data: {'source': 'HEALTH_CONNECT', 'metrics': batch},
+        headers: {'Authorization': 'Bearer $token'},
+      );
+      debugPrint('HealthSync: batch ${res.statusCode}: ${res.data}');
+      if (!ApiClient.ok(res)) {
+        throw ApiException(ApiClient.errorMessage(res, '健康資料同步失敗，請稍後再試。')
+            .toString());
+      }
+      synced += (res.data['synced'] as num?)?.toInt() ?? batch.length;
     }
-    return (res.data['synced'] as num?)?.toInt() ?? metrics.length;
+    return synced;
   }
 
   static Future<String> _ensureToken(String deviceName) async {
@@ -654,7 +676,10 @@ class HealthService {
 
     final now = DateTime.now();
     final meals = <Meal>[];
-    for (var i = 0; i < days; i++) {
+    // App-owned data is backfilled one request per day, so cap the window even
+    // when a long Health Connect range is selected (see appDataMaxDays).
+    final span = min(days, appDataMaxDays);
+    for (var i = 0; i < span; i++) {
       try {
         meals.addAll(await MealService.mealsForDay(now.subtract(Duration(days: i))));
       } catch (_) {
@@ -752,7 +777,10 @@ class HealthService {
 
     final now = DateTime.now();
     final logs = <WaterLog>[];
-    for (var i = 0; i < days; i++) {
+    // App-owned data is backfilled one request per day, so cap the window even
+    // when a long Health Connect range is selected (see appDataMaxDays).
+    final span = min(days, appDataMaxDays);
+    for (var i = 0; i < span; i++) {
       try {
         final day = await WaterService.forDay(now.subtract(Duration(days: i)));
         logs.addAll(day.logs);

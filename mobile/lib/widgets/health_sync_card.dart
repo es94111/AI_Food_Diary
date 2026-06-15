@@ -130,11 +130,27 @@ class HealthSyncCard extends StatefulWidget {
   State<HealthSyncCard> createState() => _HealthSyncCardState();
 }
 
+// Selectable sync ranges. The chosen range drives how far back Health Connect
+// history (steps/weight/vitals/sleep) is pulled; the app's own meal/water
+// backfill is capped separately in HealthService (see _appDataMaxDays).
+const _syncRangeOptions = <(int, String)>[
+  (7, '近 7 天'),
+  (14, '近 14 天'),
+  (30, '近 1 個月'),
+  (90, '近 3 個月'),
+  (365, '近 1 年'),
+  (1095, '近 3 年'),
+];
+
+String _syncRangeLabel(int days) =>
+    _syncRangeOptions.firstWhere((o) => o.$1 == days, orElse: () => (days, '近 $days 天')).$2;
+
 class _HealthSyncCardState extends State<HealthSyncCard> {
   HealthSyncStatus? _status;
   bool _syncing = false;
   String? _message;
   bool _isError = false;
+  int _syncDays = 7;
 
   @override
   void initState() {
@@ -167,12 +183,15 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   Future<void> _maybeAutoSync() async {
     try {
       if (await HealthService.hasPermissions() && mounted) {
-        await _sync(mirrorMeals: true);
+        // Auto-sync stays short (7 days) regardless of the picked range, so
+        // opening the app never kicks off a heavy multi-year backfill.
+        await _sync(mirrorMeals: true, days: 7);
       }
     } catch (_) {}
   }
 
-  Future<void> _sync({bool mirrorMeals = true}) async {
+  Future<void> _sync({bool mirrorMeals = true, int? days}) async {
+    final syncDays = days ?? _syncDays;
     setState(() {
       _syncing = true;
       _message = null;
@@ -186,17 +205,17 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       var water = 0;
       if (mirrorMeals) {
         try {
-          meals = await HealthService.writeRecentMealsToHealth();
+          meals = await HealthService.writeRecentMealsToHealth(days: syncDays);
         } catch (e) {
           debugPrint('HealthSync: meal mirror failed $e');
         }
         try {
-          water = await HealthService.writeRecentWaterToHealth();
+          water = await HealthService.writeRecentWaterToHealth(days: syncDays);
         } catch (e) {
           debugPrint('HealthSync: water mirror failed $e');
         }
       }
-      final count = await HealthService.syncNow();
+      final count = await HealthService.syncNow(days: syncDays);
       await _load();
       await widget.onSynced();
       setState(() {
@@ -292,6 +311,43 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
               ),
             ],
             const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('同步範圍',
+                    style:
+                        TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: DropdownButtonFormField<int>(
+                    initialValue: _syncDays,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      border: OutlineInputBorder(),
+                      contentPadding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                    items: [
+                      for (final o in _syncRangeOptions)
+                        DropdownMenuItem(value: o.$1, child: Text(o.$2)),
+                    ],
+                    onChanged: _syncing
+                        ? null
+                        : (v) {
+                            if (v != null) setState(() => _syncDays = v);
+                          },
+                  ),
+                ),
+              ],
+            ),
+            if (_syncDays > HealthService.appDataMaxDays) ...[
+              const SizedBox(height: 6),
+              Text(
+                '長範圍會帶入更久的健康歷史；餐點與喝水僅回補近 ${HealthService.appDataMaxDays} 天。',
+                style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              ),
+            ],
+            const SizedBox(height: 12),
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
@@ -303,7 +359,8 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.sync),
-                label: Text(_syncing ? '同步中...' : '同步近 7 天資料'),
+                label: Text(
+                    _syncing ? '同步中...' : '同步${_syncRangeLabel(_syncDays)}資料'),
               ),
             ),
           ],

@@ -171,7 +171,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={food.id}>
             <div>
               <p className="font-bold text-stone-900">{food.isFavorite ? "★ " : ""}{food.name} <span className="font-normal text-stone-500">· {food.estimatedAmount}</span></p>
-              <p className="mt-1 text-sm text-stone-500">{food.calories} kcal · P {food.protein}g · F {food.fat}g · C {food.carbs}g{food.barcode ? ` · 條碼 ${food.barcode}` : ""}</p>
+              <p className="mt-1 text-sm text-stone-500">{food.calories} kcal · 蛋白質 {food.protein}g · 脂肪 {food.fat}g · 碳水 {food.carbs}g{food.barcode ? ` · 條碼 ${food.barcode}` : ""}</p>
               <p className="mt-1 text-xs text-stone-400">{sourceLabels[food.source ?? "MANUAL"]} · 使用 {food.useCount ?? 0} 次{food.lastUsedAt ? ` · 上次 ${new Date(food.lastUsedAt).toLocaleDateString()}` : ""}</p>
             </div>
             <div className="flex flex-wrap gap-2">
