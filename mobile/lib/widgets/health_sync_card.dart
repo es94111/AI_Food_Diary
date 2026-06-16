@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -1381,6 +1382,16 @@ class _SyncLogSheetState extends State<_SyncLogSheet> {
     await _reload();
   }
 
+  /// Copies the whole sync log to the clipboard — handy for pasting into a chat
+  /// or bug report without juggling an external file viewer.
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: _log));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('已複製同步紀錄')),
+    );
+  }
+
   Future<void> _openExternally() async {
     final path = await AppLogger.path();
     final result = await OpenFilex.open(path);
@@ -1413,6 +1424,11 @@ class _SyncLogSheetState extends State<_SyncLogSheet> {
                   tooltip: '重新整理',
                   icon: const Icon(Icons.refresh),
                   onPressed: _loading ? null : _reload,
+                ),
+                IconButton(
+                  tooltip: '複製紀錄',
+                  icon: const Icon(Icons.copy_all),
+                  onPressed: (_loading || _log.trim().isEmpty) ? null : _copy,
                 ),
                 IconButton(
                   tooltip: '用其他 App 開啟／分享',
