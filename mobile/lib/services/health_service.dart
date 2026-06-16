@@ -512,9 +512,11 @@ class HealthService {
     };
   }
 
-  // The backend caps each /api/health/sync request at 500 metrics, so longer
-  // ranges (a year aggregates ~30 types × 365 days) must be uploaded in batches.
-  static const _syncBatchSize = 500;
+  // The backend caps each /api/health/sync request at 500 metrics, but each
+  // batch is one prisma transaction of upserts — 500 is heavy (long transaction,
+  // longer locks, more likely to hit the gateway's request timeout). 150 keeps
+  // each request fast while still cutting the round-trips for long ranges.
+  static const _syncBatchSize = 150;
 
   // Meals/water are the app's own data, backfilled one backend request per day,
   // so a multi-year range would fire hundreds of round-trips for days the user
@@ -523,42 +525,98 @@ class HealthService {
   static const appDataMaxDays = 31;
 
   /// Ensures a sync device token exists, requests permissions, reads the last
-  /// [days] days, and uploads (in ≤500-metric batches). Returns the number of
-  /// metrics synced.
-  static Future<int> syncNow({String deviceName = 'Android', int days = 7}) async {
+  /// [days] days, uploads (in ≤500-metric batches), then re-reads the server to
+  /// verify each uploaded metric type actually landed. Returns a [HealthSyncReport].
+  static Future<HealthSyncReport> syncNow(
+      {String deviceName = 'Android', int days = 7}) async {
     final granted = await requestPermissions();
     if (!granted) {
       throw ApiException('請在 Health Connect 中授予讀取權限');
     }
-    final metrics = await _fetchRecent(days);
     final appDays = min(days, appDataMaxDays);
-    // Nutrition comes straight from logged meals, not Health Connect.
-    metrics.addAll(await _mealNutritionMetrics(days: appDays));
-    // Water comes straight from the app's logged intake, not Health Connect.
-    metrics.addAll(await _waterIntakeMetrics(days: appDays));
-    debugPrint('HealthSync: fetched ${metrics.length} metrics (${days}d)');
-    if (metrics.isEmpty) return 0;
+    // Nutrition/water are the app's own logged data. Put them FIRST so they
+    // always land in the first batch — otherwise on a long range a failing
+    // later Health Connect batch could abort the upload before nutrition is
+    // ever sent (the symptom of "everything synced except nutrition").
+    final nutrition = await _mealNutritionMetrics(days: appDays);
+    final water = await _waterIntakeMetrics(days: appDays);
+    final hc = await _fetchRecent(days);
+    final metrics = <Map<String, dynamic>>[...nutrition, ...water, ...hc];
+
+    final uploadedByType = <String, int>{};
+    for (final m in metrics) {
+      final type = m['type'] as String;
+      uploadedByType[type] = (uploadedByType[type] ?? 0) + 1;
+    }
+    debugPrint('HealthSync: fetched ${metrics.length} metrics (${days}d), '
+        'nutrition=${nutrition.length} water=${water.length}');
+    if (metrics.isEmpty) {
+      return const HealthSyncReport(
+          synced: 0, uploadedByType: {}, verifiedTypes: {}, missingTypes: {});
+    }
 
     final token = await _ensureToken(deviceName);
     // Upload in batches of at most _syncBatchSize so a long range doesn't trip
     // the backend's 500-metric-per-request limit (which would 400 the whole lot).
+    // Per-batch fault tolerance: a failing batch (e.g. a transient 5xx/timeout)
+    // no longer aborts the whole sync — we record it and keep going, so the rest
+    // (and the app-owned nutrition/water in the first batch) still land. The
+    // backend upserts by (user, source, type, measuredAt), so a later re-sync
+    // safely fills any gap from a failed batch.
     var synced = 0;
+    var batchesTotal = 0;
+    var batchesFailed = 0;
+    String? firstError;
     for (var i = 0; i < metrics.length; i += _syncBatchSize) {
       final batch = metrics.sublist(
           i, min(i + _syncBatchSize, metrics.length));
-      final res = await _api.post(
-        '/api/health/sync',
-        data: {'source': 'HEALTH_CONNECT', 'metrics': batch},
-        headers: {'Authorization': 'Bearer $token'},
-      );
-      debugPrint('HealthSync: batch ${res.statusCode}: ${res.data}');
-      if (!ApiClient.ok(res)) {
-        throw ApiException(ApiClient.errorMessage(res, '健康資料同步失敗，請稍後再試。')
-            .toString());
+      batchesTotal++;
+      try {
+        final res = await _api.post(
+          '/api/health/sync',
+          data: {'source': 'HEALTH_CONNECT', 'metrics': batch},
+          headers: {'Authorization': 'Bearer $token'},
+        );
+        debugPrint('HealthSync: batch ${res.statusCode}: ${res.data}');
+        if (!ApiClient.ok(res)) {
+          batchesFailed++;
+          firstError ??=
+              ApiClient.errorMessage(res, '健康資料同步失敗，請稍後再試。').toString();
+          continue;
+        }
+        synced += (res.data['synced'] as num?)?.toInt() ?? batch.length;
+      } catch (e) {
+        batchesFailed++;
+        firstError ??= e.toString();
+        debugPrint('HealthSync: batch failed $e');
       }
-      synced += (res.data['synced'] as num?)?.toInt() ?? batch.length;
     }
-    return synced;
+    // Every batch failed — surface it as an error rather than a "0 synced".
+    if (batchesFailed > 0 && batchesFailed == batchesTotal) {
+      throw ApiException(firstError ?? '健康資料同步失敗，請稍後再試。');
+    }
+
+    // Verify: re-read the server and confirm each uploaded type now has a stored
+    // value. Best-effort — a verification read failure must not fail the sync.
+    final verifiedTypes = <String>{};
+    final missingTypes = <String>{};
+    try {
+      final stored = await status();
+      final present = stored.latestByType.keys.toSet();
+      for (final type in uploadedByType.keys) {
+        (present.contains(type) ? verifiedTypes : missingTypes).add(type);
+      }
+    } catch (e) {
+      debugPrint('HealthSync: verification read failed $e');
+    }
+    return HealthSyncReport(
+      synced: synced,
+      uploadedByType: uploadedByType,
+      verifiedTypes: verifiedTypes,
+      missingTypes: missingTypes,
+      batchesTotal: batchesTotal,
+      batchesFailed: batchesFailed,
+    );
   }
 
   static Future<String> _ensureToken(String deviceName) async {
@@ -831,6 +889,37 @@ class HealthService {
     debugPrint('HealthWrite: mirrored $count water logs to Health Connect');
     return count;
   }
+}
+
+/// Outcome of a sync: how many metrics were accepted, the per-type upload
+/// counts, and which types were confirmed (or not) on a verification read-back.
+class HealthSyncReport {
+  const HealthSyncReport({
+    required this.synced,
+    required this.uploadedByType,
+    required this.verifiedTypes,
+    required this.missingTypes,
+    this.batchesTotal = 0,
+    this.batchesFailed = 0,
+  });
+
+  final int synced;
+  final Map<String, int> uploadedByType;
+  final Set<String> verifiedTypes;
+  final Set<String> missingTypes;
+  final int batchesTotal;
+  final int batchesFailed;
+
+  bool get hasFailedBatches => batchesFailed > 0;
+
+  int get nutritionUploaded => uploadedByType['NUTRITION'] ?? 0;
+  bool get nutritionVerified => verifiedTypes.contains('NUTRITION');
+  int get waterUploaded => uploadedByType['WATER'] ?? 0;
+  bool get waterVerified => verifiedTypes.contains('WATER');
+
+  /// Types we uploaded but could not confirm on read-back (excludes the ones we
+  /// never sent). Surfaced so the user knows the sync wasn't fully complete.
+  bool get allVerified => missingTypes.isEmpty;
 }
 
 /// One sleep stage interval (deep/light/REM/awake) with its wall-clock span.

@@ -215,7 +215,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
           debugPrint('HealthSync: water mirror failed $e');
         }
       }
-      final count = await HealthService.syncNow(days: syncDays);
+      final report = await HealthService.syncNow(days: syncDays);
       // When mirroring, check whether Health Connect actually granted nutrition
       // write — if not, the meals never reach Samsung Health and we should say so.
       final nutritionWriteOk =
@@ -224,21 +224,46 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       await widget.onSynced();
       setState(() {
         _isError = false;
-        final base = count == 0
+        final lines = <String>[];
+        lines.add(report.synced == 0
             ? '${_syncRangeLabel(syncDays)}無健康資料'
-            : '同步成功！已上傳 $count 筆資料';
+            : '同步成功！已上傳 ${report.synced} 筆資料');
+
+        // Partial failure: some batches didn't go through (transient error /
+        // timeout). The rest landed; a later re-sync safely fills the gap.
+        if (report.hasFailedBatches) {
+          lines.add('⚠️ 有 ${report.batchesFailed}/${report.batchesTotal} 批未送出，'
+              '稍後再同步一次即可補齊（不會重複）。');
+        }
+
+        // Cloud nutrition: surface exactly why it did/didn't sync.
+        if (report.nutritionUploaded == 0) {
+          lines.add('🍽️ 營養：${_syncRangeLabel(syncDays)}沒有可同步的餐點熱量（請先記錄餐點）。');
+        } else if (report.nutritionVerified) {
+          lines.add('🍽️ 營養：已上傳並在雲端確認 ✓');
+        } else {
+          lines.add('⚠️ 營養：已上傳 ${report.nutritionUploaded} 筆，但雲端未確認到，請稍後再同步一次。');
+        }
+
+        // Any other uploaded type that didn't verify on read-back.
+        final otherMissing =
+            report.missingTypes.where((t) => t != 'NUTRITION').toList();
+        if (otherMissing.isNotEmpty) {
+          lines.add('⚠️ 未確認：${otherMissing.join('、')}');
+        }
+
         final mirrored = [
           if (meals > 0) '$meals 筆營養紀錄',
           if (water > 0) '$water 筆喝水紀錄',
         ];
-        var msg = mirrored.isNotEmpty
-            ? '$base，並寫入 ${mirrored.join('、')}至 Health Connect'
-            : base;
-        if (!nutritionWriteOk) {
-          msg = '$msg\n⚠️ 尚未授予 Health Connect 的「營養」寫入權限，營養不會出現在三星健康。'
-              '請至 Health Connect →「應用程式權限」→ 本 App，開啟「營養」的寫入。';
+        if (mirrored.isNotEmpty) {
+          lines.add('已寫入 ${mirrored.join('、')}至 Health Connect');
         }
-        _message = msg;
+        if (!nutritionWriteOk) {
+          lines.add('⚠️ 尚未授予 Health Connect 的「營養」寫入權限，營養不會出現在三星健康。'
+              '請至 Health Connect →「應用程式權限」→ 本 App，開啟「營養」的寫入。');
+        }
+        _message = lines.join('\n');
       });
     } catch (e, stack) {
       debugPrint('HealthSync: ERROR $e');
