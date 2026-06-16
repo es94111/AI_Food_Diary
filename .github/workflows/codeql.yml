@@ -45,11 +45,9 @@ jobs:
         include:
         - language: actions
           build-mode: none
-        # build-mode: none — Android/Kotlin 程式碼在 mobile/android（Flutter 子專案），
-        # repo 根目錄沒有頂層 Gradle 專案，autobuild 會失敗（No build command found）。
-        # none 直接分析原始碼、不需建置。
-        - language: java-kotlin
-          build-mode: none
+        # 不掃 java-kotlin：mobile 是 Flutter App，原生程式碼只有樣板 MainActivity.kt
+        # （無安全價值），且 Gradle 相依需 Flutter SDK 才能解析，會在 build-mode none
+        # 下噴 Gradle warning。Android 原生／相依漏洞改由 OSV-Scanner + MobSF 覆蓋。
         - language: javascript-typescript
           build-mode: none
         - language: python
