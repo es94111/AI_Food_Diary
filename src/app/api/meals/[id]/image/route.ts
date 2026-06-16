@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getImageObject, isStorageKey } from "@/lib/storage";
+import { apiRoute } from "@/lib/http";
+import { deleteImage, getImageObject, isStorageKey, uploadImage } from "@/lib/storage";
+import { mealImageAppendSchema, MAX_MEAL_IMAGES } from "@/lib/validators";
+
+// Normalises a meal's stored image keys, preferring the per-image list and
+// falling back to the legacy single key for old rows.
+function currentKeys(meal: { imageStorageKey: string | null; imageStorageKeys: string[] }): string[] {
+  return meal.imageStorageKeys.length ? meal.imageStorageKeys : meal.imageStorageKey ? [meal.imageStorageKey] : [];
+}
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -11,12 +19,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     select: { imageStorageKey: true, imageStorageKeys: true }
   });
 
-  // Prefer the per-image list; fall back to the legacy single key for old rows.
-  const keys = meal?.imageStorageKeys.length
-    ? meal.imageStorageKeys
-    : meal?.imageStorageKey
-      ? [meal.imageStorageKey]
-      : [];
+  const keys = meal ? currentKeys(meal) : [];
   const index = Number(new URL(request.url).searchParams.get("i") ?? "0");
   const key = Number.isInteger(index) && index >= 0 && index < keys.length ? keys[index] : undefined;
   if (!key) return NextResponse.json({ error: "找不到圖片" }, { status: 404 });
@@ -43,3 +46,68 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }
   });
 }
+
+// Retroactively attach photos to an existing meal (the describe/manual flows
+// don't capture one). Appends to the meal's image list, keeping imageStorageKey
+// pointed at the first for backward compatibility.
+export const POST = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
+  const user = await requireUser();
+  const { id } = await context.params;
+  const { imageDataUrls } = mealImageAppendSchema.parse(await request.json());
+
+  const meal = await prisma.meal.findFirst({
+    where: { id, userId: user.id },
+    select: { imageStorageKey: true, imageStorageKeys: true }
+  });
+  if (!meal) return NextResponse.json({ error: "找不到餐點" }, { status: 404 });
+
+  const existing = currentKeys(meal);
+  const room = MAX_MEAL_IMAGES - existing.length;
+  if (room <= 0) {
+    return NextResponse.json({ error: `每筆餐點最多 ${MAX_MEAL_IMAGES} 張圖片。` }, { status: 400 });
+  }
+
+  const accepted = imageDataUrls.slice(0, room);
+  const uploadedKeys: string[] = [];
+  for (const dataUrl of accepted) {
+    uploadedKeys.push(await uploadImage(dataUrl, user.id));
+  }
+  const keys = [...existing, ...uploadedKeys];
+
+  await prisma.meal.update({
+    where: { id },
+    data: { imageStorageKeys: keys, imageStorageKey: keys[0] ?? null }
+  });
+
+  const skipped = imageDataUrls.length - accepted.length;
+  return NextResponse.json({ imageCount: keys.length, skipped });
+});
+
+// Remove a single photo from a meal by its index (?i=).
+export const DELETE = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
+  const user = await requireUser();
+  const { id } = await context.params;
+  const meal = await prisma.meal.findFirst({
+    where: { id, userId: user.id },
+    select: { imageStorageKey: true, imageStorageKeys: true }
+  });
+  if (!meal) return NextResponse.json({ error: "找不到餐點" }, { status: 404 });
+
+  const keys = currentKeys(meal);
+  const index = Number(new URL(request.url).searchParams.get("i") ?? "-1");
+  if (!Number.isInteger(index) || index < 0 || index >= keys.length) {
+    return NextResponse.json({ error: "找不到圖片" }, { status: 404 });
+  }
+
+  const [removed] = keys.splice(index, 1);
+  await prisma.meal.update({
+    where: { id },
+    data: { imageStorageKeys: keys, imageStorageKey: keys[0] ?? null }
+  });
+
+  if (isStorageKey(removed)) {
+    await deleteImage(removed).catch((err) => console.error("Failed to delete image from storage", err));
+  }
+
+  return NextResponse.json({ imageCount: keys.length });
+});
