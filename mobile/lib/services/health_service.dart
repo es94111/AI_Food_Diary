@@ -776,7 +776,12 @@ class HealthService {
       // fine since we only need stable identity, not edit-tracking.
       Future<bool> doWrite() => _health.writeMeal(
             mealType: _mealTypeOf(mealType),
-            startTime: eatenAt,
+            // Health Connect rejects zero-duration interval records with
+            // "startTime must be before endTime" (confirmed via logcat). Give
+            // the meal a 1-minute window ending at the logged time — endTime
+            // stays at eatenAt so it's never pushed into the future (which
+            // Health Connect would also reject).
+            startTime: eatenAt.subtract(const Duration(minutes: 1)),
             endTime: eatenAt,
             caloriesConsumed: calories.toDouble(),
             carbohydrates: carbs,
@@ -904,7 +909,9 @@ class HealthService {
       Future<bool> doWrite() => _health.writeHealthData(
             value: amountMl / 1000.0, // ml → L (Health Connect hydration unit)
             type: HealthDataType.WATER,
-            startTime: drankAt,
+            // Same as meals: Health Connect rejects a zero-duration interval,
+            // so give it a 1-minute window ending at the logged time.
+            startTime: drankAt.subtract(const Duration(minutes: 1)),
             endTime: drankAt,
             // User-logged intake, not sensor data — mark manual (see the meal
             // write for why the default 'automatic' can be rejected).
