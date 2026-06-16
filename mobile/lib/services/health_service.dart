@@ -785,6 +785,12 @@ class HealthService {
             name: (name != null && name.isNotEmpty) ? name : null,
             clientRecordId: clientRecordId,
             clientRecordVersion: clientRecordId == null ? null : 1,
+            // These meals were logged by the user in-app, not captured by a
+            // sensor — so mark them manual. The default (automatic) makes the
+            // plugin attach a synthetic Device and write the NutritionRecord as
+            // auto-recorded, which Health Connect rejects (insertRecords throws,
+            // the plugin swallows it and returns false → meals never mirror).
+            recordingMethod: RecordingMethod.manual,
           );
 
       var ok = await doWrite();
@@ -866,6 +872,16 @@ class HealthService {
     debugPrint('HealthWrite: mirrored $count meals to Health Connect');
     AppLogger.log('HealthWrite',
         '寫入 Health Connect：$count/${meals.length} 筆餐點營養');
+    // Permission was granted up front (we'd have returned above otherwise), yet
+    // nothing landed — so every writeMeal was rejected by Health Connect. The
+    // real cause is only in Android logcat (FLUTTER_HEALTH::ERROR); surface an
+    // actionable hint here so it shows in the in-app sync log too.
+    final attempted = meals.where((m) => m.totalCalories > 0).length;
+    if (count == 0 && attempted > 0) {
+      AppLogger.log('HealthWrite',
+          '⚠️ $attempted 筆餐點全部寫入失敗（權限已授予）。Health Connect 拒絕了寫入，'
+          '請用 `adb logcat -s FLUTTER_HEALTH::ERROR` 取得實際錯誤。');
+    }
     return count;
   }
 
@@ -890,6 +906,9 @@ class HealthService {
             type: HealthDataType.WATER,
             startTime: drankAt,
             endTime: drankAt,
+            // User-logged intake, not sensor data — mark manual (see the meal
+            // write for why the default 'automatic' can be rejected).
+            recordingMethod: RecordingMethod.manual,
           );
 
       var ok = await doWrite();
