@@ -1,7 +1,10 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+
+const MAX_IMAGES = 5;
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
 type MealItem = {
   id: string;
@@ -58,6 +61,62 @@ function MealCard({ meal }: { meal: Meal }) {
   const [items, setItems] = useState<EditableMealItem[]>(() => meal.items.map(toEditableItem));
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const imageUrls = meal.imageUrls?.length ? meal.imageUrls : meal.imageStorageKey ? [meal.imageStorageKey] : [];
+
+  // Retroactively attach photos to a meal logged without one (e.g. the
+  // describe/manual flow), or add more to an existing set.
+  async function onAddPhotos(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    const images = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
+    if (images.length === 0) {
+      setError("請選擇圖片檔案。");
+      return;
+    }
+    const room = MAX_IMAGES - imageUrls.length;
+    if (room <= 0) {
+      setError(`每筆餐點最多 ${MAX_IMAGES} 張照片。`);
+      return;
+    }
+    const withinSize = images.filter((file) => file.size <= MAX_IMAGE_BYTES);
+    const accepted = withinSize.slice(0, room);
+    if (accepted.length === 0) {
+      setError("圖片超過 6MB，請改用較小的圖片。");
+      return;
+    }
+    setUploadingPhoto(true);
+    setError("");
+    try {
+      const imageDataUrls = await Promise.all(accepted.map(fileToDataUrl));
+      const response = await fetch(`/api/meals/${meal.id}/image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageDataUrls })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setError(data.error ?? "照片上傳失敗");
+        return;
+      }
+      router.refresh();
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
+  async function onRemovePhoto(index: number) {
+    if (!confirm("確定要移除這張照片？")) return;
+    setUploadingPhoto(true);
+    setError("");
+    const response = await fetch(`/api/meals/${meal.id}/image?i=${index}`, { method: "DELETE" });
+    setUploadingPhoto(false);
+    if (!response.ok) {
+      setError("移除照片失敗");
+      return;
+    }
+    router.refresh();
+  }
 
   async function onDelete() {
     if (!confirm("確定要刪除這筆餐點紀錄？")) return;
@@ -160,26 +219,62 @@ function MealCard({ meal }: { meal: Meal }) {
           </button>
         </div>
       </div>
-      {(() => {
-        const urls = meal.imageUrls?.length ? meal.imageUrls : meal.imageStorageKey ? [meal.imageStorageKey] : [];
-        if (urls.length === 0) return null;
-        if (urls.length === 1) {
-          return <img alt="餐點照片" className="mt-3 max-h-72 w-full rounded-2xl object-cover" src={urls[0]} />;
-        }
-        // Multiple images: a horizontally scrollable strip so every photo shows.
-        return (
-          <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1">
-            {urls.map((url, i) => (
-              <img
-                key={url}
-                alt={`餐點照片 ${i + 1}`}
-                className="h-44 w-44 flex-none snap-start rounded-2xl object-cover"
-                src={url}
-              />
+      <div className="mt-3">
+        {imageUrls.length === 1 ? (
+          <div className="group relative">
+            <img alt="餐點照片" className="max-h-72 w-full rounded-2xl object-cover" src={imageUrls[0]} />
+            <button
+              aria-label="移除照片"
+              className="absolute right-2 top-2 rounded-full bg-stone-950/70 px-2 py-0.5 text-xs font-semibold text-white disabled:opacity-50"
+              disabled={uploadingPhoto}
+              onClick={() => onRemovePhoto(0)}
+              type="button"
+            >
+              ✕
+            </button>
+          </div>
+        ) : imageUrls.length > 1 ? (
+          // Multiple images: a horizontally scrollable strip so every photo shows.
+          <div className="flex snap-x gap-2 overflow-x-auto pb-1">
+            {imageUrls.map((url, i) => (
+              <div className="group relative flex-none" key={url}>
+                <img alt={`餐點照片 ${i + 1}`} className="h-44 w-44 snap-start rounded-2xl object-cover" src={url} />
+                <button
+                  aria-label={`移除照片 ${i + 1}`}
+                  className="absolute right-1.5 top-1.5 rounded-full bg-stone-950/70 px-2 py-0.5 text-xs font-semibold text-white disabled:opacity-50"
+                  disabled={uploadingPhoto}
+                  onClick={() => onRemovePhoto(i)}
+                  type="button"
+                >
+                  ✕
+                </button>
+              </div>
             ))}
           </div>
-        );
-      })()}
+        ) : null}
+        {imageUrls.length < MAX_IMAGES ? (
+          <button
+            className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700 disabled:opacity-60"
+            disabled={uploadingPhoto}
+            onClick={() => photoInputRef.current?.click()}
+            type="button"
+          >
+            {uploadingPhoto ? "上傳中..." : imageUrls.length ? "+ 新增照片" : "📷 補上傳照片"}
+          </button>
+        ) : null}
+        <input
+          ref={photoInputRef}
+          accept="image/*"
+          capture="environment"
+          multiple
+          className="sr-only"
+          type="file"
+          onChange={(event) => {
+            onAddPhotos(event.target.files);
+            event.target.value = "";
+          }}
+        />
+      </div>
       {editing ? (
         <form className="mt-4 space-y-3" onSubmit={onSave}>
           <label className="block">
@@ -270,6 +365,15 @@ function toEditableItem(item: MealItem): EditableMealItem {
 
 function emptyEditableItem(): EditableMealItem {
   return { clientId: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("無法讀取圖片檔案"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function formatMealTime(eatenAt: string) {

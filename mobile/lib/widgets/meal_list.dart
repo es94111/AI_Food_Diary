@@ -1,10 +1,15 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/meal_service.dart';
 import 'meal_capture_form.dart';
+
+const _maxMealImages = 5;
 
 class MealList extends StatelessWidget {
   const MealList({super.key, required this.meals, required this.onChanged});
@@ -28,13 +33,28 @@ class MealList extends StatelessWidget {
   }
 }
 
-class _MealCard extends StatelessWidget {
+class _MealCard extends StatefulWidget {
   const _MealCard({required this.meal, required this.onChanged});
 
   final Meal meal;
   final Future<void> Function() onChanged;
 
-  Future<void> _delete(BuildContext context) async {
+  @override
+  State<_MealCard> createState() => _MealCardState();
+}
+
+class _MealCardState extends State<_MealCard> {
+  final _picker = ImagePicker();
+  bool _uploading = false;
+  String? _error;
+
+  Meal get meal => widget.meal;
+
+  // Legacy single-image meals may report imageCount 0 but still have a photo.
+  int get _imageCount =>
+      meal.imageCount > 0 ? meal.imageCount : (meal.hasImage ? 1 : 0);
+
+  Future<void> _delete() async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -52,10 +72,10 @@ class _MealCard extends StatelessWidget {
     );
     if (confirm != true) return;
     await MealService.deleteMeal(meal.id);
-    await onChanged();
+    await widget.onChanged();
   }
 
-  Future<void> _edit(BuildContext context) async {
+  Future<void> _edit() async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -63,45 +83,203 @@ class _MealCard extends StatelessWidget {
       showDragHandle: true,
       builder: (ctx) => _EditMealSheet(meal: meal),
     );
-    if (saved == true) await onChanged();
+    if (saved == true) await widget.onChanged();
   }
 
-  /// Renders the meal's photo(s): a single full-width image, or a horizontally
-  /// scrollable strip when the meal has more than one.
-  Widget _mealImages(Meal meal, Map<String, String> headers) {
-    final count = meal.imageCount > 0 ? meal.imageCount : 1;
-    Widget tile(int i, double? width) => Image.network(
-          MealService.mealImageUrl(meal, i),
-          headers: headers,
-          height: 160,
-          width: width ?? double.infinity,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => Container(
-            height: 120,
-            width: width ?? double.infinity,
-            alignment: Alignment.center,
-            color: const Color(0xFFF5F5F4),
-            child: const Text('圖片載入失敗',
-                style: TextStyle(color: Colors.black45)),
+  Future<ImageSource?> _imageSourceSheet() => showModalBottomSheet<ImageSource>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('拍照'),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('從相簿選擇'),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
           ),
-        );
-    if (count <= 1) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: tile(0, null),
+        ),
       );
+
+  /// Picks one (camera) or several (gallery) images and returns their data URLs,
+  /// honouring [room] remaining slots and the 6MB per-image cap.
+  Future<List<String>> _pick(ImageSource source, int room) async {
+    final files = source == ImageSource.gallery
+        ? await _picker.pickMultiImage(maxWidth: 1600, imageQuality: 80)
+        : await _picker
+            .pickImage(source: source, maxWidth: 1600, imageQuality: 80)
+            .then((f) => f == null ? <XFile>[] : [f]);
+    if (files.isEmpty) return [];
+
+    final urls = <String>[];
+    var skippedSize = false;
+    for (final file in files) {
+      if (urls.length >= room) break;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 6 * 1024 * 1024) {
+        skippedSize = true;
+        continue;
+      }
+      final mime =
+          file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+      urls.add('data:$mime;base64,${base64Encode(bytes)}');
     }
+    final messages = <String>[];
+    if (files.length > room) messages.add('每筆餐點最多 $_maxMealImages 張照片。');
+    if (skippedSize) messages.add('部分圖片超過 6MB 已略過。');
+    if (messages.isNotEmpty && mounted) setState(() => _error = messages.join(' '));
+    return urls;
+  }
+
+  Future<void> _addPhotos() async {
+    final room = _maxMealImages - _imageCount;
+    if (room <= 0) {
+      setState(() => _error = '每筆餐點最多 $_maxMealImages 張照片。');
+      return;
+    }
+    final source = await _imageSourceSheet();
+    if (source == null) return;
+    setState(() => _error = null);
+    final urls = await _pick(source, room);
+    if (urls.isEmpty) return;
+    setState(() => _uploading = true);
+    try {
+      await MealService.addImages(meal.id, urls);
+      await widget.onChanged();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  Future<void> _removePhoto(int index) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('移除照片'),
+        content: const Text('確定要移除這張照片嗎？'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('移除')),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() {
+      _uploading = true;
+      _error = null;
+    });
+    try {
+      await MealService.removeImage(meal.id, index);
+      await widget.onChanged();
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _uploading = false);
+    }
+  }
+
+  /// Renders the meal's photo(s) with a per-image remove button: a single
+  /// full-width image, or a horizontally scrollable strip when there are more.
+  Widget _mealImages(Map<String, String> headers, int count) {
+    Widget tile(int i, double? width) => Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                MealService.mealImageUrl(meal, i),
+                headers: headers,
+                height: 160,
+                width: width ?? double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => Container(
+                  height: 120,
+                  width: width ?? double.infinity,
+                  alignment: Alignment.center,
+                  color: const Color(0xFFF5F5F4),
+                  child: const Text('圖片載入失敗',
+                      style: TextStyle(color: Colors.black45)),
+                ),
+              ),
+            ),
+            Positioned(
+              top: 6,
+              right: 6,
+              child: Material(
+                color: Colors.black54,
+                shape: const CircleBorder(),
+                child: InkWell(
+                  customBorder: const CircleBorder(),
+                  onTap: _uploading ? null : () => _removePhoto(i),
+                  child: const Padding(
+                    padding: EdgeInsets.all(4),
+                    child: Icon(Icons.close, size: 16, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+    if (count <= 1) return tile(0, null);
     return SizedBox(
       height: 160,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: count,
         separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (_, i) => ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: tile(i, 220),
-        ),
+        itemBuilder: (_, i) => tile(i, 220),
       ),
+    );
+  }
+
+  /// Photo area: existing images (each removable), plus an add/retroactive-upload
+  /// button so meals logged without a photo can get one later.
+  Widget _photoSection(Map<String, String> headers) {
+    final count = _imageCount;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (count > 0) ...[
+          const SizedBox(height: 8),
+          _mealImages(headers, count),
+        ],
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            if (count < _maxMealImages)
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : _addPhotos,
+                icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                label: Text(count > 0 ? '新增照片' : '補上傳照片'),
+              ),
+            if (_uploading) ...[
+              const SizedBox(width: 12),
+              const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ],
+          ],
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(_error!,
+                style: const TextStyle(color: Colors.red, fontSize: 12)),
+          ),
+      ],
     );
   }
 
@@ -140,10 +318,7 @@ class _MealCard extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w900)),
               ],
             ),
-            if (meal.hasImage) ...[
-              const SizedBox(height: 8),
-              _mealImages(meal, headers),
-            ],
+            _photoSection(headers),
             const SizedBox(height: 8),
             ...meal.items.map((it) => Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
@@ -173,11 +348,11 @@ class _MealCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton.icon(
-                    onPressed: () => _edit(context),
+                    onPressed: _edit,
                     icon: const Icon(Icons.edit, size: 16),
                     label: const Text('編輯')),
                 TextButton.icon(
-                    onPressed: () => _delete(context),
+                    onPressed: _delete,
                     icon: const Icon(Icons.delete, size: 16, color: Colors.red),
                     label: const Text('刪除',
                         style: TextStyle(color: Colors.red))),

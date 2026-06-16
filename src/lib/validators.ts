@@ -77,6 +77,13 @@ export const mealUpdateSchema = z.object({
     .min(1)
 });
 
+// Retroactively append photos to an existing meal (e.g. a meal logged via the
+// describe/manual flow without a photo). The route enforces MAX_MEAL_IMAGES
+// against the meal's current image count.
+export const mealImageAppendSchema = z.object({
+  imageDataUrls: z.array(z.string().startsWith("data:image/")).min(1).max(MAX_MEAL_IMAGES)
+});
+
 export const savedFoodSchema = z.object({
   barcode: z.string().trim().min(4).max(80).optional(),
   name: z.string().min(1).max(120),

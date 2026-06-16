@@ -129,6 +129,26 @@ class MealService {
     }
   }
 
+  /// Retroactively attaches photos to an existing meal (e.g. one logged via the
+  /// describe/manual flow without a photo), or adds more to its current set.
+  static Future<void> addImages(String id, List<String> imageDataUrls) async {
+    final res = await _api.post('/api/meals/$id/image', data: {
+      'imageDataUrls': imageDataUrls,
+    });
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '照片上傳失敗'),
+          statusCode: res.statusCode);
+    }
+  }
+
+  /// Removes a single photo from a meal by its (0-based) index.
+  static Future<void> removeImage(String id, int index) async {
+    final res = await _api.delete('/api/meals/$id/image?i=$index');
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '移除照片失敗'));
+    }
+  }
+
   // ---- AI summary & recommendation ----
 
   /// Daily summary. With [generate] false (default) it only returns an already
