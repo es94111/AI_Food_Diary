@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Central HTTP client that mirrors the web app's cookie-session auth.
 ///
@@ -17,6 +18,10 @@ class ApiClient {
   Dio? _dio;
   String? _sessionCookie;
 
+  /// Number of requests currently awaiting a response, reported to Sentry as a
+  /// gauge so we can see request concurrency over time.
+  int _inFlight = 0;
+
   Future<Dio> _client() async {
     if (_dio != null) return _dio!;
     _sessionCookie ??= await _storage.read(key: _sessionKey);
@@ -33,15 +38,44 @@ class ApiClient {
         if (_sessionCookie != null) {
           options.headers['Cookie'] = _sessionCookie;
         }
+        // Stamp the start time and bump the in-flight gauge so we can report
+        // request latency + concurrency to Sentry once the request completes.
+        options.extra['sentry_start'] = DateTime.now();
+        _inFlight++;
+        Sentry.metrics.gauge('api_in_flight_requests', _inFlight);
         handler.next(options);
       },
       onResponse: (response, handler) {
         _captureSessionCookie(response.headers.map['set-cookie']);
+        _recordRequestMetrics(response.requestOptions);
         handler.next(response);
+      },
+      onError: (error, handler) {
+        // Errors (timeouts, connection failures) skip onResponse, so close out
+        // the metrics here too — otherwise the in-flight gauge leaks upward.
+        _recordRequestMetrics(error.requestOptions);
+        handler.next(error);
       },
     ));
     _dio = dio;
     return dio;
+  }
+
+  /// Emits request latency (distribution) and in-flight count (gauge) to Sentry
+  /// when a request finishes, whether it succeeded or errored.
+  void _recordRequestMetrics(RequestOptions options) {
+    final start = options.extra['sentry_start'];
+    if (start is DateTime) {
+      final ms = DateTime.now().difference(start).inMilliseconds;
+      Sentry.metrics.distribution(
+        'api_request_duration',
+        ms,
+        unit: SentryMetricUnit.millisecond,
+        attributes: {'method': SentryAttribute.string(options.method)},
+      );
+    }
+    if (_inFlight > 0) _inFlight--;
+    Sentry.metrics.gauge('api_in_flight_requests', _inFlight);
   }
 
   void _captureSessionCookie(List<String>? setCookies) {
