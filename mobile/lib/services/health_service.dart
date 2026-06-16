@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import 'api_client.dart';
+import 'app_logger.dart';
 import 'meal_service.dart';
 import 'water_service.dart';
 
@@ -407,23 +408,41 @@ class HealthService {
   /// meal data — so we upload calories directly rather than reading them back.
   static Future<List<Map<String, dynamic>>> _mealNutritionMetrics(
       {int days = 7}) async {
+    AppLogger.log('Nutrition', '開始彙整營養：讀取近 $days 天的餐點熱量');
     final now = DateTime.now();
     final byDay = <DateTime, double>{};
+    var totalMeals = 0;
+    var failedDays = 0;
     for (var i = 0; i < days; i++) {
+      final target = now.subtract(Duration(days: i));
       try {
-        final meals = await MealService.mealsForDay(now.subtract(Duration(days: i)));
+        final meals = await MealService.mealsForDay(target);
+        totalMeals += meals.length;
+        var dayKcal = 0.0;
         for (final meal in meals) {
           final day = _localDayStart(meal.eatenAt);
           byDay[day] = (byDay[day] ?? 0) + meal.totalCalories;
+          dayKcal += meal.totalCalories;
         }
-      } catch (_) {
+        AppLogger.log('Nutrition',
+            '${_isoDay(target)}: ${meals.length} 筆餐點，合計 ${dayKcal.round()} kcal');
+      } catch (e) {
+        failedDays++;
         // Skip days that fail to load; keep building the rest.
+        AppLogger.log('Nutrition', '${_isoDay(target)}: 讀取餐點失敗，略過：$e');
       }
     }
     final out = <Map<String, dynamic>>[];
     byDay.forEach((day, kcal) {
-      if (kcal > 0) out.add(_payload('NUTRITION', kcal.roundToDouble(), 'kcal', day));
+      if (kcal > 0) {
+        out.add(_payload('NUTRITION', kcal.roundToDouble(), 'kcal', day));
+      } else {
+        AppLogger.log('Nutrition', '${_isoDay(day)}: 熱量為 0，不上傳此日');
+      }
     });
+    AppLogger.log('Nutrition',
+        '營養彙整完成：共讀到 $totalMeals 筆餐點、失敗 $failedDays 天，'
+        '產生 ${out.length} 筆 NUTRITION 指標');
     return out;
   }
 
@@ -459,6 +478,11 @@ class HealthService {
     final l = d.toLocal();
     return DateTime(l.year, l.month, l.day);
   }
+
+  static final _isoDayFmt = DateFormat('yyyy-MM-dd');
+
+  /// Local `yyyy-MM-dd` label for a date, used only in log lines.
+  static String _isoDay(DateTime d) => _isoDayFmt.format(d.toLocal());
 
   /// Most recent `latest`-aggregated value across all days for [backendType].
   static double? _latestLatestValue(
@@ -529,8 +553,11 @@ class HealthService {
   /// verify each uploaded metric type actually landed. Returns a [HealthSyncReport].
   static Future<HealthSyncReport> syncNow(
       {String deviceName = 'Android', int days = 7}) async {
+    AppLogger.log('HealthSync', '===== 開始同步（範圍 $days 天）=====');
     final granted = await requestPermissions();
+    AppLogger.log('HealthSync', 'Health Connect 讀取權限：${granted ? "已授予" : "未授予"}');
     if (!granted) {
+      AppLogger.log('HealthSync', '因未授予讀取權限而中止同步');
       throw ApiException('請在 Health Connect 中授予讀取權限');
     }
     final appDays = min(days, appDataMaxDays);
@@ -548,14 +575,30 @@ class HealthService {
       final type = m['type'] as String;
       uploadedByType[type] = (uploadedByType[type] ?? 0) + 1;
     }
+    AppLogger.log('HealthSync',
+        '彙整完成：共 ${metrics.length} 筆指標（營養 ${nutrition.length}、'
+        '喝水 ${water.length}、Health Connect ${hc.length}）');
+    // Spell out exactly what the NUTRITION payload looks like — the thing the
+    // user is trying to debug. Empty here = nothing to upload (no logged meals).
+    if (nutrition.isEmpty) {
+      AppLogger.log('HealthSync',
+          '⚠️ 沒有任何營養指標可上傳（近 $appDays 天沒有已記錄、熱量>0 的餐點）');
+    } else {
+      for (final m in nutrition) {
+        AppLogger.log('HealthSync',
+            '營養待上傳：${m['measuredAt']} = ${m['value']} ${m['unit']}');
+      }
+    }
     debugPrint('HealthSync: fetched ${metrics.length} metrics (${days}d), '
         'nutrition=${nutrition.length} water=${water.length}');
     if (metrics.isEmpty) {
+      AppLogger.log('HealthSync', '沒有任何指標可上傳，結束同步');
       return const HealthSyncReport(
           synced: 0, uploadedByType: {}, verifiedTypes: {}, missingTypes: {});
     }
 
     final token = await _ensureToken(deviceName);
+    AppLogger.log('HealthSync', '取得同步裝置 token（長度 ${token.length}）');
     // Upload in batches of at most _syncBatchSize so a long range doesn't trip
     // the backend's 500-metric-per-request limit (which would 400 the whole lot).
     // Per-batch fault tolerance: a failing batch (e.g. a transient 5xx/timeout)
@@ -571,6 +614,11 @@ class HealthService {
       final batch = metrics.sublist(
           i, min(i + _syncBatchSize, metrics.length));
       batchesTotal++;
+      final batchNo = batchesTotal;
+      final batchHasNutrition = batch.any((m) => m['type'] == 'NUTRITION');
+      AppLogger.log('HealthSync',
+          '上傳 batch #$batchNo：${batch.length} 筆'
+          '${batchHasNutrition ? "（含營養）" : ""}');
       try {
         final res = await _api.post(
           '/api/health/sync',
@@ -578,10 +626,14 @@ class HealthService {
           headers: {'Authorization': 'Bearer $token'},
         );
         debugPrint('HealthSync: batch ${res.statusCode}: ${res.data}');
+        AppLogger.log('HealthSync',
+            'batch #$batchNo 回應 ${res.statusCode}：${res.data}');
         if (!ApiClient.ok(res)) {
           batchesFailed++;
           firstError ??=
               ApiClient.errorMessage(res, '健康資料同步失敗，請稍後再試。').toString();
+          AppLogger.log('HealthSync',
+              '❌ batch #$batchNo 失敗（${res.statusCode}）：$firstError');
           continue;
         }
         synced += (res.data['synced'] as num?)?.toInt() ?? batch.length;
@@ -589,10 +641,14 @@ class HealthService {
         batchesFailed++;
         firstError ??= e.toString();
         debugPrint('HealthSync: batch failed $e');
+        AppLogger.log('HealthSync', '❌ batch #$batchNo 例外：$e');
       }
     }
+    AppLogger.log('HealthSync',
+        '上傳結束：成功 $synced 筆，batch ${batchesTotal - batchesFailed}/$batchesTotal 成功');
     // Every batch failed — surface it as an error rather than a "0 synced".
     if (batchesFailed > 0 && batchesFailed == batchesTotal) {
+      AppLogger.log('HealthSync', '所有 batch 皆失敗，丟出錯誤：$firstError');
       throw ApiException(firstError ?? '健康資料同步失敗，請稍後再試。');
     }
 
@@ -606,9 +662,18 @@ class HealthService {
       for (final type in uploadedByType.keys) {
         (present.contains(type) ? verifiedTypes : missingTypes).add(type);
       }
+      AppLogger.log('HealthSync',
+          '雲端回讀驗證：已確認 ${verifiedTypes.join("、")}'
+          '${missingTypes.isEmpty ? "" : "；未確認 ${missingTypes.join("、")}"}');
+      if (uploadedByType.containsKey('NUTRITION')) {
+        AppLogger.log('HealthSync',
+            '營養雲端驗證：${verifiedTypes.contains('NUTRITION') ? "✓ 已在雲端確認" : "✗ 雲端尚未查到，可能上傳失敗或尚未寫入"}');
+      }
     } catch (e) {
       debugPrint('HealthSync: verification read failed $e');
+      AppLogger.log('HealthSync', '雲端回讀驗證失敗（不影響上傳結果）：$e');
     }
+    AppLogger.log('HealthSync', '===== 同步結束 =====');
     return HealthSyncReport(
       synced: synced,
       uploadedByType: uploadedByType,
@@ -626,7 +691,10 @@ class HealthService {
     final res = await _api.post('/api/health/connections',
         data: {'provider': 'HEALTH_CONNECT', 'deviceName': deviceName});
     debugPrint('HealthSync: connections response ${res.statusCode}: ${res.data}');
+    AppLogger.log('HealthSync',
+        '註冊同步裝置回應 ${res.statusCode}：${res.data}');
     if (!ApiClient.ok(res)) {
+      AppLogger.log('HealthSync', '註冊同步裝置失敗，無法取得 token');
       throw ApiException(ApiClient.errorMessage(res, '建立健康同步裝置失敗'));
     }
     final token = res.data['token'] as String;
@@ -759,6 +827,8 @@ class HealthService {
     );
     if (!granted) {
       debugPrint('HealthWrite: NUTRITION write permission not granted');
+      AppLogger.log('HealthWrite',
+          '未授予「營養」寫入權限，餐點不會寫入 Health Connect（仍會上傳雲端）');
       return 0;
     }
 
@@ -794,6 +864,8 @@ class HealthService {
     }
 
     debugPrint('HealthWrite: mirrored $count meals to Health Connect');
+    AppLogger.log('HealthWrite',
+        '寫入 Health Connect：$count/${meals.length} 筆餐點營養');
     return count;
   }
 

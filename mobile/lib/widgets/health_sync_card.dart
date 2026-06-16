@@ -2,8 +2,10 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:open_filex/open_filex.dart';
 
 import '../models/models.dart';
+import '../services/app_logger.dart';
 import '../services/health_service.dart';
 
 class _MetricDef {
@@ -192,6 +194,8 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
 
   Future<void> _sync({bool mirrorMeals = true, int? days}) async {
     final syncDays = days ?? _syncDays;
+    AppLogger.log('HealthCard',
+        '使用者觸發同步：範圍 $syncDays 天，mirrorMeals=$mirrorMeals');
     setState(() {
       _syncing = true;
       _message = null;
@@ -208,11 +212,13 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
           meals = await HealthService.writeRecentMealsToHealth(days: syncDays);
         } catch (e) {
           debugPrint('HealthSync: meal mirror failed $e');
+          AppLogger.log('HealthCard', '餐點寫入 Health Connect 失敗：$e');
         }
         try {
           water = await HealthService.writeRecentWaterToHealth(days: syncDays);
         } catch (e) {
           debugPrint('HealthSync: water mirror failed $e');
+          AppLogger.log('HealthCard', '喝水寫入 Health Connect 失敗：$e');
         }
       }
       final report = await HealthService.syncNow(days: syncDays);
@@ -268,6 +274,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
     } catch (e, stack) {
       debugPrint('HealthSync: ERROR $e');
       debugPrint('$stack');
+      AppLogger.error('HealthCard', e, stack);
       setState(() {
         _isError = true;
         _message = e.toString();
@@ -399,9 +406,33 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
                     _syncing ? '同步中...' : '同步${_syncRangeLabel(_syncDays)}資料'),
               ),
             ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: _showSyncLog,
+                icon: const Icon(Icons.receipt_long, size: 16),
+                label: const Text('查看同步紀錄', style: TextStyle(fontSize: 12)),
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Opens an in-app viewer for the persisted sync log, so a user (or tester)
+  /// can see exactly why nutrition did or didn't upload — invaluable on a
+  /// release build where `debugPrint` is invisible. From here the log can be
+  /// refreshed, cleared, or opened in another app to share.
+  Future<void> _showSyncLog() async {
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (_) => const _SyncLogSheet(),
     );
   }
 
@@ -1313,4 +1344,113 @@ class _HistorySheetState extends State<_HistorySheet> {
               style: const TextStyle(fontSize: 11, color: Colors.black54)),
         ],
       );
+}
+
+/// Bottom sheet showing the persisted health-sync log. Refresh re-reads the
+/// file, 清除 empties it, and 開啟 hands the file to another app (file manager /
+/// text viewer) so it can be shared off-device for debugging.
+class _SyncLogSheet extends StatefulWidget {
+  const _SyncLogSheet();
+
+  @override
+  State<_SyncLogSheet> createState() => _SyncLogSheetState();
+}
+
+class _SyncLogSheetState extends State<_SyncLogSheet> {
+  String _log = '';
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    setState(() => _loading = true);
+    final text = await AppLogger.readAll();
+    if (!mounted) return;
+    setState(() {
+      _log = text;
+      _loading = false;
+    });
+  }
+
+  Future<void> _clear() async {
+    await AppLogger.clear();
+    await _reload();
+  }
+
+  Future<void> _openExternally() async {
+    final path = await AppLogger.path();
+    final result = await OpenFilex.open(path);
+    if (result.type != ResultType.done && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('無法開啟檔案：${result.message}')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.8,
+      minChildSize: 0.4,
+      maxChildSize: 0.95,
+      builder: (ctx, controller) => Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 8, 4),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text('健康同步紀錄',
+                      style: TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w900)),
+                ),
+                IconButton(
+                  tooltip: '重新整理',
+                  icon: const Icon(Icons.refresh),
+                  onPressed: _loading ? null : _reload,
+                ),
+                IconButton(
+                  tooltip: '用其他 App 開啟／分享',
+                  icon: const Icon(Icons.open_in_new),
+                  onPressed: _loading ? null : _openExternally,
+                ),
+                IconButton(
+                  tooltip: '清除紀錄',
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: _loading ? null : _clear,
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : (_log.trim().isEmpty
+                    ? const Center(
+                        child: Text('尚無紀錄，請先執行一次同步。',
+                            style: TextStyle(color: Colors.black38)))
+                    : ListView(
+                        controller: controller,
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          SelectableText(
+                            _log,
+                            style: const TextStyle(
+                                fontSize: 11,
+                                height: 1.5,
+                                fontFamily: 'monospace'),
+                          ),
+                        ],
+                      )),
+          ),
+        ],
+      ),
+    );
+  }
 }
