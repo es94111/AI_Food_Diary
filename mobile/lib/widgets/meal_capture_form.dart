@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/models.dart';
+import '../services/api_client.dart';
 import '../services/background_analysis.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
@@ -17,6 +18,31 @@ const mealTypes = {
   'DINNER': '晚餐',
   'SNACK': '點心',
 };
+
+/// 依目前時間挑「最近的餐期」：用各餐期的代表時間點，取時間距離最近者（跨午夜
+/// 也算）。使用裝置本地時間，也就是使用者所在時區的當地時間。
+String nearestMealType([DateTime? now]) {
+  final t = now ?? DateTime.now();
+  final minutes = t.hour * 60 + t.minute;
+  const anchors = <(String, int)>[
+    ('BREAKFAST', 7 * 60),
+    ('LUNCH', 12 * 60),
+    ('SNACK', 15 * 60),
+    ('DINNER', 18 * 60),
+    ('SNACK', 21 * 60 + 30),
+  ];
+  var best = anchors.first.$1;
+  var bestDist = 1 << 30;
+  for (final a in anchors) {
+    final diff = (minutes - a.$2).abs();
+    final dist = diff < 1440 - diff ? diff : 1440 - diff;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = a.$1;
+    }
+  }
+  return best;
+}
 
 const aiRatings = {
   'GOOD': '✅ 較推薦',
@@ -114,10 +140,12 @@ const _productBarcodeFormats = [
 
 class _MealCaptureFormState extends State<MealCaptureForm> {
   final _picker = ImagePicker();
-  String _mealType = 'LUNCH';
+  String _mealType = nearestMealType();
   CaptureMode _mode = CaptureMode.photo;
   bool _preciseMode = false;
   final List<String> _imageDataUrls = [];
+  // Photos pulled from picked saved foods, saved as meal photos (not analysed).
+  final List<String> _pickedFoodImages = [];
   final _descriptionCtrl = TextEditingController();
   final List<EditableItem> _manualItems = [EditableItem()];
   List<SavedFood> _savedFoods = [];
@@ -287,6 +315,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final mealType = _mealType;
     final mode = _mode;
     final images = List<String>.of(_imageDataUrls);
+    // Photos from picked saved foods are saved as meal photos but not analysed.
+    final saveImages = <String>[...images, ..._pickedFoodImages];
     final manualItems = manual.map((e) => e.toMealItem()).toList();
     final precise = _preciseMode;
     setState(() => _error = null);
@@ -317,7 +347,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       _analysis.startBackground(
         mealType: mealType,
         mode: mode.name,
-        imageDataUrls: images,
+        imageDataUrls: saveImages,
         description: desc,
         body: body,
       );
@@ -325,7 +355,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       _analysis.start(
         mealType: mealType,
         mode: mode.name,
-        imageDataUrls: images,
+        imageDataUrls: saveImages,
         description: desc,
         run: () => switch (mode) {
           CaptureMode.photo =>
@@ -446,7 +476,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       showDragHandle: true,
       builder: (ctx) => _ConfirmSheet(
         items: items,
-        imageDataUrls: mode == 'photo' ? List.of(images) : const [],
+        // Includes meal photos and any photos from picked saved foods.
+        imageDataUrls: List.of(images),
         onReestimate: (editedItems) async {
           final analyzed = await MealService.reestimate(
             mealType,
@@ -456,12 +487,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         },
         onSave: (confirmedItems) async {
           final saveItems = confirmedItems.map((e) => e.toMealItem()).toList();
-          // Only the active mode's source is persisted, matching the web form.
           // Nutrition is mirrored into Health Connect later, during the
           // "健康同步" flow (HealthService.syncNow), not at save time.
           await MealService.createMeal(
             mealType: mealType,
-            imageDataUrls: mode == 'photo' ? images : null,
+            imageDataUrls: images.isNotEmpty ? images : null,
             description: mode == 'describe' && desc.isNotEmpty ? desc : null,
             items: saveItems,
           );
@@ -473,6 +503,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   Future<void> _afterSave() async {
     setState(() {
       _imageDataUrls.clear();
+      _pickedFoodImages.clear();
       _descriptionCtrl.clear();
       _manualItems
         ..clear()
@@ -507,6 +538,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       carbs: mi.carbs,
       source: 'MEAL_ITEM',
       isFavorite: true,
+      // Reuse the current meal photo as the food photo when saving from a photo meal.
+      imageDataUrl: _imageDataUrls.isNotEmpty ? _imageDataUrls.first : null,
     );
     await _loadSavedFoods();
   }
@@ -526,6 +559,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         ),
       );
     });
+    // If the food has a photo, reuse it as a meal photo on save.
+    if (food.hasImage && _pickedFoodImages.length + _imageDataUrls.length < _maxImages) {
+      SavedFoodService.imageDataUrl(food.id).then((url) {
+        if (url != null && mounted) {
+          setState(() => _pickedFoodImages.add(url));
+        }
+      });
+    }
     if (markUsed) {
       SavedFoodService.markUsed(food.id).then((_) => _loadSavedFoods());
     }
@@ -944,6 +985,16 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               children: _savedFoods
                   .map(
                     (f) => InputChip(
+                      avatar: f.hasImage
+                          ? CircleAvatar(
+                              backgroundImage: NetworkImage(
+                                SavedFoodService.imageUrl(f.id),
+                                headers: ApiClient.instance.sessionCookie != null
+                                    ? {'Cookie': ApiClient.instance.sessionCookie!}
+                                    : null,
+                              ),
+                            )
+                          : null,
                       label: Text('${f.name} · ${fmtNum(f.calories)}kcal'),
                       onPressed: () => _addSavedFood(f),
                       onDeleted: () async {

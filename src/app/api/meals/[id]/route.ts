@@ -21,14 +21,25 @@ export const GET = apiRoute(async (_request: Request, context: { params: Promise
 export const DELETE = apiRoute(async (_request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
-  const meal = await prisma.meal.findFirst({ where: { id, userId: user.id }, select: { imageStorageKey: true } });
+  const meal = await prisma.meal.findFirst({
+    where: { id, userId: user.id },
+    select: { imageStorageKey: true, imageStorageKeys: true }
+  });
   await prisma.meal.deleteMany({ where: { id, userId: user.id } });
 
-  // Delete the associated image from object storage if one exists
-  if (meal?.imageStorageKey && isStorageKey(meal.imageStorageKey)) {
-    await deleteImage(meal.imageStorageKey).catch((err) => {
-      console.error("Failed to delete image from storage", err);
-    });
+  // Delete every associated image from object storage (fall back to the legacy
+  // single key for old rows).
+  const keys = meal?.imageStorageKeys.length
+    ? meal.imageStorageKeys
+    : meal?.imageStorageKey
+      ? [meal.imageStorageKey]
+      : [];
+  for (const key of keys) {
+    if (isStorageKey(key)) {
+      await deleteImage(key).catch((err) => {
+        console.error("Failed to delete image from storage", err);
+      });
+    }
   }
 
   return NextResponse.json({ ok: true });

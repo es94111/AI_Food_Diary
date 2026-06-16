@@ -84,6 +84,13 @@ class ApiClient {
         options: headers == null ? null : Options(headers: headers));
   }
 
+  /// GET returning raw bytes (e.g. an image), with the session cookie attached.
+  Future<Response<List<int>>> getBytes(String path) async {
+    final dio = await _client();
+    return dio.get<List<int>>(path,
+        options: Options(responseType: ResponseType.bytes));
+  }
+
   Future<Response<dynamic>> post(String path,
       {Object? data, Map<String, String>? headers}) async {
     final dio = await _client();

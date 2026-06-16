@@ -1,6 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/models.dart';
+import '../services/api_client.dart';
 import '../services/saved_food_service.dart';
 
 const _sourceLabels = {
@@ -28,6 +32,10 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
   bool _favorite = false;
   String _source = 'MANUAL';
   String? _error;
+  // New photo to upload (data URL) and whether to clear the existing one.
+  String? _imageDataUrl;
+  bool _removeImage = false;
+  final _picker = ImagePicker();
 
   final _name = TextEditingController();
   final _barcode = TextEditingController();
@@ -93,6 +101,8 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
       _carbs.text = food.carbs.toString();
       _source = food.source;
       _favorite = food.isFavorite;
+      _imageDataUrl = null;
+      _removeImage = false;
       _error = null;
     });
   }
@@ -100,6 +110,8 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
   void _reset() {
     setState(() {
       _editing = null;
+      _imageDataUrl = null;
+      _removeImage = false;
       _name.clear();
       _barcode.clear();
       _amount.text = '1 份';
@@ -110,6 +122,22 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
       _source = 'MANUAL';
       _favorite = false;
       _error = null;
+    });
+  }
+
+  Future<void> _pickImage() async {
+    final file = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1600,
+      imageQuality: 80,
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    final mime =
+        file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    setState(() {
+      _imageDataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
+      _removeImage = false;
     });
   }
 
@@ -140,6 +168,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
           carbs: double.tryParse(_carbs.text.trim()) ?? 0,
           source: _source,
           isFavorite: _favorite,
+          imageDataUrl: _imageDataUrl,
         );
       } else {
         await SavedFoodService.update(
@@ -155,6 +184,8 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
           carbs: double.tryParse(_carbs.text.trim()) ?? 0,
           source: _source,
           isFavorite: _favorite,
+          imageDataUrl: _imageDataUrl,
+          removeImage: _removeImage,
         );
       }
       _reset();
@@ -283,6 +314,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
               title: const Text('加入常用'),
               controlAffinity: ListTileControlAffinity.leading,
             ),
+            _imageRow(),
             const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
@@ -345,12 +377,86 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
     );
   }
 
+  Map<String, String> _authHeaders() =>
+      ApiClient.instance.sessionCookie != null
+          ? {'Cookie': ApiClient.instance.sessionCookie!}
+          : <String, String>{};
+
+  Widget _noPhotoBox(double size) => Container(
+        width: size,
+        height: size,
+        color: const Color(0xFFF5F5F4),
+        alignment: Alignment.center,
+        child: const Text('無', style: TextStyle(color: Colors.black38, fontSize: 12)),
+      );
+
+  /// Photo picker row for the create/edit form: preview + upload + remove.
+  Widget _imageRow() {
+    final editing = _editing;
+    final hasExisting = editing != null && editing.hasImage && !_removeImage;
+    Widget preview;
+    if (_imageDataUrl != null) {
+      preview = Image.memory(
+        base64Decode(_imageDataUrl!.split(',').last),
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+      );
+    } else if (hasExisting) {
+      preview = Image.network(
+        SavedFoodService.imageUrl(editing.id),
+        headers: _authHeaders(),
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => _noPhotoBox(56),
+      );
+    } else {
+      preview = _noPhotoBox(56);
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          ClipRRect(borderRadius: BorderRadius.circular(8), child: preview),
+          const SizedBox(width: 12),
+          OutlinedButton.icon(
+            onPressed: _pickImage,
+            icon: const Icon(Icons.photo_camera_outlined, size: 18),
+            label: const Text('上傳食物照片'),
+          ),
+          if (_imageDataUrl != null || hasExisting)
+            TextButton(
+              onPressed: () => setState(() {
+                _imageDataUrl = null;
+                _removeImage = true;
+              }),
+              child: const Text('移除', style: TextStyle(color: Colors.red)),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _foodTile(SavedFood food) {
     final lastUsed = food.lastUsedAt == null
         ? ''
         : ' · 上次 ${food.lastUsedAt!.month}/${food.lastUsedAt!.day}';
     return ListTile(
       contentPadding: EdgeInsets.zero,
+      leading: food.hasImage
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                SavedFoodService.imageUrl(food.id),
+                headers: _authHeaders(),
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => _noPhotoBox(48),
+              ),
+            )
+          : null,
       title: Text(
         '${food.isFavorite ? '★ ' : ''}${food.name} · ${fmtNum(food.calories)} kcal',
       ),

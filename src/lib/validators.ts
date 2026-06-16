@@ -86,7 +86,11 @@ export const savedFoodSchema = z.object({
   fat: z.coerce.number().min(0).max(1000),
   carbs: z.coerce.number().min(0).max(1000),
   source: z.enum(["MANUAL", "NUTRITION_LABEL", "BARCODE", "MEAL_ITEM"]).optional(),
-  isFavorite: z.coerce.boolean().optional()
+  isFavorite: z.coerce.boolean().optional(),
+  // Optional food photo as a data URL (uploaded to object storage by the route).
+  imageDataUrl: z.string().startsWith("data:image/").optional(),
+  // Set to clear an existing photo (on edit).
+  removeImage: z.coerce.boolean().optional()
 });
 
 export const savedFoodPatchSchema = savedFoodSchema.extend({

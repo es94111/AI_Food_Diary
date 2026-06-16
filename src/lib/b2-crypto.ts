@@ -143,8 +143,12 @@ export function encryptSavedFoodWrite(food: {
   };
 }
 
-export function decryptSavedFood<T extends SavedFoodLike>(food: T) {
-  return decryptMealItem(food);
+export function decryptSavedFood<T extends SavedFoodLike & { imageStorageKey?: string | null }>(food: T) {
+  const decrypted = decryptMealItem(food) as DecryptedMealItem<T> & { imageStorageKey?: string | null };
+  // Expose only whether a photo exists (clients fetch it via the image route);
+  // never send the raw storage key.
+  const { imageStorageKey, ...rest } = decrypted;
+  return { ...rest, hasImage: !!imageStorageKey };
 }
 
 export function encryptDailySummaryWrite(summary: {
@@ -191,20 +195,28 @@ export function decryptMeal<
     totalCarbs?: unknown;
     aiNotes?: string | null;
     encAiNotes?: unknown;
+    imageStorageKey?: string | null;
+    imageStorageKeys?: string[];
   }
 >(
   meal: T
-): Omit<T, "items" | "totalCalories" | "totalProtein" | "totalFat" | "totalCarbs" | "aiNotes" | "encAiNotes"> & {
+): Omit<T, "items" | "totalCalories" | "totalProtein" | "totalFat" | "totalCarbs" | "aiNotes" | "encAiNotes" | "imageStorageKeys"> & {
   items: DecryptedMealItem<MealItemOf<T>>[];
   totalCalories: number;
   totalProtein: number;
   totalFat: number;
   totalCarbs: number;
   aiNotes: string | null;
+  imageCount: number;
 } {
-  const { items, totalCalories, totalProtein, totalFat, totalCarbs, aiNotes, encAiNotes: _encAiNotes, ...rest } = meal;
+  const { items, totalCalories, totalProtein, totalFat, totalCarbs, aiNotes, encAiNotes: _encAiNotes, imageStorageKeys, ...rest } = meal;
+  // Surface how many images the meal has (so clients can request each by index)
+  // without leaking the raw storage keys.
+  const keys = imageStorageKeys ?? [];
+  const imageCount = keys.length > 0 ? keys.length : (rest.imageStorageKey ? 1 : 0);
   return {
     ...rest,
+    imageCount,
     totalCalories: Number(totalCalories ?? 0),
     totalProtein: Number(totalProtein ?? 0),
     totalFat: Number(totalFat ?? 0),

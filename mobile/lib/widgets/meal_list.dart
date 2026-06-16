@@ -66,6 +66,45 @@ class _MealCard extends StatelessWidget {
     if (saved == true) await onChanged();
   }
 
+  /// Renders the meal's photo(s): a single full-width image, or a horizontally
+  /// scrollable strip when the meal has more than one.
+  Widget _mealImages(Meal meal, Map<String, String> headers) {
+    final count = meal.imageCount > 0 ? meal.imageCount : 1;
+    Widget tile(int i, double? width) => Image.network(
+          MealService.mealImageUrl(meal, i),
+          headers: headers,
+          height: 160,
+          width: width ?? double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => Container(
+            height: 120,
+            width: width ?? double.infinity,
+            alignment: Alignment.center,
+            color: const Color(0xFFF5F5F4),
+            child: const Text('圖片載入失敗',
+                style: TextStyle(color: Colors.black45)),
+          ),
+        );
+    if (count <= 1) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: tile(0, null),
+      );
+    }
+    return SizedBox(
+      height: 160,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: count,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: tile(i, 220),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final headers = ApiClient.instance.sessionCookie != null
@@ -103,24 +142,7 @@ class _MealCard extends StatelessWidget {
             ),
             if (meal.hasImage) ...[
               const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.network(
-                  MealService.mealImageUrl(meal),
-                  headers: headers,
-                  height: 160,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    height: 120,
-                    width: double.infinity,
-                    alignment: Alignment.center,
-                    color: const Color(0xFFF5F5F4),
-                    child: const Text('圖片載入失敗',
-                        style: TextStyle(color: Colors.black45)),
-                  ),
-                ),
-              ),
+              _mealImages(meal, headers),
             ],
             const SizedBox(height: 8),
             ...meal.items.map((it) => Padding(

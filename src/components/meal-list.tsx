@@ -31,6 +31,7 @@ type Meal = {
   mealType: string;
   eatenAt: string;
   imageStorageKey: string | null;
+  imageUrls?: string[];
   totalCalories: number;
   totalProtein: number | string;
   totalFat: number | string;
@@ -159,7 +160,26 @@ function MealCard({ meal }: { meal: Meal }) {
           </button>
         </div>
       </div>
-      {meal.imageStorageKey ? <img alt="餐點照片" className="mt-3 max-h-72 w-full rounded-2xl object-cover" src={meal.imageStorageKey} /> : null}
+      {(() => {
+        const urls = meal.imageUrls?.length ? meal.imageUrls : meal.imageStorageKey ? [meal.imageStorageKey] : [];
+        if (urls.length === 0) return null;
+        if (urls.length === 1) {
+          return <img alt="餐點照片" className="mt-3 max-h-72 w-full rounded-2xl object-cover" src={urls[0]} />;
+        }
+        // Multiple images: a horizontally scrollable strip so every photo shows.
+        return (
+          <div className="mt-3 flex snap-x gap-2 overflow-x-auto pb-1">
+            {urls.map((url, i) => (
+              <img
+                key={url}
+                alt={`餐點照片 ${i + 1}`}
+                className="h-44 w-44 flex-none snap-start rounded-2xl object-cover"
+                src={url}
+              />
+            ))}
+          </div>
+        );
+      })()}
       {editing ? (
         <form className="mt-4 space-y-3" onSubmit={onSave}>
           <label className="block">

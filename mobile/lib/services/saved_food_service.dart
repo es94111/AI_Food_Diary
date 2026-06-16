@@ -1,8 +1,25 @@
+import 'dart:convert';
+
 import '../models/models.dart';
 import 'api_client.dart';
 
 class SavedFoodService {
   static final _api = ApiClient.instance;
+
+  /// Fetches a saved food's photo and returns it as a data URL (or null), so it
+  /// can be reused as a meal photo when the food is picked.
+  static Future<String?> imageDataUrl(String id) async {
+    try {
+      final res = await _api.getBytes('/api/saved-foods/$id/image');
+      if (!ApiClient.ok(res)) return null;
+      final bytes = res.data;
+      if (bytes == null || bytes.isEmpty) return null;
+      final contentType = res.headers.value('content-type') ?? 'image/jpeg';
+      return 'data:$contentType;base64,${base64Encode(bytes)}';
+    } catch (_) {
+      return null;
+    }
+  }
 
   static Future<List<SavedFood>> list() async {
     final res = await _api.get('/api/saved-foods');
@@ -21,6 +38,9 @@ class SavedFoodService {
     return SavedFood.fromJson(food);
   }
 
+  /// Authenticated endpoint for a saved food's photo.
+  static String imageUrl(String id) => '${ApiClient.baseUrl}/api/saved-foods/$id/image';
+
   static Future<void> create({
     String? barcode,
     required String name,
@@ -31,6 +51,7 @@ class SavedFoodService {
     required double carbs,
     String source = 'MANUAL',
     bool isFavorite = false,
+    String? imageDataUrl,
   }) async {
     final res = await _api.post(
       '/api/saved-foods',
@@ -45,6 +66,8 @@ class SavedFoodService {
         'carbs': carbs,
         'source': source,
         'isFavorite': isFavorite,
+        if (imageDataUrl != null && imageDataUrl.isNotEmpty)
+          'imageDataUrl': imageDataUrl,
       },
     );
     if (!ApiClient.ok(res)) {
@@ -63,6 +86,8 @@ class SavedFoodService {
     required double carbs,
     String source = 'MANUAL',
     bool isFavorite = false,
+    String? imageDataUrl,
+    bool removeImage = false,
   }) async {
     final res = await _api.patch(
       '/api/saved-foods/$id',
@@ -77,6 +102,9 @@ class SavedFoodService {
         'carbs': carbs,
         'source': source,
         'isFavorite': isFavorite,
+        if (imageDataUrl != null && imageDataUrl.isNotEmpty)
+          'imageDataUrl': imageDataUrl,
+        if (removeImage) 'removeImage': true,
       },
     );
     if (!ApiClient.ok(res)) {

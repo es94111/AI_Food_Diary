@@ -17,7 +17,17 @@ type SavedFood = {
   isFavorite?: boolean;
   useCount?: number;
   lastUsedAt?: string | null;
+  hasImage?: boolean;
 };
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 type FoodDraft = Omit<SavedFood, "id" | "useCount" | "lastUsedAt"> & { id?: string };
 type FoodTab = "favorites" | "mine" | "barcoded" | "recent";
@@ -55,6 +65,9 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
   const [activeTab, setActiveTab] = useState<FoodTab>("favorites");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // New photo to upload (data URL), and whether to clear the existing one.
+  const [draftImage, setDraftImage] = useState<string | null>(null);
+  const [removeImage, setRemoveImage] = useState(false);
 
   const visibleFoods = useMemo(() => {
     return foods.filter((food) => {
@@ -68,12 +81,16 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
   function edit(food: SavedFood) {
     setEditingId(food.id);
     setDraft({ ...food, barcode: food.barcode ?? "", source: food.source ?? "MANUAL", isFavorite: food.isFavorite ?? false });
+    setDraftImage(null);
+    setRemoveImage(false);
     setError("");
   }
 
   function reset() {
     setEditingId(null);
     setDraft(emptyDraft);
+    setDraftImage(null);
+    setRemoveImage(false);
     setError("");
   }
 
@@ -101,7 +118,11 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
     const response = await fetch(editingId ? `/api/saved-foods/${editingId}` : "/api/saved-foods", {
       method: editingId ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payloadFor(draft))
+      body: JSON.stringify({
+        ...payloadFor(draft),
+        ...(draftImage ? { imageDataUrl: draftImage } : {}),
+        ...(removeImage ? { removeImage: true } : {})
+      })
     });
     const data = await response.json().catch(() => ({}));
     setSaving(false);
@@ -154,7 +175,36 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
           <input checked={!!draft.isFavorite} onChange={(event) => setDraft((v) => ({ ...v, isFavorite: event.target.checked }))} type="checkbox" />
           加入常用
         </label>
-        <button className="rounded-xl bg-amber-700 px-4 py-2 font-semibold text-white disabled:opacity-60" disabled={saving} onClick={save} type="button">{saving ? "儲存中..." : editingId ? "儲存修改" : "新增食物"}</button>
+        <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2 sm:col-span-2">
+          {(() => {
+            const existing = editingId && !removeImage && foods.find((f) => f.id === editingId)?.hasImage;
+            const src = draftImage ?? (existing ? `/api/saved-foods/${editingId}/image` : null);
+            return src ? (
+              <img alt="食物照片" className="h-16 w-16 rounded-lg object-cover" src={src} />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-stone-100 text-xs text-stone-400">無照片</div>
+            );
+          })()}
+          <label className="cursor-pointer rounded-full bg-stone-100 px-3 py-1.5 text-sm font-semibold text-stone-700">
+            上傳食物照片
+            <input
+              accept="image/*"
+              className="hidden"
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                setDraftImage(await fileToDataUrl(file));
+                setRemoveImage(false);
+                event.target.value = "";
+              }}
+              type="file"
+            />
+          </label>
+          {draftImage || (editingId && !removeImage && foods.find((f) => f.id === editingId)?.hasImage) ? (
+            <button className="text-sm font-semibold text-red-600" onClick={() => { setDraftImage(null); setRemoveImage(true); }} type="button">移除</button>
+          ) : null}
+        </div>
+        <button className="rounded-xl bg-amber-700 px-4 py-2 font-semibold text-white disabled:opacity-60 sm:col-span-2" disabled={saving} onClick={save} type="button">{saving ? "儲存中..." : editingId ? "儲存修改" : "新增食物"}</button>
       </div>
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
@@ -169,10 +219,13 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
       <div className="mt-4 divide-y divide-stone-100 overflow-hidden rounded-2xl bg-white ring-1 ring-stone-200">
         {visibleFoods.length ? visibleFoods.map((food) => (
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={food.id}>
-            <div>
+            <div className="flex items-center gap-3">
+              {food.hasImage ? <img alt={food.name} className="h-14 w-14 flex-none rounded-xl object-cover" src={`/api/saved-foods/${food.id}/image`} /> : null}
+              <div>
               <p className="font-bold text-stone-900">{food.isFavorite ? "★ " : ""}{food.name} <span className="font-normal text-stone-500">· {food.estimatedAmount}</span></p>
               <p className="mt-1 text-sm text-stone-500">{food.calories} kcal · 蛋白質 {food.protein}g · 脂肪 {food.fat}g · 碳水 {food.carbs}g{food.barcode ? ` · 條碼 ${food.barcode}` : ""}</p>
               <p className="mt-1 text-xs text-stone-400">{sourceLabels[food.source ?? "MANUAL"]} · 使用 {food.useCount ?? 0} 次{food.lastUsedAt ? ` · 上次 ${new Date(food.lastUsedAt).toLocaleDateString()}` : ""}</p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <button className="rounded-full bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-700" onClick={() => toggleFavorite(food)} type="button">{food.isFavorite ? "取消常用" : "設為常用"}</button>

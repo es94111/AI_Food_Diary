@@ -83,7 +83,11 @@ model Meal {
   id              String     @id @default(cuid())
   userId          String
   mealType        MealType
+  // Representative (first) image — kept for backward compatibility with existing
+  // rows and single-image code paths. Mirrors imageStorageKeys[0].
   imageStorageKey String?
+  // All uploaded images for the meal (a batch of the same meal / different dishes).
+  imageStorageKeys String[] @default([])
   totalCalories   Decimal    @default(0) @db.Decimal(8, 2)
   totalProtein    Decimal    @default(0) @db.Decimal(8, 2)
   totalFat        Decimal    @default(0) @db.Decimal(8, 2)
@@ -136,6 +140,9 @@ model SavedFood {
   id              String   @id @default(cuid())
   userId          String
   barcode         String?
+  // Optional photo for the food (object-storage key), shown in food management
+  // and the quick-pick list, and reused as the meal photo when picked.
+  imageStorageKey String?
   // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
   name            String?
   estimatedAmount String?
