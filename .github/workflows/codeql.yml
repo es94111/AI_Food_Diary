@@ -45,8 +45,11 @@ jobs:
         include:
         - language: actions
           build-mode: none
+        # build-mode: none — Android/Kotlin 程式碼在 mobile/android（Flutter 子專案），
+        # repo 根目錄沒有頂層 Gradle 專案，autobuild 會失敗（No build command found）。
+        # none 直接分析原始碼、不需建置。
         - language: java-kotlin
-          build-mode: autobuild
+          build-mode: none
         - language: javascript-typescript
           build-mode: none
         - language: python
