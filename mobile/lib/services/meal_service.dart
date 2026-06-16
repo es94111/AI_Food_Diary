@@ -1,3 +1,5 @@
+import 'package:sentry_flutter/sentry_flutter.dart';
+
 import '../models/models.dart';
 import '../utils/metabolism.dart';
 import 'api_client.dart';
@@ -79,6 +81,10 @@ class MealService {
       String path, Map<String, dynamic> body, String fallback) async {
     final res = await _api.post(path, data: body);
     if (!ApiClient.ok(res)) {
+      Sentry.logger.error('Meal analysis failed', attributes: {
+        'path': SentryAttribute.string(path),
+        'status': SentryAttribute.int(res.statusCode ?? 0),
+      });
       throw ApiException(ApiClient.errorMessage(res, fallback),
           statusCode: res.statusCode);
     }
@@ -105,9 +111,19 @@ class MealService {
       'eatenAt': DateTime.now().toUtc().toIso8601String(),
     });
     if (!ApiClient.ok(res)) {
+      Sentry.logger.error('Meal save failed', attributes: {
+        'meal_type': SentryAttribute.string(mealType),
+        'status': SentryAttribute.int(res.statusCode ?? 0),
+      });
       throw ApiException(ApiClient.errorMessage(res, '儲存失敗，請稍後再試'),
           statusCode: res.statusCode);
     }
+    // Count each successfully logged meal, tagged by meal type for breakdown.
+    Sentry.metrics.count(
+      'meals_created',
+      1,
+      attributes: {'meal_type': SentryAttribute.string(mealType)},
+    );
   }
 
   static Future<void> updateMeal(

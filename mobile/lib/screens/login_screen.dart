@@ -225,14 +225,6 @@ class _LoginScreenState extends State<LoginScreen> {
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 11, color: Colors.black38)),
                     ),
-                  // TODO: Remove after verifying Sentry receives the event.
-                  const SizedBox(height: 8),
-                  ElevatedButton(
-                    onPressed: () {
-                      throw StateError('This is test exception');
-                    },
-                    child: const Text('Verify Sentry Setup'),
-                  ),
                 ],
               ),
             ),

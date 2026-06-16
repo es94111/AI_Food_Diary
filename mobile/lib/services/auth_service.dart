@@ -1,3 +1,5 @@
+import 'package:sentry_flutter/sentry_flutter.dart';
+
 import '../models/models.dart';
 import 'api_client.dart';
 
@@ -14,9 +16,13 @@ class AuthService {
       if (turnstileToken != null) 'cf-turnstile-response': turnstileToken,
     });
     if (!ApiClient.ok(res)) {
+      Sentry.logger.warn('Password login failed', attributes: {
+        'status': SentryAttribute.int(res.statusCode ?? 0),
+      });
       throw ApiException(ApiClient.errorMessage(res, 'Email 或密碼錯誤'),
           statusCode: res.statusCode);
     }
+    Sentry.logger.info('Password login succeeded');
     // Cookie captured by the interceptor; fetch full profile.
     return fetchMe();
   }
@@ -40,9 +46,13 @@ class AuthService {
   static Future<AppUser> loginWithGoogle(String idToken) async {
     final res = await _api.post('/api/auth/google', data: {'idToken': idToken});
     if (!ApiClient.ok(res)) {
+      Sentry.logger.warn('Google login failed', attributes: {
+        'status': SentryAttribute.int(res.statusCode ?? 0),
+      });
       throw ApiException(ApiClient.errorMessage(res, 'Google 登入失敗'),
           statusCode: res.statusCode);
     }
+    Sentry.logger.info('Google login succeeded');
     return fetchMe();
   }
 
