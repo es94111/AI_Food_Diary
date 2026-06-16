@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/models.dart';
+import '../services/background_analysis.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_service.dart';
@@ -289,21 +290,52 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final manualItems = manual.map((e) => e.toMealItem()).toList();
     final precise = _preciseMode;
     setState(() => _error = null);
-    // Fire and forget — the controller owns the future. Navigating away no
-    // longer cancels or drops the result.
-    _analysis.start(
-      mealType: mealType,
-      mode: mode.name,
-      imageDataUrls: images,
-      description: desc,
-      run: () => switch (mode) {
-        CaptureMode.photo =>
-          MealService.analyzeImage(mealType, images, precise: precise),
-        CaptureMode.describe =>
-          MealService.analyzeDescription(mealType, desc),
-        CaptureMode.manual => MealService.analyzeManual(mealType, manualItems),
-      },
-    );
+    // Fire and forget — the controller owns the analysis. Navigating away (or
+    // even backgrounding/killing the app on Android) no longer drops the result.
+    if (BackgroundAnalysis.supported) {
+      // Android: run it in a WorkManager background isolate that survives the
+      // app being minimised/killed and notifies on completion.
+      final eatenAt = DateTime.now().toUtc().toIso8601String();
+      final body = switch (mode) {
+        CaptureMode.photo => <String, dynamic>{
+            'mealType': mealType,
+            'imageDataUrls': images,
+            'precise': precise,
+            'eatenAt': eatenAt,
+          },
+        CaptureMode.describe => <String, dynamic>{
+            'mealType': mealType,
+            'description': desc,
+            'eatenAt': eatenAt,
+          },
+        CaptureMode.manual => <String, dynamic>{
+            'mealType': mealType,
+            'manualItems': manualItems.map((e) => e.toPayload()).toList(),
+            'eatenAt': eatenAt,
+          },
+      };
+      _analysis.startBackground(
+        mealType: mealType,
+        mode: mode.name,
+        imageDataUrls: images,
+        description: desc,
+        body: body,
+      );
+    } else {
+      _analysis.start(
+        mealType: mealType,
+        mode: mode.name,
+        imageDataUrls: images,
+        description: desc,
+        run: () => switch (mode) {
+          CaptureMode.photo =>
+            MealService.analyzeImage(mealType, images, precise: precise),
+          CaptureMode.describe =>
+            MealService.analyzeDescription(mealType, desc),
+          CaptureMode.manual => MealService.analyzeManual(mealType, manualItems),
+        },
+      );
+    }
   }
 
   /// Opens the confirm/edit sheet for a finished background analysis, then saves
