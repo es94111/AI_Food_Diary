@@ -21,3 +21,4 @@ minio_data
 *.jks
 *.keystore
 key.properties
+sentry-wizard.exe

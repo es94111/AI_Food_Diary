@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -18,7 +19,7 @@ const csp = [
   "font-src 'self' data: https://fonts.gstatic.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com https://www.gstatic.com",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://challenges.cloudflare.com https://accounts.google.com https://apis.google.com https://www.gstatic.com`,
-  "connect-src 'self' https://challenges.cloudflare.com https://accounts.google.com",
+  "connect-src 'self' https://challenges.cloudflare.com https://accounts.google.com https://o4511575169040384.ingest.de.sentry.io",
   "frame-src https://challenges.cloudflare.com https://accounts.google.com"
 ].join("; ");
 
@@ -40,4 +41,16 @@ const nextConfig: NextConfig = {
   }
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: "shao-wq",
+  project: "ai-food-diary-web",
+  // Only print source-map upload logs in CI.
+  silent: !process.env.CI,
+  // Upload a wider set of client source maps for readable stack traces.
+  widenClientFileUpload: true,
+  // Tree-shake Sentry logger statements to shrink the client bundle.
+  disableLogger: true,
+  // Source-map upload needs SENTRY_AUTH_TOKEN at build time; without it the
+  // build still succeeds, just without uploaded maps.
+});
+

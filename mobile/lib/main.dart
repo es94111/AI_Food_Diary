@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -22,6 +23,12 @@ void main() async {
       options.tracesSampleRate = 1.0;
       // Enable structured logs (Sentry.logger.*). Off by default.
       options.enableLogs = true;
+      // Release Health: session tracking drives crash-free rate / adoption.
+      // On by default; stated explicitly here. release & dist are auto-derived
+      // from the app version (pubspec, or CI --build-name/--build-number);
+      // environment splits production vs development sessions in Sentry.
+      options.enableAutoSessionTracking = true;
+      options.environment = kReleaseMode ? 'production' : 'development';
     },
     appRunner: () => runApp(SentryWidget(child: const AiFoodApp())),
   );
