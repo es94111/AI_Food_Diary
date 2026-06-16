@@ -45,7 +45,7 @@ dependencies:
   package_info_plus: ^9.0.1
   path_provider: ^2.1.5
   open_filex: ^4.7.0
-  google_sign_in: ^6.2.1
+  google_sign_in: ^7.2.0
   # Background meal analysis: WorkManager runs the analysis in a background
   # isolate that survives the app being minimised or killed, and posts a system
   # notification on completion.
