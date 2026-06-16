@@ -109,8 +109,8 @@ class BackgroundAnalysis {
   static Future<void> clearNotifications() async {
     if (!supported) return;
     final plugin = FlutterLocalNotificationsPlugin();
-    await plugin.cancel(_progressNotifId);
-    await plugin.cancel(_doneNotifId);
+    await plugin.cancel(id: _progressNotifId);
+    await plugin.cancel(id: _doneNotifId);
   }
 
   /// The saved context for an in-flight/finished job ({mode, mealType,
@@ -154,7 +154,7 @@ class BackgroundAnalysis {
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
     );
-    await FlutterLocalNotificationsPlugin().initialize(settings);
+    await FlutterLocalNotificationsPlugin().initialize(settings: settings);
     await FlutterLocalNotificationsPlugin()
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
@@ -169,10 +169,10 @@ class BackgroundAnalysis {
   static Future<void> _showProgressNotification() async {
     await _ensureNotifications();
     await FlutterLocalNotificationsPlugin().show(
-      _progressNotifId,
-      'AI 正在分析餐點…',
-      '完成後會通知你，可以先離開或關閉 App。',
-      const NotificationDetails(
+      id: _progressNotifId,
+      title: 'AI 正在分析餐點…',
+      body: '完成後會通知你，可以先離開或關閉 App。',
+      notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
@@ -194,12 +194,12 @@ class BackgroundAnalysis {
       {required bool done, String? error}) async {
     await _ensureNotifications();
     final plugin = FlutterLocalNotificationsPlugin();
-    await plugin.cancel(_progressNotifId);
+    await plugin.cancel(id: _progressNotifId);
     await plugin.show(
-      _doneNotifId,
-      done ? 'AI 分析完成 ✅' : 'AI 分析失敗',
-      done ? '點此回到 App 確認並儲存餐點。' : (error ?? '請回到 App 重試。'),
-      const NotificationDetails(
+      id: _doneNotifId,
+      title: done ? 'AI 分析完成 ✅' : 'AI 分析失敗',
+      body: done ? '點此回到 App 確認並儲存餐點。' : (error ?? '請回到 App 重試。'),
+      notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
