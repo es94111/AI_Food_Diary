@@ -1091,6 +1091,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: ItemEditor(
+        // Keyed by item identity so the text fields rebuild with the fresh
+        // values when picking a 常用食物 (or a label scan) swaps in new objects.
+        key: ObjectKey(item),
         item: item,
         index: index,
         showRating: false,
