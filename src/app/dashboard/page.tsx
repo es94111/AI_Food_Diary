@@ -93,11 +93,19 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   const hasExpenditure = displayExpenditure > 0;
   const netCalories = Math.round(displayTotals.calories) - displayExpenditure;
   const isDeficit = netCalories < 0;
-  const mealList = meals.map((meal) => ({
-    ...decryptMeal(meal),
-    eatenAt: meal.eatenAt.toISOString(),
-    imageStorageKey: meal.imageStorageKey ? `/api/meals/${meal.id}/image` : null
-  }));
+  const mealList = meals.map((meal) => {
+    const decrypted = decryptMeal(meal);
+    const imageUrls = Array.from(
+      { length: decrypted.imageCount },
+      (_, i) => `/api/meals/${meal.id}/image?i=${i}`
+    );
+    return {
+      ...decrypted,
+      eatenAt: meal.eatenAt.toISOString(),
+      imageStorageKey: imageUrls[0] ?? null,
+      imageUrls
+    };
+  });
   const weekStartStrValue = weekStartStr(selectedDateStr);
   const weeklyDays = Array.from({ length: 7 }, (_, index) => {
     const dayStr = addDaysStr(weekStartStrValue, index);
@@ -199,7 +207,7 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
             isToday={isTodayView}
           />
         ) : null}
-        <MealCaptureForm initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""} />
+        <MealCaptureForm initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""} timeZone={tzName(tz)} />
         <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">{view === "week" ? "本週餐點" : "當日餐點"}</h2>
           <div className="mt-4">

@@ -28,15 +28,58 @@ type SavedFood = {
   carbs: number;
   source?: "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM";
   isFavorite?: boolean;
+  hasImage?: boolean;
 };
+
+// Fetches a saved food's stored photo (auth cookie) and returns it as a data URL
+// so it can be reused as a meal photo on save.
+async function fetchSavedFoodImageDataUrl(foodId: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/saved-foods/${foodId}/image`, { credentials: "include" });
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
 
 function emptyManualItem(): ManualItem {
   return { id: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
 }
 
+// 取得 [date] 在指定時區（IANA 名稱）的當地時與分；無時區或失敗時退回瀏覽器本地時間。
+function localHourMinute(date: Date, timeZone?: string): { hour: number; minute: number } {
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
+      }).formatToParts(date);
+      const hour = Number(parts.find((p) => p.type === "hour")?.value ?? "NaN");
+      const minute = Number(parts.find((p) => p.type === "minute")?.value ?? "NaN");
+      if (Number.isFinite(hour) && Number.isFinite(minute)) {
+        return { hour: hour === 24 ? 0 : hour, minute };
+      }
+    } catch {
+      // fall through to browser-local time
+    }
+  }
+  return { hour: date.getHours(), minute: date.getMinutes() };
+}
+
 // 依目前時間挑選「最近的餐期」：用各餐期的代表時間點，取時間距離最近者（跨午夜也算）。
-function nearestMealType(now: Date = new Date()): string {
-  const minutes = now.getHours() * 60 + now.getMinutes();
+// 以使用者所在時區（[timeZone]）的當地時間判斷。
+function nearestMealType(timeZone?: string, now: Date = new Date()): string {
+  const { hour, minute } = localHourMinute(now, timeZone);
+  const minutes = hour * 60 + minute;
   const anchors: { type: string; at: number }[] = [
     { type: "BREAKFAST", at: 7 * 60 },
     { type: "LUNCH", at: 12 * 60 },
@@ -68,7 +111,7 @@ const CAPTURE_MODES: { id: CaptureMode; label: string }[] = [
 const MAX_IMAGES = 5;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
-export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMealAdvice?: string }) {
+export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { initialNextMealAdvice?: string; timeZone?: string }) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nutritionLabelInputRef = useRef<HTMLInputElement>(null);
@@ -86,6 +129,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
   const [barcode, setBarcode] = useState("");
   const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
+  // Photos pulled from picked saved foods, merged into the meal's images on save
+  // (so a saved food's photo also becomes the meal photo).
+  const [pickedImages, setPickedImages] = useState<string[]>([]);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -94,9 +140,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
 
   useEffect(() => {
     loadSavedFoods();
-    // 掛載後依目前時間預選最近的餐期（放在 effect 內避免 SSR 與客戶端時間不一致）。
-    setMealType(nearestMealType());
   }, []);
+
+  useEffect(() => {
+    // 掛載後依使用者時區的當地時間預選最近的餐期（放在 effect 內避免 SSR 與客戶端不一致）。
+    setMealType(nearestMealType(timeZone));
+  }, [timeZone]);
 
   useEffect(() => {
     setNextMealAdvice(initialNextMealAdvice);
@@ -246,7 +295,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mealType: confirmMealType,
-          imageDataUrls: mode === "photo" && previews.length ? previews : undefined,
+          // Meal photos + any photos from picked saved foods (so a picked food's
+          // photo also becomes a meal photo, regardless of capture mode).
+          imageDataUrls:
+            [...(mode === "photo" ? previews : []), ...pickedImages].length > 0
+              ? [...(mode === "photo" ? previews : []), ...pickedImages]
+              : undefined,
           description: mode === "describe" ? description.trim() || undefined : undefined,
           manualItems: items,
           eatenAt: new Date().toISOString()
@@ -258,6 +312,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         return;
       }
       setPreviews([]);
+      setPickedImages([]);
       setDescription("");
       setManualItems([emptyManualItem()]);
       setConfirmItems([]);
@@ -337,7 +392,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         fat: Number(item.fat || 0),
         carbs: Number(item.carbs || 0),
         source: options.source,
-        isFavorite: true
+        isFavorite: true,
+        // Reuse the current meal photo as the food photo when saving from a photo meal.
+        ...(previews.length ? { imageDataUrl: previews[0] } : {})
       })
     });
     if (response.ok) await loadSavedFoods();
@@ -384,6 +441,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
         aiRating: "MANUAL"
       }
     ]);
+    // If the food has a photo, reuse it as a meal photo on save.
+    if (food.hasImage) {
+      fetchSavedFoodImageDataUrl(food.id).then((dataUrl) => {
+        if (dataUrl) setPickedImages((current) => [...current, dataUrl]);
+      });
+    }
     if (options.markUsed) markSavedFoodUsed(food.id);
   }
 
@@ -500,7 +563,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "" }: { initialNextMea
           <div className="mt-2 grid gap-2">
             {savedFoods.map((food) => (
               <div className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 p-2 text-sm" key={food.id}>
-                <button className="text-left font-semibold text-stone-800" onClick={() => addSavedFood(food)} type="button">+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</button>
+                <button className="flex flex-1 items-center gap-2 text-left font-semibold text-stone-800" onClick={() => addSavedFood(food)} type="button">
+                  {food.hasImage ? <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" src={`/api/saved-foods/${food.id}/image`} /> : null}
+                  <span>+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</span>
+                </button>
                 <button className="shrink-0 text-red-600" onClick={() => deleteSavedFood(food.id)} type="button">封存</button>
               </div>
             ))}

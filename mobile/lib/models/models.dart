@@ -145,7 +145,8 @@ class MealItem {
 class Meal {
   final String id;
   final String mealType;
-  final String? imageStorageKey; // relative path like /api/meals/{id}/image
+  final String? imageStorageKey; // legacy single-image marker
+  final int imageCount; // how many images this meal has
   final double totalCalories;
   final double totalProtein;
   final double totalFat;
@@ -158,6 +159,7 @@ class Meal {
     required this.id,
     required this.mealType,
     this.imageStorageKey,
+    this.imageCount = 0,
     required this.totalCalories,
     required this.totalProtein,
     required this.totalFat,
@@ -167,12 +169,15 @@ class Meal {
     required this.items,
   });
 
-  bool get hasImage => imageStorageKey != null;
+  bool get hasImage => imageCount > 0 || imageStorageKey != null;
 
   factory Meal.fromJson(Map<String, dynamic> j) => Meal(
     id: j['id'] as String,
     mealType: (j['mealType'] as String?) ?? 'LUNCH',
     imageStorageKey: j['imageStorageKey'] as String?,
+    // Older API responses have no imageCount — fall back to the single-image marker.
+    imageCount: (j['imageCount'] as num?)?.toInt() ??
+        ((j['imageStorageKey'] != null) ? 1 : 0),
     totalCalories: _toDouble(j['totalCalories']),
     totalProtein: _toDouble(j['totalProtein']),
     totalFat: _toDouble(j['totalFat']),
@@ -233,6 +238,7 @@ class SavedFood {
   final bool isFavorite;
   final int useCount;
   final DateTime? lastUsedAt;
+  final bool hasImage;
 
   SavedFood({
     required this.id,
@@ -247,6 +253,7 @@ class SavedFood {
     this.isFavorite = false,
     this.useCount = 0,
     this.lastUsedAt,
+    this.hasImage = false,
   });
 
   factory SavedFood.fromJson(Map<String, dynamic> j) => SavedFood(
@@ -260,6 +267,7 @@ class SavedFood {
     carbs: _toDouble(j['carbs']),
     source: (j['source'] as String?) ?? 'MANUAL',
     isFavorite: j['isFavorite'] == true,
+    hasImage: j['hasImage'] == true,
     useCount: _toInt(j['useCount']),
     lastUsedAt: j['lastUsedAt'] is String
         ? DateTime.tryParse(j['lastUsedAt'] as String)

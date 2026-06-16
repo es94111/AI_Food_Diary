@@ -48,18 +48,20 @@ export async function POST(request: Request) {
           : "手動新增餐點項目。"
     };
 
-    // Upload the representative photo (the first of the batch) to object storage and
-    // store its key, not the raw data URL.
-    let imageStorageKey: string | null = null;
-    if (images.length) {
-      imageStorageKey = await uploadImage(images[0], user.id);
+    // Upload every photo in the batch to object storage and store their keys,
+    // not the raw data URLs. imageStorageKey mirrors the first for backward compat.
+    const imageStorageKeys: string[] = [];
+    for (const image of images) {
+      imageStorageKeys.push(await uploadImage(image, user.id));
     }
+    const imageStorageKey = imageStorageKeys[0] ?? null;
 
     const meal = await prisma.meal.create({
       data: {
         userId: user.id,
         mealType: body.mealType,
         imageStorageKey,
+        imageStorageKeys,
         eatenAt: body.eatenAt ? new Date(body.eatenAt) : new Date(),
         totalCalories: analysis.total.calories,
         totalProtein: analysis.total.protein,

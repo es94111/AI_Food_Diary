@@ -175,5 +175,7 @@ class MealService {
 
   /// Meal images are protected by the backend and should be loaded through the
   /// authenticated image endpoint, not directly from the object-storage key.
-  static String mealImageUrl(Meal meal) => '${ApiClient.baseUrl}/api/meals/${meal.id}/image';
+  /// [index] selects which image of the batch (0-based).
+  static String mealImageUrl(Meal meal, [int index = 0]) =>
+      '${ApiClient.baseUrl}/api/meals/${meal.id}/image?i=$index';
 }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
 import { apiRoute } from "@/lib/http";
 import { savedFoodPatchSchema } from "@/lib/validators";
+import { resolveSavedFoodImage } from "../route";
 
 export const PATCH = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
@@ -11,10 +12,12 @@ export const PATCH = apiRoute(async (request: Request, context: { params: Promis
   const body = savedFoodPatchSchema.parse(await request.json());
   const existing = await prisma.savedFood.findFirst({ where: { id, userId: user.id } });
   if (!existing) return NextResponse.json({ error: "找不到常用食物。" }, { status: 404 });
+  const imageData = await resolveSavedFoodImage(body, user.id);
   const food = await prisma.savedFood.update({
     where: { id },
     data: {
       ...encryptSavedFoodWrite(body),
+      ...imageData,
       archivedAt: body.archived ? new Date() : null
     }
   });
