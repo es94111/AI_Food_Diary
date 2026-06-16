@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
@@ -6,13 +7,22 @@ import 'services/auth_service.dart';
 import 'services/background_analysis.dart';
 import 'services/meal_analysis_controller.dart';
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // Background meal analysis (Android): register the WorkManager dispatcher and
   // notification channel, then recover any job left by a previous process.
   await BackgroundAnalysis.init();
   await MealAnalysisController.instance.init();
-  runApp(const AiFoodApp());
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = 'https://9c5384849c931702f75c03a530b30445@o4511575169040384.ingest.de.sentry.io/4511575192502352';
+      // Set tracesSampleRate to 1.0 to capture 100% of transactions for tracing.
+      // We recommend adjusting this value in production.
+      options.tracesSampleRate = 1.0;
+    },
+    appRunner: () => runApp(SentryWidget(child: const AiFoodApp())),
+  );
 }
 
 class AiFoodApp extends StatelessWidget {
