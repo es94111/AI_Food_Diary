@@ -14,8 +14,20 @@ Sentry.init({
   // Send logs to Sentry.
   enableLogs: true,
   // Capture 100% of transactions for tracing. Lower this in production if the
-  // event volume gets too high. Tracing must be enabled for profiling to work.
+  // event volume gets too high. Tracing must be enabled for profiling and for
+  // GenAI/agent monitoring to work.
   tracesSampleRate: 1,
+  // Agent (GenAI) monitoring: emit spans for LLM calls (the `openai` SDK is
+  // auto-instrumented), including streaming responses. Gives latency, token
+  // usage, model name and failures for the AI meal-analysis flows.
+  streamGenAiSpans: true,
+  dataCollection: {
+    // Do NOT ship LLM inputs/outputs to Sentry — those contain the user's meal
+    // photos, descriptions and AI replies (the very data we encrypt at rest).
+    // Latency / tokens / model / errors are still captured without them. Flip
+    // these to true only if you need to inspect actual prompts/responses.
+    genAI: { inputs: false, outputs: false },
+  },
   // Profiling sample rate, evaluated once per SDK.init. Lower in production if
   // the profiling overhead/volume gets too high.
   profileSessionSampleRate: 1.0,
