@@ -8,10 +8,19 @@ RUN npm ci
 FROM node:22-alpine AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# Sentry release + source-map upload happen during `next build` (withSentryConfig).
+# SENTRY_RELEASE is not secret, so it's a plain build-arg/env. The auth token is
+# mounted as a BuildKit secret on the build step only, so it never lands in any
+# image layer. Both are optional — without them the build still succeeds, just
+# without uploaded source maps.
+ARG SENTRY_RELEASE
+ENV SENTRY_RELEASE=$SENTRY_RELEASE
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npx prisma generate
-RUN npm run build
+RUN --mount=type=secret,id=sentry_auth_token \
+    SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
+    npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app

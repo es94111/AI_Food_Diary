@@ -16,6 +16,9 @@ env:
   # The docker/* actions still bundle Node 20; force the Node 24 runtime so the
   # deprecation warning goes away (per GitHub's guidance).
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Secrets can't be referenced directly in step `if:`; expose presence as a
+  # boolean string here (secrets context IS allowed in env) and gate on it.
+  HAS_SENTRY_AUTH: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
 
 jobs:
   docker:
@@ -25,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full history so Sentry can associate commits with the release.
+          fetch-depth: 0
 
       - name: Resolve version
         id: version
@@ -64,3 +70,26 @@ jobs:
             org.opencontainers.image.title=ai-food-diary
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
+          # SENTRY_RELEASE pins the release name used for source-map upload so it
+          # matches the commit-association step below. The auth token is mounted
+          # as a BuildKit secret so it never lands in an image layer.
+          build-args: |
+            SENTRY_RELEASE=${{ steps.version.outputs.version }}
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
+
+      # Source maps were uploaded during the Docker build. Here we associate
+      # commits with the release and finalize it (equivalent to sentry-cli
+      # releases new / set-commits --auto / finalize). Skipped if the secret is
+      # absent so forks/PRs without the token still pass.
+      - name: Create Sentry release
+        if: ${{ env.HAS_SENTRY_AUTH == 'true' }}
+        uses: getsentry/action-release@v3
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: shao-wq
+          SENTRY_PROJECT: ai-food-diary-web
+        with:
+          version: ${{ steps.version.outputs.version }}
+          set_commits: auto
+          finalize: true
