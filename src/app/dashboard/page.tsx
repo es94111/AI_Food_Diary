@@ -54,8 +54,15 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   ]);
   const syncedWeight = latestWeight ? decryptMetricValue(latestWeight) : null;
   const syncedHeight = latestHeight ? decryptMetricValue(latestHeight) : null;
+  // Only let a synced reading override the profile when it's a positive number.
+  // A 0 (e.g. a value that failed to decrypt) must not zero out weight/height,
+  // or calculateBmr returns null and the card shows "資料不足".
   const effectiveProfile = decProfile
-    ? { ...decProfile, weightKg: syncedWeight ?? decProfile.weightKg, heightCm: syncedHeight ?? decProfile.heightCm }
+    ? {
+        ...decProfile,
+        weightKg: syncedWeight && syncedWeight > 0 ? syncedWeight : decProfile.weightKg,
+        heightCm: syncedHeight && syncedHeight > 0 ? syncedHeight : decProfile.heightCm
+      }
     : null;
   const bmr = calculateBmr(effectiveProfile);
   const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);
@@ -88,7 +95,7 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
     where: { userId: user.id, type: "TOTAL_CALORIES", measuredAt: { gte: start, lt: end } },
     select: { value: true, encValue: true }
   });
-  const expenditureTotal = expenditureRows.reduce((sum, row) => sum + decryptMetricValue(row), 0);
+  const expenditureTotal = expenditureRows.reduce((sum, row) => sum + (decryptMetricValue(row) ?? 0), 0);
   const displayExpenditure = Math.round(view === "week" ? expenditureTotal / 7 : expenditureTotal);
   const hasExpenditure = displayExpenditure > 0;
   const netCalories = Math.round(displayTotals.calories) - displayExpenditure;

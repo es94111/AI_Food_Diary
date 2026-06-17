@@ -36,8 +36,23 @@ export function decryptField<T>(stored: unknown, plaintextFallback: T): T {
   return plaintextFallback;
 }
 
-// Resolve a HealthMetric's numeric value from its encrypted column, falling back
-// to the legacy plaintext `value` (and finally 0 if neither is present).
-export function decryptMetricValue(row: { value?: number | null; encValue?: unknown }): number {
-  return decryptField<number>(row.encValue, row.value ?? 0);
+// Resolve a HealthMetric's numeric value from its encrypted column. Returns null
+// when there is no reading — and, crucially, also when an encrypted value is
+// PRESENT but fails to decrypt (almost always an encryption-key mismatch after a
+// rotated/regenerated ENCRYPTION_KEY). We deliberately do NOT fall back to 0 in
+// that case: a silent 0 looks like a real reading and poisons downstream maths
+// (it once overrode the profile weight/height and silently broke BMR/TDEE). The
+// failure is logged so this otherwise-invisible class of bug is diagnosable.
+// Callers that need a number should coalesce (`?? 0`); callers feeding the value
+// into calculations should treat null/0 as "no reading".
+export function decryptMetricValue(row: { value?: number | null; encValue?: unknown }): number | null {
+  if (isEncryptedPayload(row.encValue)) {
+    try {
+      return decryptJson<number>(row.encValue);
+    } catch (err) {
+      console.error("decryptMetricValue: failed to decrypt encValue (encryption key mismatch?)", err);
+      return null;
+    }
+  }
+  return row.value ?? null;
 }

@@ -72,8 +72,15 @@ class MetabolismResult {
 MetabolismResult metabolismFor(UserProfile? profile,
     {double? syncedWeightKg, double? syncedHeightCm}) {
   if (profile == null) return const MetabolismResult(null, null, 2000);
-  final weight = syncedWeightKg ?? profile.weightKg;
-  final height = syncedHeightCm?.round() ?? profile.heightCm;
+  // Only trust a synced reading when it's a positive number. A 0 (e.g. a Health
+  // Connect value that failed to decrypt server-side) must not override the real
+  // profile weight/height, or BMR/TDEE silently become null ("資料不足").
+  final weight = (syncedWeightKg != null && syncedWeightKg > 0)
+      ? syncedWeightKg
+      : profile.weightKg;
+  final height = (syncedHeightCm != null && syncedHeightCm > 0)
+      ? syncedHeightCm.round()
+      : profile.heightCm;
   final bmr = calculateBmr(
     gender: profile.gender,
     birthDate: profile.birthDate,

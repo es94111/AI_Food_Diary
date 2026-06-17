@@ -36,7 +36,7 @@ export default async function HealthPage() {
     take: 100
   });
   // Decrypt values up-front so every downstream aggregation sees plaintext.
-  const healthMetrics = rawHealthMetrics.map((m) => ({ ...m, value: decryptMetricValue(m) }));
+  const healthMetrics = rawHealthMetrics.map((m) => ({ ...m, value: decryptMetricValue(m) ?? 0 }));
   // Latest value per type from a dedicated query, not the capped window above:
   // `measuredAt` is day-granular, so one day yields ~30 tied rows and `take: 100`
   // (≈3 days) can arbitrarily drop sparse metrics like WATER / NUTRITION, making
@@ -47,7 +47,7 @@ export default async function HealthPage() {
     orderBy: [{ type: "asc" }, { measuredAt: "desc" }],
     distinct: ["type"]
   });
-  const latestHealthMetrics = latestMetricsByType(latestRows.map((m) => ({ ...m, value: decryptMetricValue(m) })));
+  const latestHealthMetrics = latestMetricsByType(latestRows.map((m) => ({ ...m, value: decryptMetricValue(m) ?? 0 })));
   // Per-night sleep stage timeline (hypnogram), stored encrypted on the latest
   // SLEEP metric's `raw`. Absent for trackers that only report a total.
   const sleepStages = decryptField<SleepSegment[]>(latestRows.find((m) => m.type === "SLEEP")?.rawEncrypted, []);
@@ -60,8 +60,15 @@ export default async function HealthPage() {
 
   const syncedWeight = latestHealthMetrics.WEIGHT?.unit.toLowerCase() === "kg" ? latestHealthMetrics.WEIGHT.value : null;
   const syncedHeight = latestHealthMetrics.HEIGHT?.unit.toLowerCase() === "cm" ? latestHealthMetrics.HEIGHT.value : null;
+  // Only let a synced reading override the profile when it's a positive number.
+  // A 0 (e.g. a value that failed to decrypt) must not zero out weight/height,
+  // or calculateBmr returns null and the card shows "資料不足".
   const effectiveProfile = decProfile
-    ? { ...decProfile, weightKg: syncedWeight ?? decProfile.weightKg, heightCm: syncedHeight ?? decProfile.heightCm }
+    ? {
+        ...decProfile,
+        weightKg: syncedWeight && syncedWeight > 0 ? syncedWeight : decProfile.weightKg,
+        heightCm: syncedHeight && syncedHeight > 0 ? syncedHeight : decProfile.heightCm
+      }
     : null;
   const bmr = calculateBmr(effectiveProfile);
   const tdee = calculateTdee(bmr, effectiveProfile?.activityLevel);

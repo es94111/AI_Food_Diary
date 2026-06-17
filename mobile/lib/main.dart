@@ -21,6 +21,14 @@ void main() async {
       // Set tracesSampleRate to 1.0 to capture 100% of transactions for tracing.
       // We recommend adjusting this value in production.
       options.tracesSampleRate = 1.0;
+      // Distributed tracing: only attach sentry-trace/baggage headers to our own
+      // backend, so a meal-analysis request continues into the server's LLM
+      // (gen_ai) spans as one trace — and trace headers never leak elsewhere.
+      // The list is final and defaults to ['.*'] (all hosts); clear it first so
+      // we restrict propagation to our backend only.
+      options.tracePropagationTargets
+        ..clear()
+        ..add('aifood.shao.one');
       // Enable structured logs (Sentry.logger.*). Off by default.
       options.enableLogs = true;
       // Release Health: session tracking drives crash-free rate / adoption.

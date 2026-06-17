@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:sentry_dio/sentry_dio.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 /// Central HTTP client that mirrors the web app's cookie-session auth.
@@ -33,6 +34,10 @@ class ApiClient {
       // backend's {error} body (including 5xx) instead of a raw DioException.
       validateStatus: (status) => status != null && status < 600,
     ));
+    // Sentry: create an http.client span per request and inject distributed
+    // tracing headers (gated by tracePropagationTargets) so requests join the
+    // active transaction's trace and continue into the backend's server spans.
+    dio.addSentry();
     dio.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) {
         if (_sessionCookie != null) {

@@ -19,7 +19,7 @@ function toClientMetric(row: {
   const raw = decryptField<unknown>(rawEncrypted, null);
   return {
     ...rest,
-    value: decryptMetricValue({ value: row.value, encValue }),
+    value: decryptMetricValue({ value: row.value, encValue }) ?? 0,
     ...(raw !== null ? { raw } : {})
   };
 }
@@ -109,7 +109,7 @@ export async function GET(request: Request) {
       take: 14,
       select: { value: true, encValue: true }
     });
-    const weightSeries = weightRows.map((row) => decryptMetricValue(row)).reverse();
+    const weightSeries = weightRows.map((row) => decryptMetricValue(row) ?? 0).reverse();
 
     return NextResponse.json({
       lastSyncedAt: rawMetrics[0]?.updatedAt ?? null,

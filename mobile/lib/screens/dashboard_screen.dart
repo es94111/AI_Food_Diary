@@ -185,7 +185,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           d.year == now.year && d.month == now.month && d.day == now.day;
       if (!mounted) return;
       setState(() {
-        if (weight != null && weight.unit.toLowerCase() == 'kg') {
+        if (weight != null && weight.unit.toLowerCase() == 'kg' &&
+            weight.value > 0) {
           _syncedWeight = weight.value;
         }
         if (height != null && height.value > 0) {

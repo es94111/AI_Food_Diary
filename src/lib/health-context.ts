@@ -24,7 +24,8 @@ export async function getHealthContext(userId: string, dayStart: Date, dayEnd: D
   // Decrypt each value back to plaintext for the in-process aggregation below.
   const metrics: HealthMetric[] = rawMetrics.map((m) => ({
     type: m.type,
-    value: decryptMetricValue(m),
+    // Undecryptable rows surface as null; treat them as 0 for aggregation/display.
+    value: decryptMetricValue(m) ?? 0,
     unit: m.unit,
     measuredAt: m.measuredAt
   }));
@@ -55,7 +56,10 @@ export async function getLatestSyncedWeightKg(userId: string, before: Date) {
     select: { value: true, encValue: true }
   });
 
-  return metric ? decryptMetricValue(metric) : null;
+  // Ignore non-positive readings (including decryption failures that would
+  // otherwise surface as 0) so a bad row never overrides a real profile weight.
+  const value = metric ? decryptMetricValue(metric) : null;
+  return value != null && value > 0 ? value : null;
 }
 
 export async function getLatestSyncedHeightCm(userId: string, before: Date) {
@@ -70,7 +74,10 @@ export async function getLatestSyncedHeightCm(userId: string, before: Date) {
     select: { value: true, encValue: true }
   });
 
-  return metric ? decryptMetricValue(metric) : null;
+  // Ignore non-positive readings (including decryption failures that would
+  // otherwise surface as 0) so a bad row never overrides a real profile height.
+  const value = metric ? decryptMetricValue(metric) : null;
+  return value != null && value > 0 ? value : null;
 }
 
 function latestByType(metrics: HealthMetric[]) {

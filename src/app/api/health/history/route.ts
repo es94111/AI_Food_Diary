@@ -76,7 +76,7 @@ export async function GET(request: Request) {
         // Oldest→newest for left-to-right charting.
         const points = rows
           .reverse()
-          .map((row) => ({ at: row.measuredAt.toISOString(), value: decryptMetricValue(row) }));
+          .map((row) => ({ at: row.measuredAt.toISOString(), value: decryptMetricValue(row) ?? 0 }));
         return { type, unit: rows[0]?.unit ?? "", points };
       })
     );

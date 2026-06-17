@@ -79,19 +79,36 @@ class MealService {
 
   static Future<List<FoodAnalysisItem>> _analyze(
       String path, Map<String, dynamic> body, String fallback) async {
-    final res = await _api.post(path, data: body);
-    if (!ApiClient.ok(res)) {
-      Sentry.logger.error('Meal analysis failed', attributes: {
-        'path': SentryAttribute.string(path),
-        'status': SentryAttribute.int(res.statusCode ?? 0),
-      });
-      throw ApiException(ApiClient.errorMessage(res, fallback),
-          statusCode: res.statusCode);
+    // Root trace for an AI analysis on the app side. bindToScope makes it the
+    // active transaction, so the Dio HTTP span and the distributed-tracing
+    // headers attach to it — and the backend's server-side LLM (gen_ai) spans
+    // continue this same trace, giving an end-to-end view (app -> API -> LLM).
+    final transaction =
+        Sentry.startTransaction('meal.analyze', 'ai.run', bindToScope: true);
+    transaction.setData('endpoint', path);
+    try {
+      final res = await _api.post(path, data: body);
+      if (!ApiClient.ok(res)) {
+        transaction.status = SpanStatus.internalError();
+        Sentry.logger.error('Meal analysis failed', attributes: {
+          'path': SentryAttribute.string(path),
+          'status': SentryAttribute.int(res.statusCode ?? 0),
+        });
+        throw ApiException(ApiClient.errorMessage(res, fallback),
+            statusCode: res.statusCode);
+      }
+      final foods = res.data['analysis']?['foods'] as List? ?? [];
+      transaction.status = SpanStatus.ok();
+      return foods
+          .map((e) => FoodAnalysisItem.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      transaction.throwable = e;
+      transaction.status ??= SpanStatus.internalError();
+      rethrow;
+    } finally {
+      await transaction.finish();
     }
-    final foods = res.data['analysis']?['foods'] as List? ?? [];
-    return foods
-        .map((e) => FoodAnalysisItem.fromJson(e as Map<String, dynamic>))
-        .toList();
   }
 
   // ---- persistence ----
