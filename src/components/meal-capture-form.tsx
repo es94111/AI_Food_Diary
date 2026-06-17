@@ -31,24 +31,6 @@ type SavedFood = {
   hasImage?: boolean;
 };
 
-// Fetches a saved food's stored photo (auth cookie) and returns it as a data URL
-// so it can be reused as a meal photo on save.
-async function fetchSavedFoodImageDataUrl(foodId: string): Promise<string | null> {
-  try {
-    const res = await fetch(`/api/saved-foods/${foodId}/image`, { credentials: "include" });
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(blob);
-    });
-  } catch {
-    return null;
-  }
-}
-
 function emptyManualItem(): ManualItem {
   return { id: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
 }
@@ -129,9 +111,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
   const [barcode, setBarcode] = useState("");
   const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
-  // Photos pulled from picked saved foods, merged into the meal's images on save
-  // (so a saved food's photo also becomes the meal photo).
-  const [pickedImages, setPickedImages] = useState<string[]>([]);
+  // Saved foods picked into this meal that carry a photo. Their image is attached
+  // to the meal by reference on save (same object key, no re-upload/copy).
+  const [pickedFoodIds, setPickedFoodIds] = useState<string[]>([]);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -295,12 +277,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mealType: confirmMealType,
-          // Meal photos + any photos from picked saved foods (so a picked food's
-          // photo also becomes a meal photo, regardless of capture mode).
-          imageDataUrls:
-            [...(mode === "photo" ? previews : []), ...pickedImages].length > 0
-              ? [...(mode === "photo" ? previews : []), ...pickedImages]
-              : undefined,
+          // Newly captured meal photos (photo mode only).
+          imageDataUrls: mode === "photo" && previews.length > 0 ? previews : undefined,
+          // Photos from picked saved foods, attached by reference (no copy).
+          savedFoodImageIds: pickedFoodIds.length > 0 ? pickedFoodIds : undefined,
           description: mode === "describe" ? description.trim() || undefined : undefined,
           manualItems: items,
           eatenAt: new Date().toISOString()
@@ -312,7 +292,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         return;
       }
       setPreviews([]);
-      setPickedImages([]);
+      setPickedFoodIds([]);
       setDescription("");
       setManualItems([emptyManualItem()]);
       setConfirmItems([]);
@@ -441,11 +421,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         aiRating: "MANUAL"
       }
     ]);
-    // If the food has a photo, reuse it as a meal photo on save.
+    // If the food has a photo, attach it to the meal by reference on save (the
+    // meal will point at the same stored object, not a re-uploaded copy).
     if (food.hasImage) {
-      fetchSavedFoodImageDataUrl(food.id).then((dataUrl) => {
-        if (dataUrl) setPickedImages((current) => [...current, dataUrl]);
-      });
+      setPickedFoodIds((current) => (current.includes(food.id) ? current : [...current, food.id]));
     }
     if (options.markUsed) markSavedFoodUsed(food.id);
   }

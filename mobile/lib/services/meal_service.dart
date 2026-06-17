@@ -99,6 +99,7 @@ class MealService {
   static Future<void> createMeal({
     required String mealType,
     List<String>? imageDataUrls,
+    List<String>? savedFoodImageIds,
     String? description,
     required List<MealItem> items,
   }) async {
@@ -106,6 +107,9 @@ class MealService {
       'mealType': mealType,
       if (imageDataUrls != null && imageDataUrls.isNotEmpty)
         'imageDataUrls': imageDataUrls,
+      // Photos from picked saved foods, attached by reference (no re-upload/copy).
+      if (savedFoodImageIds != null && savedFoodImageIds.isNotEmpty)
+        'savedFoodImageIds': savedFoodImageIds,
       if (description != null && description.isNotEmpty) 'description': description,
       'manualItems': items.map((e) => e.toPayload()).toList(),
       'eatenAt': DateTime.now().toUtc().toIso8601String(),

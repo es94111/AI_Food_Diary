@@ -1,6 +1,6 @@
 {
   "name": "ai-food-diary",
-  "version": "0.52.0",
+  "version": "0.53.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -20,6 +20,7 @@
     "encryption:stage-d:apply": "tsx scripts/encryption-stage-d.ts apply",
     "encryption:stage-d:rollback": "tsx scripts/encryption-stage-d.ts rollback",
     "encryption:disk:check": "tsx scripts/disk-encryption-check.ts",
+    "encryption:images": "tsx scripts/backfill-image-encryption.ts",
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {

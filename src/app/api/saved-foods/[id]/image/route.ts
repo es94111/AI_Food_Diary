@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getImageObject, isStorageKey } from "@/lib/storage";
+import { getDecryptedImage, isStorageKey } from "@/lib/storage";
 
 export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
   const user = await requireUser();
@@ -21,12 +21,11 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     });
   }
 
-  const image = await getImageObject(food.imageStorageKey);
-  if (!image.Body) return NextResponse.json({ error: "找不到圖片" }, { status: 404 });
-  const bytes = await image.Body.transformToByteArray();
-  return new NextResponse(Buffer.from(bytes), {
+  const image = await getDecryptedImage(food.imageStorageKey);
+  if (!image) return NextResponse.json({ error: "找不到圖片" }, { status: 404 });
+  return new NextResponse(new Uint8Array(image.body), {
     headers: {
-      "Content-Type": image.ContentType ?? "application/octet-stream",
+      "Content-Type": image.contentType,
       "Cache-Control": "private, max-age=60"
     }
   });

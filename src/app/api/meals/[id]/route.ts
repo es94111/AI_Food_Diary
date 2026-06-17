@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { decryptMeal, encryptMealItemWrite, encryptMealNotesWrite } from "@/lib/b2-crypto";
 import { apiRoute } from "@/lib/http";
 import { mealUpdateSchema } from "@/lib/validators";
-import { deleteImage, isStorageKey } from "@/lib/storage";
+import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 
 export const GET = apiRoute(async (_request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
@@ -28,18 +28,17 @@ export const DELETE = apiRoute(async (_request: Request, context: { params: Prom
   await prisma.meal.deleteMany({ where: { id, userId: user.id } });
 
   // Delete every associated image from object storage (fall back to the legacy
-  // single key for old rows).
+  // single key for old rows), but only when no saved food / other meal still
+  // references the same object — meal photos picked from a saved food share its
+  // key rather than copying it. The meal row is already deleted above, so it
+  // won't count itself as a reference.
   const keys = meal?.imageStorageKeys.length
     ? meal.imageStorageKeys
     : meal?.imageStorageKey
       ? [meal.imageStorageKey]
       : [];
   for (const key of keys) {
-    if (isStorageKey(key)) {
-      await deleteImage(key).catch((err) => {
-        console.error("Failed to delete image from storage", err);
-      });
-    }
+    await deleteImageIfUnreferenced(key);
   }
 
   return NextResponse.json({ ok: true });

@@ -48,6 +48,7 @@ class BackgroundAnalysis {
     required String mode,
     required String mealType,
     required List<String> imageDataUrls,
+    List<String> savedFoodImageIds = const [],
     required String description,
     required Map<String, dynamic> body,
   }) async {
@@ -60,6 +61,7 @@ class BackgroundAnalysis {
       'mode': mode,
       'mealType': mealType,
       'imageDataUrls': imageDataUrls,
+      'savedFoodImageIds': savedFoodImageIds,
       'description': description,
       'body': body,
     }));

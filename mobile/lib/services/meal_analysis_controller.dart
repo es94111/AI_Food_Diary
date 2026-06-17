@@ -28,6 +28,9 @@ class MealAnalysisController extends ChangeNotifier with WidgetsBindingObserver 
   String mealType = 'LUNCH';
   String mode = 'manual'; // 'photo' | 'describe' | 'manual'
   List<String> imageDataUrls = const [];
+  // Saved foods (with photos) picked into the meal; their image is attached by
+  // reference on save instead of being copied into [imageDataUrls].
+  List<String> savedFoodImageIds = const [];
   String description = '';
 
   bool reviewRequested = false;
@@ -57,10 +60,11 @@ class MealAnalysisController extends ChangeNotifier with WidgetsBindingObserver 
     required String mealType,
     required String mode,
     required List<String> imageDataUrls,
+    List<String> savedFoodImageIds = const [],
     required String description,
     required Future<List<FoodAnalysisItem>> Function() run,
   }) async {
-    _begin(mealType: mealType, mode: mode, imageDataUrls: imageDataUrls, description: description, background: false);
+    _begin(mealType: mealType, mode: mode, imageDataUrls: imageDataUrls, savedFoodImageIds: savedFoodImageIds, description: description, background: false);
     try {
       result = await run();
       status = MealAnalysisStatus.done;
@@ -76,15 +80,17 @@ class MealAnalysisController extends ChangeNotifier with WidgetsBindingObserver 
     required String mealType,
     required String mode,
     required List<String> imageDataUrls,
+    List<String> savedFoodImageIds = const [],
     required String description,
     required Map<String, dynamic> body,
   }) async {
-    _begin(mealType: mealType, mode: mode, imageDataUrls: imageDataUrls, description: description, background: true);
+    _begin(mealType: mealType, mode: mode, imageDataUrls: imageDataUrls, savedFoodImageIds: savedFoodImageIds, description: description, background: true);
     try {
       await BackgroundAnalysis.enqueue(
         mode: mode,
         mealType: mealType,
         imageDataUrls: imageDataUrls,
+        savedFoodImageIds: savedFoodImageIds,
         description: description,
         body: body,
       );
@@ -102,12 +108,14 @@ class MealAnalysisController extends ChangeNotifier with WidgetsBindingObserver 
     required String mealType,
     required String mode,
     required List<String> imageDataUrls,
+    List<String> savedFoodImageIds = const [],
     required String description,
     required bool background,
   }) {
     this.mealType = mealType;
     this.mode = mode;
     this.imageDataUrls = imageDataUrls;
+    this.savedFoodImageIds = savedFoodImageIds;
     this.description = description;
     status = MealAnalysisStatus.running;
     error = null;
@@ -181,6 +189,8 @@ class MealAnalysisController extends ChangeNotifier with WidgetsBindingObserver 
     mode = (ctx['mode'] as String?) ?? mode;
     imageDataUrls =
         (ctx['imageDataUrls'] as List?)?.map((e) => e.toString()).toList() ?? const [];
+    savedFoodImageIds =
+        (ctx['savedFoodImageIds'] as List?)?.map((e) => e.toString()).toList() ?? const [];
     description = (ctx['description'] as String?) ?? '';
   }
 
@@ -208,6 +218,7 @@ class MealAnalysisController extends ChangeNotifier with WidgetsBindingObserver 
     error = null;
     result = const [];
     imageDataUrls = const [];
+    savedFoodImageIds = const [];
     description = '';
     reviewRequested = false;
     BackgroundAnalysis.clearNotifications();

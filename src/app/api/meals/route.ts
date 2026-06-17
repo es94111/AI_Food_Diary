@@ -7,7 +7,7 @@ import { decryptMeal, encryptMealItemWrite, encryptMealNotesWrite } from "@/lib/
 import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
 import { apiError, apiRoute, HttpError } from "@/lib/http";
 import { resolveRequestTz } from "@/lib/timezone";
-import { mealSchema } from "@/lib/validators";
+import { mealSchema, MAX_MEAL_IMAGES } from "@/lib/validators";
 import { uploadImage } from "@/lib/storage";
 
 export const GET = apiRoute(async (request: Request) => {
@@ -53,6 +53,23 @@ export async function POST(request: Request) {
     const imageStorageKeys: string[] = [];
     for (const image of images) {
       imageStorageKeys.push(await uploadImage(image, user.id));
+    }
+
+    // Attach photos from picked saved foods by reference: point the meal at the
+    // food's existing object key instead of re-uploading a copy. Verify each food
+    // belongs to the user and de-dupe keys already attached.
+    const refIds = body.savedFoodImageIds ?? [];
+    if (refIds.length) {
+      const foods = await prisma.savedFood.findMany({
+        where: { id: { in: refIds }, userId: user.id, imageStorageKey: { not: null } },
+        select: { imageStorageKey: true }
+      });
+      for (const food of foods) {
+        const key = food.imageStorageKey;
+        if (key && !imageStorageKeys.includes(key) && imageStorageKeys.length < MAX_MEAL_IMAGES) {
+          imageStorageKeys.push(key);
+        }
+      }
     }
     const imageStorageKey = imageStorageKeys[0] ?? null;
 
