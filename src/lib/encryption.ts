@@ -146,6 +146,26 @@ export function decryptJson<T>(payload: EncryptedPayload): T {
   return JSON.parse(plaintext) as T;
 }
 
+// Raw-bytes counterpart of the JSON helpers, for encrypting binary blobs (e.g.
+// uploaded images) rather than serialisable values. Returns the components so a
+// caller can build its own on-disk/in-object envelope.
+export type EncryptedBytes = { v: string; iv: Buffer; tag: Buffer; ciphertext: Buffer };
+
+export function encryptBytes(data: Buffer): EncryptedBytes {
+  const { activeId } = getKeyRing();
+  const iv = randomBytes(12);
+  const cipher = createCipheriv("aes-256-gcm", keyFor(activeId), iv, { authTagLength: 16 });
+  const ciphertext = Buffer.concat([cipher.update(data), cipher.final()]);
+  return { v: activeId, iv, tag: cipher.getAuthTag(), ciphertext };
+}
+
+export function decryptBytes(payload: { v?: string; iv: Buffer; tag: Buffer; ciphertext: Buffer }): Buffer {
+  const keyId = payload.v ?? LEGACY_KEY_ID;
+  const decipher = createDecipheriv("aes-256-gcm", keyFor(keyId), payload.iv, { authTagLength: 16 });
+  decipher.setAuthTag(payload.tag);
+  return Buffer.concat([decipher.update(payload.ciphertext), decipher.final()]);
+}
+
 /** True if a payload was encrypted with a key other than the active one. */
 export function needsReencryption(payload: EncryptedPayload): boolean {
   return (payload.v ?? LEGACY_KEY_ID) !== getKeyRing().activeId;

@@ -37,6 +37,9 @@ COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
 COPY --from=builder /app/src ./src
+# Maintenance scripts (encryption rotation/backfill, etc.) run via `tsx` in the
+# running container, e.g. `docker compose run --rm app npm run encryption:images`.
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # Drop root: run the app as the built-in unprivileged `node` user.
 USER node

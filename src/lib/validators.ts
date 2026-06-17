@@ -43,6 +43,9 @@ export const mealSchema = z.object({
   description: z.string().min(2).max(1200).optional(),
   // Photo flow only: run AI several times and keep the median (self-consistency).
   precise: z.boolean().optional(),
+  // Saved foods whose stored photo should be attached to this meal by reference
+  // (the meal points at the same object key instead of re-uploading a copy).
+  savedFoodImageIds: z.array(z.string().min(1)).max(MAX_MEAL_IMAGES).optional(),
   eatenAt: z.string().datetime().optional(),
   manualItems: z
     .array(

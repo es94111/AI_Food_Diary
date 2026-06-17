@@ -145,7 +145,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   bool _preciseMode = false;
   final List<String> _imageDataUrls = [];
   // Photos pulled from picked saved foods, saved as meal photos (not analysed).
-  final List<String> _pickedFoodImages = [];
+  // Saved foods (with photos) picked into the meal; their image is attached to
+  // the meal by reference on save instead of being copied.
+  final List<String> _pickedFoodIds = [];
   final _descriptionCtrl = TextEditingController();
   final List<EditableItem> _manualItems = [EditableItem()];
   List<SavedFood> _savedFoods = [];
@@ -315,8 +317,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final mealType = _mealType;
     final mode = _mode;
     final images = List<String>.of(_imageDataUrls);
-    // Photos from picked saved foods are saved as meal photos but not analysed.
-    final saveImages = <String>[...images, ..._pickedFoodImages];
+    // Photos from picked saved foods are attached by reference on save (not
+    // analysed, not re-uploaded).
+    final pickedFoodIds = List<String>.of(_pickedFoodIds);
     final manualItems = manual.map((e) => e.toMealItem()).toList();
     final precise = _preciseMode;
     setState(() => _error = null);
@@ -347,7 +350,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       _analysis.startBackground(
         mealType: mealType,
         mode: mode.name,
-        imageDataUrls: saveImages,
+        imageDataUrls: images,
+        savedFoodImageIds: pickedFoodIds,
         description: desc,
         body: body,
       );
@@ -355,7 +359,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       _analysis.start(
         mealType: mealType,
         mode: mode.name,
-        imageDataUrls: saveImages,
+        imageDataUrls: images,
+        savedFoodImageIds: pickedFoodIds,
         description: desc,
         run: () => switch (mode) {
           CaptureMode.photo =>
@@ -468,6 +473,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final mealType = _analysis.mealType;
     final mode = _analysis.mode; // 'photo' | 'describe' | 'manual'
     final images = _analysis.imageDataUrls;
+    final pickedFoodIds = _analysis.savedFoodImageIds;
     final desc = _analysis.description.trim();
     return showModalBottomSheet<bool>(
       context: context,
@@ -492,6 +498,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           await MealService.createMeal(
             mealType: mealType,
             imageDataUrls: images.isNotEmpty ? images : null,
+            savedFoodImageIds: pickedFoodIds.isNotEmpty ? pickedFoodIds : null,
             description: mode == 'describe' && desc.isNotEmpty ? desc : null,
             items: saveItems,
           );
@@ -503,7 +510,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   Future<void> _afterSave() async {
     setState(() {
       _imageDataUrls.clear();
-      _pickedFoodImages.clear();
+      _pickedFoodIds.clear();
       _descriptionCtrl.clear();
       _manualItems
         ..clear()
@@ -559,13 +566,12 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         ),
       );
     });
-    // If the food has a photo, reuse it as a meal photo on save.
-    if (food.hasImage && _pickedFoodImages.length + _imageDataUrls.length < _maxImages) {
-      SavedFoodService.imageDataUrl(food.id).then((url) {
-        if (url != null && mounted) {
-          setState(() => _pickedFoodImages.add(url));
-        }
-      });
+    // If the food has a photo, attach it to the meal by reference on save (the
+    // meal points at the same stored object, not a re-uploaded copy).
+    if (food.hasImage &&
+        !_pickedFoodIds.contains(food.id) &&
+        _pickedFoodIds.length + _imageDataUrls.length < _maxImages) {
+      setState(() => _pickedFoodIds.add(food.id));
     }
     if (markUsed) {
       SavedFoodService.markUsed(food.id).then((_) => _loadSavedFoods());

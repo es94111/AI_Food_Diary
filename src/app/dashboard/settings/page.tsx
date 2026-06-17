@@ -69,7 +69,8 @@ export default async function SettingsPage() {
               source: decrypted.source as SavedFoodSource,
               isFavorite: decrypted.isFavorite,
               useCount: decrypted.useCount,
-              lastUsedAt: decrypted.lastUsedAt?.toISOString() ?? null
+              lastUsedAt: decrypted.lastUsedAt?.toISOString() ?? null,
+              hasImage: decrypted.hasImage
             };
           })}
         />

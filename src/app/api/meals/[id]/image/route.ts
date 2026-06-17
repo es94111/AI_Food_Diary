@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { apiRoute } from "@/lib/http";
-import { deleteImage, getImageObject, isStorageKey, uploadImage } from "@/lib/storage";
+import { getDecryptedImage, isStorageKey, uploadImage } from "@/lib/storage";
+import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import { mealImageAppendSchema, MAX_MEAL_IMAGES } from "@/lib/validators";
 
 // Normalises a meal's stored image keys, preferring the per-image list and
@@ -35,13 +36,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     });
   }
 
-  const image = await getImageObject(key);
-  if (!image.Body) return NextResponse.json({ error: "找不到圖片" }, { status: 404 });
+  const image = await getDecryptedImage(key);
+  if (!image) return NextResponse.json({ error: "找不到圖片" }, { status: 404 });
 
-  const bytes = await image.Body.transformToByteArray();
-  return new NextResponse(Buffer.from(bytes), {
+  return new NextResponse(new Uint8Array(image.body), {
     headers: {
-      "Content-Type": image.ContentType ?? "application/octet-stream",
+      "Content-Type": image.contentType,
       "Cache-Control": "private, max-age=60"
     }
   });
@@ -105,9 +105,10 @@ export const DELETE = apiRoute(async (request: Request, context: { params: Promi
     data: { imageStorageKeys: keys, imageStorageKey: keys[0] ?? null }
   });
 
-  if (isStorageKey(removed)) {
-    await deleteImage(removed).catch((err) => console.error("Failed to delete image from storage", err));
-  }
+  // The key may still be referenced by the source saved food (or another meal),
+  // since meal photos picked from a saved food share its object — only delete
+  // once nothing else points at it.
+  await deleteImageIfUnreferenced(removed);
 
   return NextResponse.json({ imageCount: keys.length });
 });
