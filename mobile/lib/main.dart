@@ -29,6 +29,17 @@ void main() async {
       // environment splits production vs development sessions in Sentry.
       options.enableAutoSessionTracking = true;
       options.environment = kReleaseMode ? 'production' : 'development';
+      // Session Replay. Record 10% of sessions in production but every session
+      // in dev so replays are easy to verify; capture 100% of sessions where an
+      // error occurs regardless of environment.
+      options.replay.sessionSampleRate = kReleaseMode ? 0.1 : 1.0;
+      options.replay.onErrorSampleRate = 1.0;
+      // Privacy: the SDK masks all text and images by default. We set both
+      // explicitly so the redaction can't be silently lost in a later edit.
+      // This app shows personal diet data and food photos — keep them masked.
+      // (In sentry_flutter 9.x masking lives on options.privacy, not replay.)
+      options.privacy.maskAllText = true;
+      options.privacy.maskAllImages = true;
     },
     appRunner: () => runApp(SentryWidget(child: const AiFoodApp())),
   );

@@ -1,6 +1,6 @@
 {
   "name": "ai-food-diary",
-  "version": "0.51.1",
+  "version": "0.52.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -28,6 +28,7 @@
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@sentry/nextjs": "^10.58.0",
+    "@sentry/profiling-node": "^10.58.0",
     "argon2": "^0.44.0",
     "bullmq": "^5.78.1",
     "dotenv": "^17.4.2",
