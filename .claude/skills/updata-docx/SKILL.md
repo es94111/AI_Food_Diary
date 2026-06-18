@@ -1,6 +1,6 @@
 ---
 name: release
-description: Release a new AI Food Diary version — bump the version, tag vX.Y.Z, and push so CI builds the APK to S3 and the Docker image. Use when the user wants to "發版", "release", cut a new version, or publish web + app together.
+description: Release a new AI Food Diary version — bump the version, tag vX.Y.Z, push so CI builds the APK to S3 and the Docker image, and create the GitHub Release. Use when the user wants to "發版", "release", cut a new version, or publish web + app together.
 ---
 
 # Release a new version
@@ -31,9 +31,22 @@ current ceiling — bump patch for fixes, minor for features, major for mileston
    git tag vX.Y.Z
    git push <remote> vX.Y.Z
    ```
-   The remote here is `es94111` (`git remote -v` to confirm).
+   The remote is `origin` (points at `es94111/AI_Food_Diary`; `git remote -v` to confirm).
 
-5. **What the tag triggers (no further action needed):**
+5. **Create the GitHub Release** for the tag (so there's a human-readable
+   changelog page):
+   ```
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "<繁中更新說明>"
+   ```
+   - Write the notes in **Traditional Chinese**, matching the project. Summarise
+     user-facing changes first (✨ 新功能), then fixes/internal (🔧 其他). Derive
+     them from the commits since the previous tag
+     (`git log vPREV..vX.Y.Z --oneline`), not boilerplate.
+   - The APK is **not** attached to the Release — CI uploads it to S3. If the user
+     wants it on the Release page too, after the APK build finishes:
+     `gh release upload vX.Y.Z <path-to-ai-food-vX.Y.Z.apk>`.
+
+6. **What the tag triggers (no further action needed):**
    - `.github/workflows/android-apk.yml`: builds `flutter build apk --release`
      with `--build-name=X.Y.Z`, uploads `downloads/ai-food-vX.Y.Z.apk` **and**
      `downloads/ai-food-latest.apk` to S3.
