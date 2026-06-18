@@ -7,6 +7,7 @@ import 'screens/dashboard_screen.dart';
 import 'services/auth_service.dart';
 import 'services/background_analysis.dart';
 import 'services/meal_analysis_controller.dart';
+import 'services/update_service.dart';
 
 
 void main() async {
@@ -15,6 +16,9 @@ void main() async {
   // notification channel, then recover any job left by a previous process.
   await BackgroundAnalysis.init();
   await MealAnalysisController.instance.init();
+  // Native background downloader for in-app APK updates (Android); no-ops
+  // elsewhere. Must run before any download can be enqueued.
+  await UpdateService.init();
   await SentryFlutter.init(
     (options) {
       options.dsn = 'https://9c5384849c931702f75c03a530b30445@o4511575169040384.ingest.de.sentry.io/4511575192502352';

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 0.54.3+74
+version: 0.55.0+75
 
 environment:
   sdk: ^3.12.0
@@ -50,6 +50,11 @@ dependencies:
   package_info_plus: ^9.0.1
   path_provider: ^2.1.5
   open_filex: ^4.7.0
+  # Background APK download: delegates to Android's native DownloadManager so the
+  # update keeps downloading when the app is switched away or killed, and posts a
+  # system notification the user can tap to install. (open_filex is kept as the
+  # non-Android foreground fallback.)
+  flutter_downloader: ^1.12.0
   google_sign_in: ^7.2.0
   # Background meal analysis: WorkManager runs the analysis in a background
   # isolate that survives the app being minimised or killed, and posts a system

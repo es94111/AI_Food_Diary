@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Paths flutter_downloader's DownloadedFileProvider may expose to the system
+  installer. The in-app update writes the APK to getExternalStorageDirectory()
+  (path_provider) == Context.getExternalFilesDir(null), covered by
+  external-files-path below; external-path is kept as a wider fallback.
+-->
+<paths>
+    <external-files-path name="external_app_files" path="." />
+    <external-path name="external_files" path="." />
+</paths>

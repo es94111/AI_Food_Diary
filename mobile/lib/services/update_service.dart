@@ -1,4 +1,10 @@
+import 'dart:io';
+import 'dart:isolate';
+import 'dart:ui';
+
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
@@ -24,9 +30,59 @@ class AppVersionInfo {
       apkUrl.isNotEmpty && _isNewer(latestVersion, currentVersion);
 }
 
+/// Coarse state of the in-flight update download, surfaced to the UI through
+/// [UpdateService.status] so the progress sheet can react without knowing
+/// anything about flutter_downloader.
+enum DownloadStatus { idle, running, complete, failed }
+
 /// Checks for newer app releases and installs the APK in one tap.
+///
+/// On Android the download is handed to the OS-level DownloadManager via
+/// flutter_downloader, so it survives the app being switched away or killed and
+/// shows a tappable "download complete" notification. On other platforms it
+/// falls back to a foreground Dio download (updates only ship as an Android
+/// APK, so this path is effectively a safety net).
 class UpdateService {
   static final _api = ApiClient.instance;
+
+  /// Name the background download isolate looks up to send progress back to the
+  /// UI isolate. Must be stable across isolates, hence a top-level const.
+  static const portName = 'ai_food_update_downloader';
+
+  static final ReceivePort _port = ReceivePort();
+  static bool _initialised = false;
+  static String? _taskId;
+
+  /// 0..1 download progress.
+  static final ValueNotifier<double> progress = ValueNotifier(0);
+  static final ValueNotifier<DownloadStatus> status =
+      ValueNotifier(DownloadStatus.idle);
+
+  /// Human-readable reason for the last [DownloadStatus.failed], if any.
+  static String? lastError;
+
+  /// True where the native background downloader is available.
+  static bool get backgroundSupported => !kIsWeb && Platform.isAndroid;
+
+  /// One-time setup from main(): boots flutter_downloader and wires the
+  /// background isolate's progress messages to [progress]/[status]. Safe (and
+  /// cheap) to call on platforms without background support — it just no-ops.
+  static Future<void> init() async {
+    if (!backgroundSupported || _initialised) return;
+    _initialised = true;
+    await FlutterDownloader.initialize(debug: kDebugMode);
+    IsolateNameServer.removePortNameMapping(portName);
+    IsolateNameServer.registerPortWithName(_port.sendPort, portName);
+    _port.listen((message) {
+      final data = message as List;
+      final id = data[0] as String;
+      final st = DownloadTaskStatus.fromInt(data[1] as int);
+      final pr = data[2] as int;
+      // Ignore callbacks for any earlier/stale task.
+      if (_taskId != null && id == _taskId) _onBackgroundUpdate(st, pr);
+    });
+    await FlutterDownloader.registerCallback(downloadCallback, step: 2);
+  }
 
   static Future<String> currentVersion() async {
     final info = await PackageInfo.fromPlatform();
@@ -56,26 +112,110 @@ class UpdateService {
     }
   }
 
-  /// Downloads the APK (reporting 0..1 progress) and opens the system installer.
-  static Future<void> downloadAndInstall(
-    String apkUrl, {
-    void Function(double progress)? onProgress,
-  }) async {
-    final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/ai_food_update.apk';
-    final dio = Dio();
-    await dio.download(
-      apkUrl,
-      path,
-      onReceiveProgress: (received, total) {
-        if (total > 0 && onProgress != null) onProgress(received / total);
-      },
-    );
-    final result = await OpenFilex.open(path);
-    if (result.type != ResultType.done) {
-      throw ApiException('無法開啟安裝程式：${result.message}');
+  /// Starts the update download, resetting [progress]/[status] first. Returns
+  /// once the download has been *started* (not finished) on Android — progress
+  /// then flows through [progress]/[status]. On the foreground fallback it
+  /// returns once the download+install attempt completes.
+  static Future<void> start(String apkUrl) async {
+    lastError = null;
+    progress.value = 0;
+    status.value = DownloadStatus.running;
+    if (backgroundSupported) {
+      await _startBackground(apkUrl);
+    } else {
+      await _foregroundDownloadAndInstall(apkUrl);
     }
   }
+
+  // ---- Android background path (DownloadManager via flutter_downloader) ----
+
+  static Future<void> _startBackground(String apkUrl) async {
+    final dir = await _backgroundDir();
+    // Remove a stale APK so DownloadManager writes "ai_food_update.apk" rather
+    // than "ai_food_update (1).apk".
+    await _deleteQuietly('${dir.path}/$_fileName');
+    _taskId = await FlutterDownloader.enqueue(
+      url: apkUrl,
+      savedDir: dir.path,
+      fileName: _fileName,
+      showNotification: true,
+      // Tapping the completion notification opens the APK → system installer,
+      // so the user can install even if the app was killed mid-download.
+      openFileFromNotification: true,
+      saveInPublicStorage: false,
+    );
+  }
+
+  static Future<void> _onBackgroundUpdate(
+      DownloadTaskStatus st, int pr) async {
+    if (st == DownloadTaskStatus.running ||
+        st == DownloadTaskStatus.enqueued) {
+      status.value = DownloadStatus.running;
+      if (pr >= 0) progress.value = pr / 100.0;
+    } else if (st == DownloadTaskStatus.complete) {
+      progress.value = 1;
+      // Launch the installer immediately while the app is in the foreground; if
+      // it's backgrounded this is a no-op and the notification handles it.
+      try {
+        if (_taskId != null) await FlutterDownloader.open(taskId: _taskId!);
+      } catch (_) {/* notification fallback already covers this */}
+      status.value = DownloadStatus.complete;
+    } else if (st == DownloadTaskStatus.failed ||
+        st == DownloadTaskStatus.canceled) {
+      lastError = '下載未完成，請稍後再試';
+      status.value = DownloadStatus.failed;
+    }
+  }
+
+  /// App-specific external dir (no storage permission needed) that the plugin's
+  /// bundled FileProvider can expose to the installer; temp dir as a fallback.
+  static Future<Directory> _backgroundDir() async =>
+      (await getExternalStorageDirectory()) ?? await getTemporaryDirectory();
+
+  // ---- Non-Android foreground fallback ----
+
+  static Future<void> _foregroundDownloadAndInstall(String apkUrl) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final path = '${dir.path}/$_fileName';
+      await Dio().download(
+        apkUrl,
+        path,
+        onReceiveProgress: (received, total) {
+          if (total > 0) progress.value = received / total;
+        },
+      );
+      progress.value = 1;
+      final result = await OpenFilex.open(path);
+      if (result.type != ResultType.done) {
+        lastError = '無法開啟安裝程式：${result.message}';
+        status.value = DownloadStatus.failed;
+        return;
+      }
+      status.value = DownloadStatus.complete;
+    } catch (e) {
+      lastError = '$e';
+      status.value = DownloadStatus.failed;
+    }
+  }
+
+  static const _fileName = 'ai_food_update.apk';
+
+  static Future<void> _deleteQuietly(String path) async {
+    try {
+      final f = File(path);
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+}
+
+/// flutter_downloader background-isolate callback. Runs in a separate isolate,
+/// so it can only hand the raw (id, status, progress) tuple back to the UI
+/// isolate through the registered port.
+@pragma('vm:entry-point')
+void downloadCallback(String id, int status, int progress) {
+  IsolateNameServer.lookupPortByName(UpdateService.portName)
+      ?.send([id, status, progress]);
 }
 
 /// The backend builds the in-app download URL from its request origin, which

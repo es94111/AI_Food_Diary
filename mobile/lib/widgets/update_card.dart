@@ -36,40 +36,41 @@ class UpdateCard extends StatefulWidget {
     }
   }
 
-  /// Downloads the APK with an animated progress dialog, then launches
-  /// the installer.
+  /// Kicks off the (background, on Android) download and shows a progress sheet
+  /// that reflects [UpdateService.status]. The sheet can be dismissed while the
+  /// download keeps running, so switching away from the app never fails the
+  /// update — the OS finishes it and notifies the user to install.
   static Future<void> runUpdate(BuildContext context, String apkUrl) async {
-    final progress = ValueNotifier<double>(0);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.black54,
-      builder: (_) => _DownloadDialog(progress: progress),
-    );
     try {
-      await UpdateService.downloadAndInstall(apkUrl,
-          onProgress: (p) => progress.value = p);
-      if (context.mounted) Navigator.of(context).pop(); // close progress
+      await UpdateService.start(apkUrl);
     } catch (e) {
-      if (context.mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: const Color(0xFFB91C1C),
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Expanded(child: Text('更新失敗：$e')),
-              ],
-            ),
-          ),
-        );
-      }
-    } finally {
-      progress.dispose();
+      if (context.mounted) _showError(context, '無法開始下載：$e');
+      return;
     }
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black54,
+      builder: (_) => const _DownloadDialog(),
+    );
+  }
+
+  static void _showError(BuildContext context, String message) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFFB91C1C),
+        content: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -485,15 +486,46 @@ class _UpdatePromptDialog extends StatelessWidget {
   }
 }
 
-/// Animated download dialog: a circular progress ring with the percentage
-/// in the center, plus a subtle status line.
-class _DownloadDialog extends StatelessWidget {
-  const _DownloadDialog({required this.progress});
+/// Animated download dialog: a circular progress ring with the percentage in
+/// the center, plus a subtle status line. Reflects [UpdateService.status] and
+/// can be dismissed while the (background) download keeps running.
+class _DownloadDialog extends StatefulWidget {
+  const _DownloadDialog();
 
-  final ValueNotifier<double> progress;
+  @override
+  State<_DownloadDialog> createState() => _DownloadDialogState();
+}
+
+class _DownloadDialogState extends State<_DownloadDialog> {
+  @override
+  void initState() {
+    super.initState();
+    UpdateService.status.addListener(_onStatus);
+  }
+
+  @override
+  void dispose() {
+    UpdateService.status.removeListener(_onStatus);
+    super.dispose();
+  }
+
+  void _onStatus() {
+    final status = UpdateService.status.value;
+    if (status == DownloadStatus.complete) {
+      // Installer is launched by UpdateService; just close the sheet.
+      if (mounted) Navigator.of(context).pop();
+    } else if (status == DownloadStatus.failed) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        UpdateCard._showError(
+            context, '更新失敗：${UpdateService.lastError ?? '請稍後再試'}');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final canBackground = UpdateService.backgroundSupported;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 48),
@@ -514,7 +546,7 @@ class _DownloadDialog extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ValueListenableBuilder<double>(
-              valueListenable: progress,
+              valueListenable: UpdateService.progress,
               builder: (_, value, _) {
                 final indeterminate = value == 0;
                 return SizedBox(
@@ -555,12 +587,27 @@ class _DownloadDialog extends StatelessWidget {
                     fontWeight: FontWeight.w900,
                     color: _brown900)),
             const SizedBox(height: 6),
-            Text('請稍候，完成後將自動開啟安裝程式',
+            Text(
+                canBackground
+                    ? '可切換到其他 App，下載會在背景繼續，完成後會通知你安裝'
+                    : '請稍候，完成後將自動開啟安裝程式',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 12.5,
                     height: 1.4,
                     color: Colors.black.withValues(alpha: 0.5))),
+            if (canBackground) ...[
+              const SizedBox(height: 18),
+              TextButton.icon(
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.south_east_rounded, size: 18),
+                label: const Text('在背景繼續下載'),
+                style: TextButton.styleFrom(
+                  foregroundColor: _amber700,
+                  textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
           ],
         ),
       ),
