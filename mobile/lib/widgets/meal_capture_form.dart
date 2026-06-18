@@ -251,7 +251,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       if (urls.isEmpty) return;
       final items = await MealService.analyzeNutritionLabel(urls);
       if (items.isEmpty) {
-        setState(() => _error = 'AI 沒有辨識到營養標示內容，請換一張更清楚的圖片。');
+        if (mounted) setState(() => _error = 'AI 沒有辨識到營養標示內容，請換一張更清楚的圖片。');
         return;
       }
       final analyzedItems = items.map(EditableItem.fromAnalysis).toList();
@@ -272,17 +272,17 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         );
         await _loadSavedFoods();
       }
+      if (!mounted) return;
       setState(() {
         _manualItems.removeWhere((e) => !e.hasName);
         _manualItems.addAll(analyzedItems);
         _pendingBarcode = null;
         _labelLoading = false;
       });
-      if (!mounted) return;
       final confirmed = await _showConfirmDialog(analyzedItems);
       if (confirmed == true) await _afterSave();
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _labelLoading = false);
     }
