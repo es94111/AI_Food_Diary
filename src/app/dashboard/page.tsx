@@ -218,7 +218,7 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
         <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">{view === "week" ? "本週餐點" : "當日餐點"}</h2>
           <div className="mt-4">
-            <MealList meals={mealList} />
+            <MealList meals={mealList} timeZone={tzName(tz)} />
           </div>
         </div>
         {view === "week" ? <WeeklyNutritionReview days={weeklyDays} /> : null}

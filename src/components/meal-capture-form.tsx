@@ -590,10 +590,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
               <input className="mt-2 w-full rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => updateManualItem(item.id, "name", event.target.value)} placeholder="食物名稱，例如：炸素排" value={item.name} />
               <input className="mt-2 w-full rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => updateManualItem(item.id, "estimatedAmount", event.target.value)} placeholder="份量，例如：150g" value={item.estimatedAmount} />
               <div className="mt-2 grid grid-cols-2 gap-3">
-                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "calories", event.target.value)} placeholder="熱量 kcal" step="0.1" type="number" value={item.calories} />
-                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "protein", event.target.value)} placeholder="蛋白質 g" step="0.1" type="number" value={item.protein} />
-                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "fat", event.target.value)} placeholder="脂肪 g" step="0.1" type="number" value={item.fat} />
-                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "carbs", event.target.value)} placeholder="碳水 g" step="0.1" type="number" value={item.carbs} />
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "calories", event.target.value)} placeholder="熱量 kcal" step="any" type="number" value={item.calories} />
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "protein", event.target.value)} placeholder="蛋白質 g" step="any" type="number" value={item.protein} />
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "fat", event.target.value)} placeholder="脂肪 g" step="any" type="number" value={item.fat} />
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" min="0" onChange={(event) => updateManualItem(item.id, "carbs", event.target.value)} placeholder="碳水 g" step="any" type="number" value={item.carbs} />
               </div>
             </div>
           ))}
@@ -733,10 +733,10 @@ function FoodEditor({ item, index, items, setItems }: { item: ManualItem; index:
         <option value="MANUAL">✎ 手動</option>
       </select>
       <div className="mt-2 grid grid-cols-2 gap-3">
-        <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" onChange={(event) => update("calories", event.target.value)} placeholder="熱量 kcal" step="0.1" type="number" value={item.calories} />
-        <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => update("protein", event.target.value)} placeholder="蛋白質 g" step="0.1" type="number" value={item.protein} />
-        <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => update("fat", event.target.value)} placeholder="脂肪 g" step="0.1" type="number" value={item.fat} />
-        <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => update("carbs", event.target.value)} placeholder="碳水 g" step="0.1" type="number" value={item.carbs} />
+        <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" onChange={(event) => update("calories", event.target.value)} placeholder="熱量 kcal" step="any" type="number" value={item.calories} />
+        <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => update("protein", event.target.value)} placeholder="蛋白質 g" step="any" type="number" value={item.protein} />
+        <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => update("fat", event.target.value)} placeholder="脂肪 g" step="any" type="number" value={item.fat} />
+        <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => update("carbs", event.target.value)} placeholder="碳水 g" step="any" type="number" value={item.carbs} />
       </div>
     </div>
   );

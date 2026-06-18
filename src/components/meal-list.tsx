@@ -50,12 +50,12 @@ const MEAL_TYPE_LABELS: Record<string, string> = {
   SNACK: "點心"
 };
 
-export function MealList({ meals }: { meals: Meal[] }) {
+export function MealList({ meals, timeZone }: { meals: Meal[]; timeZone: string }) {
   if (meals.length === 0) return <p className="text-stone-500">今天還沒有紀錄。</p>;
-  return <div className="space-y-4">{meals.map((meal) => <MealCard key={meal.id} meal={meal} />)}</div>;
+  return <div className="space-y-4">{meals.map((meal) => <MealCard key={meal.id} meal={meal} timeZone={timeZone} />)}</div>;
 }
 
-function MealCard({ meal }: { meal: Meal }) {
+function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [items, setItems] = useState<EditableMealItem[]>(() => meal.items.map(toEditableItem));
@@ -203,7 +203,7 @@ function MealCard({ meal }: { meal: Meal }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="font-bold">{MEAL_TYPE_LABELS[meal.mealType] ?? meal.mealType}</p>
-          <p className="text-sm text-stone-500">{formatMealTime(meal.eatenAt)} · {meal.totalCalories} kcal</p>
+          <p className="text-sm text-stone-500">{formatMealTime(meal.eatenAt, timeZone)} · {meal.totalCalories} kcal</p>
         </div>
         <div className="flex flex-wrap justify-end gap-2 text-sm">
           {!editing ? (
@@ -376,8 +376,8 @@ function fileToDataUrl(file: File) {
   });
 }
 
-function formatMealTime(eatenAt: string) {
-  return new Date(eatenAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function formatMealTime(eatenAt: string, timeZone: string) {
+  return new Date(eatenAt).toLocaleTimeString("en-GB", { timeZone, hour: "2-digit", minute: "2-digit" });
 }
 
 function RatingBadge({ rating }: { rating: string }) {
