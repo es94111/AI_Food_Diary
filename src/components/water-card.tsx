@@ -191,7 +191,7 @@ export function WaterCard({
                 <span className="text-sm font-semibold text-stone-700">{log.amountMl} ml</span>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-stone-400">
-                    {new Date(log.drankAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {new Date(log.drankAt).toLocaleTimeString("en-GB", { timeZone: tz, hour: "2-digit", minute: "2-digit" })}
                   </span>
                   <button
                     className="cursor-pointer text-stone-300 transition-colors hover:text-rose-500 disabled:opacity-50"
