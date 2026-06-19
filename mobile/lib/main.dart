@@ -4,6 +4,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'screens/login_screen.dart';
 import 'screens/dashboard_screen.dart';
+import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/background_analysis.dart';
 import 'services/meal_analysis_controller.dart';
@@ -52,6 +53,14 @@ void main() async {
       // (In sentry_flutter 9.x masking lives on options.privacy, not replay.)
       options.privacy.maskAllText = true;
       options.privacy.maskAllImages = true;
+      // Noise filter: drop pure connectivity failures (offline, DNS lookup
+      // failed, connection refused, timeouts). These are expected on mobile —
+      // they say nothing about app health, but uncaught ones get reported as
+      // `fatal`. Real app bugs still flow through untouched.
+      options.beforeSend = (event, hint) {
+        if (ApiClient.isConnectivityError(event.throwable)) return null;
+        return event;
+      };
     },
     appRunner: () => runApp(SentryWidget(child: const AiFoodApp())),
   );
