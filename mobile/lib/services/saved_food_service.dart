@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
+
 import '../models/models.dart';
 import 'api_client.dart';
 
@@ -22,12 +24,21 @@ class SavedFoodService {
   }
 
   static Future<List<SavedFood>> list() async {
-    final res = await _api.get('/api/saved-foods');
-    if (!ApiClient.ok(res)) return [];
-    final foods = res.data['foods'] as List? ?? [];
-    return foods
-        .map((e) => SavedFood.fromJson(e as Map<String, dynamic>))
-        .toList();
+    try {
+      final res = await _api.get('/api/saved-foods');
+      if (!ApiClient.ok(res)) return [];
+      final foods = res.data['foods'] as List? ?? [];
+      return foods
+          .map((e) => SavedFood.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      // Offline / DNS failure while loading the saved-foods suggestions: this
+      // is a non-critical background fetch, so degrade gracefully to an empty
+      // list instead of letting the exception crash the form. Real errors
+      // (parsing, unexpected types) still propagate.
+      if (ApiClient.isConnectivityError(e)) return [];
+      rethrow;
+    }
   }
 
   static Future<SavedFood?> findByBarcode(String barcode) async {

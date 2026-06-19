@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_dio/sentry_dio.dart';
@@ -157,6 +159,26 @@ class ApiClient {
   static bool ok(Response<dynamic> res) {
     final code = res.statusCode ?? 0;
     return code >= 200 && code < 300;
+  }
+
+  /// Whether [error] is a pure network/connectivity failure (offline, DNS
+  /// lookup failed, connection refused, or any timeout) rather than a real app
+  /// bug. These are expected on mobile and shouldn't be surfaced as crashes or
+  /// reported to Sentry as `fatal` noise.
+  static bool isConnectivityError(Object? error) {
+    if (error is SocketException) return true;
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionError:
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.receiveTimeout:
+          return true;
+        default:
+          return error.error is SocketException;
+      }
+    }
+    return false;
   }
 }
 
