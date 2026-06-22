@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import OpenAI from "openai";
 import { z } from "zod";
 
@@ -157,6 +158,28 @@ function normalizeBaseUrl(baseUrl?: string) {
   const value = baseUrl?.trim();
   if (!value) return undefined;
   return value.replace(/\/+$/, "");
+}
+
+// Wraps an AI operation in a Sentry `gen_ai.invoke_agent` span so each user
+// action shows up as a single named agent in Sentry's AI Agents dashboard, with
+// the auto-instrumented `openai` chat completion(s) nested underneath as
+// `gen_ai.chat` child spans. We deliberately do NOT attach prompt/response
+// content here — that policy lives in sentry.server.config.ts
+// (dataCollection.genAI), so meal photos and AI replies never leave the server.
+// `model` is the request model so the agent span groups by the model in use.
+function withAgent<T>(name: string, model: string, run: () => Promise<T>): Promise<T> {
+  return Sentry.startSpan(
+    {
+      op: "gen_ai.invoke_agent",
+      name: `invoke_agent ${name}`,
+      attributes: {
+        "gen_ai.operation.name": "invoke_agent",
+        "gen_ai.agent.name": name,
+        "gen_ai.request.model": model,
+      },
+    },
+    run
+  );
 }
 
 function messageText(content: unknown) {
@@ -325,7 +348,8 @@ export async function analyzeMealImage(config: AiConfig, imageDataUrls: string[]
     };
   }
 
-  return requestMealImageAnalysis(config, imageDataUrls);
+  return withAgent("meal-photo-analysis", config.visionModel, () =>
+    requestMealImageAnalysis(config, imageDataUrls));
 }
 
 // Self-consistency for the photo flow: run the same image several times and keep
@@ -343,47 +367,52 @@ export async function analyzeMealImageStable(
   const count = Math.max(1, Math.min(Math.round(samples), 5));
   if (imageDataUrls.length === 0 || count === 1) return analyzeMealImage(config, imageDataUrls);
 
-  const settled = await Promise.allSettled(
-    Array.from({ length: count }, (_unused, index) =>
-      requestMealImageAnalysis(config, imageDataUrls, { temperature: PRECISE_TEMPERATURE, seed: ANALYSIS_SEED + index })
-    )
-  );
-  const analyses = settled
-    .filter((result): result is PromiseFulfilledResult<FoodAnalysis> => result.status === "fulfilled")
-    .map((result) => result.value)
-    .filter((analysis) => analysis.foods.length > 0);
+  // One agent span for the whole self-consistency run, so its N parallel chat
+  // completions show up nested under a single "meal-photo-analysis" agent call.
+  return withAgent("meal-photo-analysis", config.visionModel, async () => {
+    const settled = await Promise.allSettled(
+      Array.from({ length: count }, (_unused, index) =>
+        requestMealImageAnalysis(config, imageDataUrls, { temperature: PRECISE_TEMPERATURE, seed: ANALYSIS_SEED + index })
+      )
+    );
+    const analyses = settled
+      .filter((result): result is PromiseFulfilledResult<FoodAnalysis> => result.status === "fulfilled")
+      .map((result) => result.value)
+      .filter((analysis) => analysis.foods.length > 0);
 
-  if (analyses.length === 0) {
-    const rejection = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
-    throw rejection?.reason ?? new Error("OPENAI_RESPONSE_NOT_PARSEABLE");
-  }
-  if (analyses.length === 1) return analyses[0];
+    if (analyses.length === 0) {
+      const rejection = settled.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
+      throw rejection?.reason ?? new Error("OPENAI_RESPONSE_NOT_PARSEABLE");
+    }
+    if (analyses.length === 1) return analyses[0];
 
-  const sorted = [...analyses].sort((a, b) => a.total.calories - b.total.calories);
-  const median = sorted[Math.floor((sorted.length - 1) / 2)];
-  return {
-    ...median,
-    notes: `${median.notes}（精準模式：取 ${analyses.length} 次辨識的中位數，總熱量範圍 ${sorted[0].total.calories}–${sorted[sorted.length - 1].total.calories} kcal）`
-  };
+    const sorted = [...analyses].sort((a, b) => a.total.calories - b.total.calories);
+    const median = sorted[Math.floor((sorted.length - 1) / 2)];
+    return {
+      ...median,
+      notes: `${median.notes}（精準模式：取 ${analyses.length} 次辨識的中位數，總熱量範圍 ${sorted[0].total.calories}–${sorted[sorted.length - 1].total.calories} kcal）`
+    };
+  });
 }
 
 export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrls: string[]): Promise<FoodAnalysis> {
-  const response = await createCompletion(config, {
-    model: config.visionModel,
-    ...completionOptions({ json: true }),
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: promptFromEnv("AI_NUTRITION_LABEL_ANALYSIS_PROMPT", defaultNutritionLabelAnalysisPrompt)
-          },
-          ...imageDataUrls.map((url) => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } }))
-        ]
-      }
-    ]
-  });
+  const response = await withAgent("nutrition-label-analysis", config.visionModel, () =>
+    createCompletion(config, {
+      model: config.visionModel,
+      ...completionOptions({ json: true }),
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: promptFromEnv("AI_NUTRITION_LABEL_ANALYSIS_PROMPT", defaultNutritionLabelAnalysisPrompt)
+            },
+            ...imageDataUrls.map((url) => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } }))
+          ]
+        }
+      ]
+    }));
 
   return parseMealAnalysisText(completionText(response));
 }
@@ -393,16 +422,17 @@ export async function analyzeMealDescription(config: AiConfig, description: stri
     description
   });
 
-  const response = await createCompletion(config, {
-    model: config.textModel,
-    ...completionOptions({ json: true }),
-    messages: [
-      {
-        role: "user",
-        content: prompt
-      }
-    ]
-  });
+  const response = await withAgent("meal-description-analysis", config.textModel, () =>
+    createCompletion(config, {
+      model: config.textModel,
+      ...completionOptions({ json: true }),
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    }));
 
   return parseMealAnalysisText(completionText(response));
 }
@@ -412,16 +442,17 @@ export async function analyzeManualFoodItems(config: AiConfig, items: FoodAnalys
     items: JSON.stringify(items)
   });
 
-  const response = await createCompletion(config, {
-    model: config.textModel,
-    ...completionOptions({ json: true }),
-    messages: [
-      {
-        role: "user",
-        content: prompt
-      }
-    ]
-  });
+  const response = await withAgent("manual-food-rating", config.textModel, () =>
+    createCompletion(config, {
+      model: config.textModel,
+      ...completionOptions({ json: true }),
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    }));
 
   return parseMealAnalysisText(completionText(response));
 }
@@ -438,16 +469,17 @@ export async function reestimateFoodItems(
     items: JSON.stringify(items.map((item) => ({ name: item.name, estimatedAmount: item.estimatedAmount })))
   });
 
-  const response = await createCompletion(config, {
-    model: config.textModel,
-    ...completionOptions({ json: true }),
-    messages: [
-      {
-        role: "user",
-        content: prompt
-      }
-    ]
-  });
+  const response = await withAgent("food-reestimate", config.textModel, () =>
+    createCompletion(config, {
+      model: config.textModel,
+      ...completionOptions({ json: true }),
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    }));
 
   return parseMealAnalysisText(completionText(response));
 }
@@ -469,16 +501,17 @@ export async function generateNextMealAdvice(config: AiConfig, input: {
   });
 
   // Plain-text advice — no JSON mode, but still temperature-bounded for stability.
-  const response = await createCompletion(config, {
-    model: config.textModel,
-    ...completionOptions(),
-    messages: [
-      {
-        role: "user",
-        content: prompt
-      }
-    ]
-  });
+  const response = await withAgent("next-meal-advice", config.textModel, () =>
+    createCompletion(config, {
+      model: config.textModel,
+      ...completionOptions(),
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    }));
 
   return completionText(response).trim();
 }
@@ -499,16 +532,17 @@ export async function generateDailySummary(config: AiConfig, input: {
     healthContext: input.healthContext ?? "尚未同步"
   });
 
-  const response = await createCompletion(config, {
-    model: config.textModel,
-    ...completionOptions({ json: true }),
-    messages: [
-      {
-        role: "user",
-        content: prompt
-      }
-    ]
-  });
+  const response = await withAgent("daily-summary", config.textModel, () =>
+    createCompletion(config, {
+      model: config.textModel,
+      ...completionOptions({ json: true }),
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    }));
 
   const parsed = parseJsonResponse(completionText(response));
   return z.object({ summary: z.string(), recommendation: z.string() }).parse(parsed);
