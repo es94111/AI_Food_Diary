@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../services/update_service.dart';
 import 'markdown_text.dart';
@@ -43,7 +44,9 @@ class UpdateCard extends StatefulWidget {
   static Future<void> runUpdate(BuildContext context, String apkUrl) async {
     try {
       await UpdateService.start(apkUrl);
-    } catch (e) {
+    } catch (e, st) {
+      await Sentry.captureException(e, stackTrace: st,
+          withScope: (scope) => scope.setTag('feature', 'app_update'));
       if (context.mounted) _showError(context, '無法開始下載：$e');
       return;
     }
