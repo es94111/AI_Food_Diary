@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -19,11 +20,11 @@ import 'login_screen.dart';
 /// donut the dashboard uses), so the wait reads as an intentional splash.
 ///
 /// Timing:
-///  * The route (dashboard vs login) is decided by the fast, local session
-///    check, so it's never wrong even if the rest is slow.
-///  * Service init is awaited but capped at [_initCap]; if a plugin is slow it
-///    keeps initialising in the background while we enter the app.
-///  * [_minSplash] guarantees the animation is seen rather than flashing by.
+///  * The local session check runs during the animation and has the same hard
+///    deadline, so it cannot leave the finished splash spinning indefinitely.
+///  * Non-critical service initialization is detached from navigation. Slow or
+///    failed plugins never delay entry into the dashboard/login screen.
+///  * [_splashDuration] is the single source of truth for the animation wait.
 ///
 /// (Sentry is initialised before `runApp` in main(), so it's already up by the
 /// time this screen renders — the native launch screen covers that phase.)
@@ -47,8 +48,7 @@ class _SplashScreenState extends State<SplashScreen>
     Color(0xFF38BDF8), // sky
   ];
 
-  static const _minSplash = Duration(milliseconds: 1600);
-  static const _initCap = Duration(seconds: 3);
+  static const _splashDuration = Duration(milliseconds: 1600);
 
   late final AnimationController _intro; // logo + title reveal (plays once)
   late final AnimationController _spin; // ring rotation (loops as a spinner)
@@ -57,7 +57,7 @@ class _SplashScreenState extends State<SplashScreen>
   void initState() {
     super.initState();
     _intro = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1100))
+        vsync: this, duration: _splashDuration)
       ..forward();
     _spin = AnimationController(
         vsync: this, duration: const Duration(milliseconds: 1200))
@@ -66,21 +66,12 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _boot() async {
-    final sw = Stopwatch()..start();
-
-    // Decide the destination first — a cheap local secure-storage read — so the
-    // route stays correct regardless of how the slow inits below go.
-    bool loggedIn = false;
-    try {
-      loggedIn = await AuthService.hasSession();
-    } catch (_) {/* treat any failure as logged-out */}
-
-    // Wait for the non-critical service init, but never longer than _initCap.
-    await Future.any([_initServices(), Future<void>.delayed(_initCap)]);
-
-    // Let the animation breathe so it never just flashes.
-    final remaining = _minSplash - sw.elapsed;
-    if (remaining > Duration.zero) await Future<void>.delayed(remaining);
+    // Start everything together. Only the animation and fast local session read
+    // participate in navigation; plugin setup continues independently.
+    unawaited(_initServices());
+    final session = _hasSessionWithDeadline();
+    await Future<void>.delayed(_splashDuration);
+    final loggedIn = await session;
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(MaterialPageRoute(
@@ -90,12 +81,28 @@ class _SplashScreenState extends State<SplashScreen>
     ));
   }
 
+  Future<bool> _hasSessionWithDeadline() async {
+    try {
+      return await AuthService.hasSession().timeout(_splashDuration);
+    } catch (_) {
+      // Secure-storage failure/timeout falls back to login instead of leaving
+      // the completed splash animation on screen.
+      return false;
+    }
+  }
+
   Future<void> _initServices() async {
-    // Kept sequential to match the original ordering; each is independently
-    // cheap, and the whole chain is capped by [_initCap] in _boot().
-    await BackgroundAnalysis.init();
-    await MealAnalysisController.instance.init();
-    await UpdateService.init();
+    // Keep the plugin ordering, but isolate failures so one optional service
+    // cannot prevent the remaining services from starting.
+    try {
+      await BackgroundAnalysis.init();
+    } catch (_) {}
+    try {
+      await MealAnalysisController.instance.init();
+    } catch (_) {}
+    try {
+      await UpdateService.init();
+    } catch (_) {}
   }
 
   @override
