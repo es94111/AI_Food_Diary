@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/background_analysis.dart';
+import '../services/health_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/update_service.dart';
 import 'dashboard_screen.dart';
@@ -21,10 +22,14 @@ import 'login_screen.dart';
 ///
 /// Timing:
 ///  * The local session check runs during the animation and has the same hard
-///    deadline, so it cannot leave the finished splash spinning indefinitely.
+///    deadline.
+///  * For a signed-in user who already granted Health Connect access, the last
+///    two days are synced while the ring keeps spinning. Navigation waits for
+///    that sync to finish, so the dashboard starts with current health data.
 ///  * Non-critical service initialization is detached from navigation. Slow or
 ///    failed plugins never delay entry into the dashboard/login screen.
-///  * [_splashDuration] is the single source of truth for the animation wait.
+///  * [_splashDuration] is the minimum animation time; a health sync may keep
+///    the looping ring visible for longer.
 ///
 /// (Sentry is initialised before `runApp` in main(), so it's already up by the
 /// time this screen renders — the native launch screen covers that phase.)
@@ -56,29 +61,55 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-    _intro = AnimationController(
-        vsync: this, duration: _splashDuration)
+    _intro = AnimationController(vsync: this, duration: _splashDuration)
       ..forward();
     _spin = AnimationController(
-        vsync: this, duration: const Duration(milliseconds: 1200))
-      ..repeat();
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
     _boot();
   }
 
   Future<void> _boot() async {
-    // Start everything together. Only the animation and fast local session read
-    // participate in navigation; plugin setup continues independently.
+    // Start optional plugin setup and the minimum animation timer immediately.
+    // Plugin setup stays detached, while an authorised health sync participates
+    // in navigation so the dashboard never races stale startup data.
     unawaited(_initServices());
-    final session = _hasSessionWithDeadline();
-    await Future<void>.delayed(_splashDuration);
-    final loggedIn = await session;
+    final minimumAnimation = Future<void>.delayed(_splashDuration);
+    final loggedIn = await _hasSessionWithDeadline();
+    if (loggedIn) await _syncHealthIfAvailable();
+    await minimumAnimation;
 
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
-      builder: (_) =>
-          loggedIn ? const DashboardScreen() : const LoginScreen(),
-      settings: RouteSettings(name: loggedIn ? '/dashboard' : '/login'),
-    ));
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) =>
+            loggedIn ? const DashboardScreen() : const LoginScreen(),
+        settings: RouteSettings(name: loggedIn ? '/dashboard' : '/login'),
+      ),
+    );
+  }
+
+  /// Runs only when Health Connect read access has already been granted. The
+  /// normal sync flow handles the existing nutrition/water write permissions.
+  Future<void> _syncHealthIfAvailable() async {
+    const days = 2;
+    try {
+      if (!await HealthService.hasPermissions()) return;
+
+      // Mirror app-owned meals/water before reading Health Connect so the same
+      // startup sync can upload the latest nutrition and hydration values.
+      try {
+        await HealthService.writeRecentMealsToHealth(days: days);
+      } catch (_) {}
+      try {
+        await HealthService.writeRecentWaterToHealth(days: days);
+      } catch (_) {}
+      await HealthService.syncNow(days: days);
+    } catch (_) {
+      // Startup sync is best-effort. Offline/plugin failures should finish the
+      // splash and let the signed-in user retry from the health card.
+    }
   }
 
   Future<bool> _hasSessionWithDeadline() async {
@@ -160,8 +191,11 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                           ],
                         ),
-                        child: const Icon(Icons.restaurant,
-                            color: Colors.white, size: 34),
+                        child: const Icon(
+                          Icons.restaurant,
+                          color: Colors.white,
+                          size: 34,
+                        ),
                       ),
                     ),
                   ),
@@ -172,8 +206,10 @@ class _SplashScreenState extends State<SplashScreen>
             FadeTransition(
               opacity: fade,
               child: SlideTransition(
-                position: Tween(begin: const Offset(0, 0.4), end: Offset.zero)
-                    .animate(pop),
+                position: Tween(
+                  begin: const Offset(0, 0.4),
+                  end: Offset.zero,
+                ).animate(pop),
                 child: Column(
                   children: [
                     const Text(
