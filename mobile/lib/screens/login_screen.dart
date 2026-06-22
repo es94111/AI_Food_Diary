@@ -71,7 +71,9 @@ class _LoginScreenState extends State<LoginScreen> {
           turnstileToken: _turnstileToken);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        MaterialPageRoute(
+            builder: (_) => const DashboardScreen(),
+            settings: const RouteSettings(name: '/dashboard')),
       );
     } catch (e) {
       // A used/expired Turnstile token can't be reused — re-run the challenge
@@ -97,7 +99,9 @@ class _LoginScreenState extends State<LoginScreen> {
       if (user == null) return; // cancelled
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        MaterialPageRoute(
+            builder: (_) => const DashboardScreen(),
+            settings: const RouteSettings(name: '/dashboard')),
       );
     } catch (e) {
       setState(() => _error = e.toString());
@@ -214,7 +218,9 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? null
                         : () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                  builder: (_) => const RegisterScreen()),
+                                  builder: (_) => const RegisterScreen(),
+                                  settings: const RouteSettings(
+                                      name: '/register')),
                             ),
                     child: const Text('還沒有帳號？註冊'),
                   ),

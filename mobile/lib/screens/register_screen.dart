@@ -68,7 +68,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           turnstileToken: _turnstileToken);
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        MaterialPageRoute(
+            builder: (_) => const DashboardScreen(),
+            settings: const RouteSettings(name: '/dashboard')),
         (route) => false,
       );
     } catch (e) {

@@ -74,6 +74,11 @@ class AiFoodApp extends StatelessWidget {
     return MaterialApp(
       title: 'AI Food Diary',
       debugShowCheckedModeBanner: false,
+      // Drives Sentry performance: auto-creates a screen-load transaction per
+      // route (TTID/TTFD) and leaves navigation breadcrumbs on every event, so
+      // the tracesSampleRate budget actually has transactions to sample and
+      // errors carry the screen path that led to them.
+      navigatorObservers: [SentryNavigatorObserver()],
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFFB45309), // amber-700, matches web

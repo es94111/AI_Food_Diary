@@ -599,6 +599,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       final barcode = await Navigator.of(context).push<String>(
         MaterialPageRoute(
           builder: (_) => const _BarcodeScannerPage(),
+          settings: const RouteSettings(name: '/barcode-scanner'),
           fullscreenDialog: true,
         ),
       );

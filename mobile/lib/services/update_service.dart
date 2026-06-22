@@ -8,6 +8,7 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'api_client.dart';
 
@@ -164,6 +165,8 @@ class UpdateService {
         st == DownloadTaskStatus.canceled) {
       lastError = '下載未完成，請稍後再試';
       status.value = DownloadStatus.failed;
+      final reason = st == DownloadTaskStatus.canceled ? 'canceled' : 'failed';
+      await _reportFailure('Background APK download $reason');
     }
   }
 
@@ -190,13 +193,54 @@ class UpdateService {
       if (result.type != ResultType.done) {
         lastError = '無法開啟安裝程式：${result.message}';
         status.value = DownloadStatus.failed;
+        await _reportFailure(
+            'Foreground APK install failed to open: ${result.message}');
         return;
       }
       status.value = DownloadStatus.complete;
-    } catch (e) {
+    } catch (e, st) {
       lastError = '$e';
       status.value = DownloadStatus.failed;
+      await _reportFailure('Foreground APK download failed',
+          error: e, stack: st);
     }
+  }
+
+  /// Reports an in-app update failure to Sentry so we get notified when an
+  /// install doesn't go through. Best-effort and self-contained: it swallows
+  /// any reporting error so it can never mask the original failure.
+  ///
+  /// Uses [Sentry.captureMessage] for downloader-status failures (which carry
+  /// no exception object) so they pass through `beforeSend` — that filter only
+  /// drops events whose *throwable* is a connectivity error. A real download
+  /// exception is forwarded as-is via [error] for a proper stack trace.
+  static Future<void> _reportFailure(
+    String message, {
+    Object? error,
+    StackTrace? stack,
+  }) async {
+    try {
+      String? version;
+      try {
+        version = await currentVersion();
+      } catch (_) {}
+      void configure(Scope scope) {
+        scope.setTag('feature', 'app_update');
+        scope.setContexts('app_update', {
+          'message': message,
+          'currentVersion': version ?? 'unknown',
+          'platform': defaultTargetPlatform.name,
+        });
+      }
+
+      if (error != null) {
+        await Sentry.captureException(error,
+            stackTrace: stack, withScope: configure);
+      } else {
+        await Sentry.captureMessage(message,
+            level: SentryLevel.error, withScope: configure);
+      }
+    } catch (_) {/* reporting must never break the update flow */}
   }
 
   static const _fileName = 'ai_food_update.apk';
