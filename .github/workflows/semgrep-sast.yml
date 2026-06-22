@@ -18,7 +18,7 @@ jobs:
       image: semgrep/semgrep
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Run Semgrep
         # --error: 有發現就讓 CI 失敗；首次導入太吵可先拿掉（純報告），
