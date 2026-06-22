@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
 import '../services/turnstile_service.dart';
@@ -123,15 +124,29 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.restaurant, size: 64, color: Color(0xFFB45309)),
+                  Center(
+                    child: Container(
+                      width: 88,
+                      height: 88,
+                      decoration: BoxDecoration(
+                        color: context.palette.brand.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.restaurant,
+                          size: 44, color: context.palette.brand),
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   const Text('AI Food Diary',
                       textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900)),
+                      style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: -0.5)),
                   const SizedBox(height: 4),
-                  const Text('回到你的 AI 飲食紀錄。',
+                  Text('回到你的 AI 飲食紀錄。',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.black54)),
+                      style: TextStyle(color: context.palette.inkSoft)),
                   const SizedBox(height: 28),
                   TextField(
                     controller: _emailCtrl,
@@ -158,8 +173,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           color: _turnstileToken == null
-                              ? Colors.black54
-                              : Colors.green[700],
+                              ? context.palette.inkSoft
+                              : context.palette.success,
                         ),
                       ),
                     ),
@@ -176,7 +191,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    Text(_error!,
+                        style: TextStyle(color: context.palette.danger)),
                   ],
                   const SizedBox(height: 20),
                   FilledButton(
@@ -184,23 +200,24 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14)),
                     child: _loading
-                        ? const SizedBox(
+                        ? SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                                strokeWidth: 2, color: context.palette.onBrand))
                         : const Text('登入'),
                   ),
                   if (GoogleAuth.isConfigured) ...[
                     const SizedBox(height: 12),
                     Row(
-                      children: const [
-                        Expanded(child: Divider()),
+                      children: [
+                        const Expanded(child: Divider()),
                         Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
-                          child: Text('或', style: TextStyle(color: Colors.black45)),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          child: Text('或',
+                              style: TextStyle(color: context.palette.inkFaint)),
                         ),
-                        Expanded(child: Divider()),
+                        const Expanded(child: Divider()),
                       ],
                     ),
                     const SizedBox(height: 12),
@@ -225,11 +242,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: const Text('還沒有帳號？註冊'),
                   ),
                   if (!_siteKeyChecked)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
                       child: Text('檢查驗證設定中...',
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, color: Colors.black38)),
+                          style: TextStyle(
+                              fontSize: 11, color: context.palette.inkFaint)),
                     ),
                 ],
               ),

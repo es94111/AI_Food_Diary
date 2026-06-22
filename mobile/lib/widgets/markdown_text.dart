@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 /// Minimal Markdown renderer for AI-generated text (advice / summaries).
 ///
 /// Handles the subset the model actually emits — headings (#/##/###), bullet
@@ -14,6 +16,7 @@ class MarkdownText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = (DefaultTextStyle.of(context).style).merge(style);
+    final codeBg = context.palette.overlay;
     final lines = data.replaceAll('\r\n', '\n').split('\n');
     final children = <Widget>[];
 
@@ -34,7 +37,7 @@ class MarkdownText extends StatelessWidget {
             text: TextSpan(
               style: base.copyWith(fontWeight: FontWeight.w800, fontSize: size),
               children: _inline(heading.group(2)!, base.copyWith(
-                  fontWeight: FontWeight.w800, fontSize: size)),
+                  fontWeight: FontWeight.w800, fontSize: size), codeBg),
             ),
           ),
         ));
@@ -43,19 +46,21 @@ class MarkdownText extends StatelessWidget {
 
       final bullet = RegExp(r'^\s*[-*]\s+(.*)$').firstMatch(line);
       if (bullet != null) {
-        children.add(_bulletRow('•', bullet.group(1)!, base));
+        children.add(_bulletRow('•', bullet.group(1)!, base, codeBg));
         continue;
       }
 
       final numbered = RegExp(r'^\s*(\d+)[.)]\s+(.*)$').firstMatch(line);
       if (numbered != null) {
-        children.add(_bulletRow('${numbered.group(1)}.', numbered.group(2)!, base));
+        children.add(
+            _bulletRow('${numbered.group(1)}.', numbered.group(2)!, base, codeBg));
         continue;
       }
 
       children.add(Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
-        child: RichText(text: TextSpan(style: base, children: _inline(line, base))),
+        child:
+            RichText(text: TextSpan(style: base, children: _inline(line, base, codeBg))),
       ));
     }
 
@@ -66,7 +71,7 @@ class MarkdownText extends StatelessWidget {
     );
   }
 
-  Widget _bulletRow(String marker, String text, TextStyle base) {
+  Widget _bulletRow(String marker, String text, TextStyle base, Color codeBg) {
     return Padding(
       padding: const EdgeInsets.only(left: 2, top: 2, bottom: 2),
       child: Row(
@@ -75,7 +80,7 @@ class MarkdownText extends StatelessWidget {
           Text('$marker  ', style: base),
           Expanded(
             child: RichText(
-                text: TextSpan(style: base, children: _inline(text, base))),
+                text: TextSpan(style: base, children: _inline(text, base, codeBg))),
           ),
         ],
       ),
@@ -83,7 +88,7 @@ class MarkdownText extends StatelessWidget {
   }
 
   /// Parses inline **bold**, *italic* and `code` into spans.
-  List<InlineSpan> _inline(String text, TextStyle base) {
+  List<InlineSpan> _inline(String text, TextStyle base, Color codeBg) {
     final pattern = RegExp(r'\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`');
     final spans = <InlineSpan>[];
     var index = 0;
@@ -104,7 +109,7 @@ class MarkdownText extends StatelessWidget {
             text: m.group(3),
             style: base.copyWith(
                 fontFamily: 'monospace',
-                backgroundColor: const Color(0x11000000))));
+                backgroundColor: codeBg)));
       }
       index = m.end;
     }

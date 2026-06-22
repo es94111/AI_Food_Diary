@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/turnstile_service.dart';
+import '../theme/app_theme.dart';
 import '../widgets/turnstile_webview.dart';
 import 'dashboard_screen.dart';
 
@@ -88,6 +89,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     return Scaffold(
       appBar: AppBar(title: const Text('建立帳號')),
       body: SafeArea(
@@ -99,8 +101,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('開始用照片追蹤營養與熱量。',
-                      style: TextStyle(color: Colors.black54)),
+                  Text('開始用照片追蹤營養與熱量。',
+                      style: TextStyle(color: p.inkSoft)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _nameCtrl,
@@ -132,8 +134,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         style: TextStyle(
                           fontSize: 13,
                           color: _turnstileToken == null
-                              ? Colors.black54
-                              : Colors.green[700],
+                              ? p.inkSoft
+                              : p.successInk,
                         ),
                       ),
                     ),
@@ -150,7 +152,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ],
                   if (_error != null) ...[
                     const SizedBox(height: 12),
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    Text(_error!, style: TextStyle(color: p.danger)),
                   ],
                   const SizedBox(height: 20),
                   FilledButton(
@@ -158,19 +160,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     style: FilledButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14)),
                     child: _loading
-                        ? const SizedBox(
+                        ? SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                                strokeWidth: 2, color: p.onBrand))
                         : const Text('建立帳號'),
                   ),
                   if (!_siteKeyChecked)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
                       child: Text('檢查驗證設定中...',
                           textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 11, color: Colors.black38)),
+                          style: TextStyle(fontSize: 11, color: p.inkFaint)),
                     ),
                 ],
               ),

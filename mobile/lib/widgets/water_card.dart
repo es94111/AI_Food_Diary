@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/auth_service.dart';
 import '../services/water_service.dart';
+import '../theme/app_theme.dart';
 
 /// Daily water-intake card: shows today's total vs goal with a progress bar,
 /// quick-add presets (100/500/800 ml) plus a free custom amount, and the day's
@@ -27,7 +28,6 @@ class WaterCard extends StatefulWidget {
 
 class _WaterCardState extends State<WaterCard> {
   static const _presets = [100, 500, 800];
-  static const _accent = Color(0xFF0284C7);
 
   List<WaterLog> _logs = [];
   int _totalMl = 0;
@@ -152,6 +152,7 @@ class _WaterCardState extends State<WaterCard> {
   Widget build(BuildContext context) {
     final percent =
         _goalMl > 0 ? (_totalMl / _goalMl).clamp(0.0, 1.0).toDouble() : 0.0;
+    final p = context.palette;
 
     return Card(
       child: Padding(
@@ -173,15 +174,15 @@ class _WaterCardState extends State<WaterCard> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text('$_totalMl',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 32,
                                 fontWeight: FontWeight.w900,
-                                color: _accent)),
+                                color: p.water)),
                         Padding(
                           padding: const EdgeInsets.only(bottom: 4, left: 4),
                           child: Text('/ $_goalMl ml',
-                              style: const TextStyle(
-                                  color: Colors.black45,
+                              style: TextStyle(
+                                  color: p.inkFaint,
                                   fontWeight: FontWeight.w600)),
                         ),
                       ],
@@ -202,8 +203,8 @@ class _WaterCardState extends State<WaterCard> {
               child: LinearProgressIndicator(
                 value: percent,
                 minHeight: 8,
-                backgroundColor: const Color(0xFFE0F2FE),
-                valueColor: const AlwaysStoppedAnimation(_accent),
+                backgroundColor: p.waterTrack,
+                valueColor: AlwaysStoppedAnimation(p.water),
               ),
             ),
             const SizedBox(height: 14),
@@ -214,14 +215,14 @@ class _WaterCardState extends State<WaterCard> {
                 for (final amount in _presets)
                   ActionChip(
                     label: Text('+$amount ml',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w700, color: _accent)),
-                    backgroundColor: const Color(0xFFEFF8FE),
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700, color: p.water)),
+                    backgroundColor: p.waterSurface,
                     side: BorderSide.none,
                     onPressed: _busy ? null : () => _add(amount),
                   ),
                 ActionChip(
-                  avatar: const Icon(Icons.add, size: 18, color: Colors.black54),
+                  avatar: Icon(Icons.add, size: 18, color: p.inkSoft),
                   label: const Text('自訂'),
                   onPressed: _busy ? null : _addCustom,
                 ),
@@ -233,26 +234,26 @@ class _WaterCardState extends State<WaterCard> {
                 padding: const EdgeInsets.only(top: 6),
                 child: Text(
                   widget.isToday ? '今天還沒記錄喝水。' : '這天沒有喝水紀錄。',
-                  style: const TextStyle(color: Colors.black45, fontSize: 13),
+                  style: TextStyle(color: p.inkFaint, fontSize: 13),
                 ),
               )
             else
               ..._logs.map((log) => ListTile(
                     contentPadding: EdgeInsets.zero,
                     dense: true,
-                    leading: const Icon(Icons.water_drop_outlined,
-                        color: _accent, size: 20),
+                    leading: Icon(Icons.water_drop_outlined,
+                        color: p.water, size: 20),
                     title: Text('${log.amountMl} ml',
                         style: const TextStyle(fontWeight: FontWeight.w600)),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(_time(log.drankAt),
-                            style: const TextStyle(
-                                color: Colors.black38, fontSize: 12)),
+                            style: TextStyle(
+                                color: p.inkFaint, fontSize: 12)),
                         IconButton(
                           icon: const Icon(Icons.close, size: 18),
-                          color: Colors.black26,
+                          color: p.inkFaint,
                           onPressed: _busy ? null : () => _delete(log.id),
                         ),
                       ],

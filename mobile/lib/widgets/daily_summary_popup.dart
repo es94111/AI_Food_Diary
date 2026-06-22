@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../theme/app_theme.dart';
 import 'markdown_text.dart';
 
 /// Shows yesterday's pre-computed AI summary as a popup dialog. The summary is
@@ -10,6 +11,7 @@ Future<void> showDailySummaryPopup(BuildContext context, DailySummary summary) {
     context: context,
     builder: (ctx) {
       final maxHeight = MediaQuery.of(ctx).size.height * 0.8;
+      final p = ctx.palette;
       return Dialog(
         insetPadding: const EdgeInsets.all(20),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -40,7 +42,7 @@ Future<void> showDailySummaryPopup(BuildContext context, DailySummary summary) {
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
                 child: Text(
                   '攝取 ${fmtNum(summary.totalCalories)} kcal',
-                  style: const TextStyle(color: Colors.black54),
+                  style: TextStyle(color: p.inkSoft),
                 ),
               ),
               Flexible(
@@ -56,23 +58,23 @@ Future<void> showDailySummaryPopup(BuildContext context, DailySummary summary) {
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFFBEB),
+                            color: p.amberSurface,
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 '建議',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
-                                  color: Color(0xFF92400E),
+                                  color: p.amberInk,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               MarkdownText(
                                 summary.aiRecommendation,
-                                style: const TextStyle(color: Color(0xFF78350F)),
+                                style: TextStyle(color: p.amberInkSoft),
                               ),
                             ],
                           ),

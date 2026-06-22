@@ -53,12 +53,14 @@ class UpdateService {
   static final ReceivePort _port = ReceivePort();
   static bool _initialised = false;
   static Future<void>? _initialising;
+  static Future<void>? _starting;
   static String? _taskId;
 
   /// 0..1 download progress.
   static final ValueNotifier<double> progress = ValueNotifier(0);
-  static final ValueNotifier<DownloadStatus> status =
-      ValueNotifier(DownloadStatus.idle);
+  static final ValueNotifier<DownloadStatus> status = ValueNotifier(
+    DownloadStatus.idle,
+  );
 
   /// Human-readable reason for the last [DownloadStatus.failed], if any.
   static String? lastError;
@@ -103,6 +105,7 @@ class UpdateService {
       if (_taskId != null && id == _taskId) _onBackgroundUpdate(st, pr);
     });
     await FlutterDownloader.registerCallback(downloadCallback, step: 2);
+    await _restoreSingleActiveTask();
   }
 
   static Future<String> currentVersion() async {
@@ -138,15 +141,34 @@ class UpdateService {
   /// then flows through [progress]/[status]. On the foreground fallback it
   /// returns once the download+install attempt completes.
   static Future<void> start(String apkUrl) async {
+    final inFlight = _starting;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final future = _start(apkUrl);
+    _starting = future;
+    try {
+      await future;
+    } finally {
+      _starting = null;
+    }
+  }
+
+  static Future<void> _start(String apkUrl) async {
     lastError = null;
-    progress.value = 0;
-    status.value = DownloadStatus.running;
     if (backgroundSupported) {
       // init() normally starts from the splash screen, but that work has a
       // deadline and may still be running when the user taps update.
       await init();
+      if (await _reuseSingleActiveTask()) return;
+      progress.value = 0;
+      status.value = DownloadStatus.running;
       await _startBackground(apkUrl);
     } else {
+      progress.value = 0;
+      status.value = DownloadStatus.running;
       await _foregroundDownloadAndInstall(apkUrl);
     }
   }
@@ -155,6 +177,7 @@ class UpdateService {
 
   static Future<void> _startBackground(String apkUrl) async {
     final dir = await _backgroundDir();
+    await _removeStaleUpdateTasks();
     // Remove a stale APK so DownloadManager writes "ai_food_update.apk" rather
     // than "ai_food_update (1).apk".
     await _deleteQuietly('${dir.path}/$_fileName');
@@ -168,12 +191,71 @@ class UpdateService {
       openFileFromNotification: true,
       saveInPublicStorage: false,
     );
+    if (_taskId == null) {
+      throw StateError('無法建立背景下載任務');
+    }
   }
 
-  static Future<void> _onBackgroundUpdate(
-      DownloadTaskStatus st, int pr) async {
-    if (st == DownloadTaskStatus.running ||
-        st == DownloadTaskStatus.enqueued) {
+  /// Reconnects this process to a download that survived an app restart. A
+  /// single task is safe to reuse; multiple tasks are deliberately left for
+  /// [start] to clean up because they may be writing the same APK concurrently.
+  static Future<void> _restoreSingleActiveTask() async {
+    final active = await _activeUpdateTasks();
+    if (active.length != 1) return;
+    _adoptTask(active.single);
+  }
+
+  /// Returns true when an existing task was adopted instead of enqueueing a
+  /// duplicate. This also makes repeated taps on the update button idempotent.
+  static Future<bool> _reuseSingleActiveTask() async {
+    final active = await _activeUpdateTasks();
+    if (active.length != 1) return false;
+    _adoptTask(active.single);
+    return true;
+  }
+
+  static void _adoptTask(DownloadTask task) {
+    _taskId = task.taskId;
+    progress.value = task.progress.clamp(0, 100) / 100.0;
+    status.value = DownloadStatus.running;
+  }
+
+  static Future<List<DownloadTask>> _updateTasks() async {
+    final tasks = await FlutterDownloader.loadTasks() ?? const <DownloadTask>[];
+    return tasks.where((task) => task.filename == _fileName).toList();
+  }
+
+  static Future<List<DownloadTask>> _activeUpdateTasks() async {
+    final tasks = await _updateTasks();
+    return tasks.where((task) {
+      return task.status == DownloadTaskStatus.enqueued ||
+          task.status == DownloadTaskStatus.running;
+    }).toList();
+  }
+
+  /// Removes every old updater task before creating a replacement. Older app
+  /// versions could enqueue several workers that all wrote the same filename;
+  /// those workers caused Android to stop newer jobs and report "canceled".
+  static Future<void> _removeStaleUpdateTasks() async {
+    final tasks = await _updateTasks();
+    if (tasks.isEmpty) return;
+
+    _taskId = null; // Ignore callbacks emitted while the stale jobs stop.
+    for (final task in tasks) {
+      await FlutterDownloader.remove(
+        taskId: task.taskId,
+        shouldDeleteContent: true,
+      );
+    }
+    // remove() updates the plugin database immediately, while WorkManager's
+    // onStopped callback can finish slightly later and delete its partial file.
+    // Give those callbacks time to settle before the replacement creates the
+    // same filename.
+    await Future<void>.delayed(const Duration(seconds: 1));
+  }
+
+  static Future<void> _onBackgroundUpdate(DownloadTaskStatus st, int pr) async {
+    if (st == DownloadTaskStatus.running || st == DownloadTaskStatus.enqueued) {
       status.value = DownloadStatus.running;
       if (pr >= 0) progress.value = pr / 100.0;
     } else if (st == DownloadTaskStatus.complete) {
@@ -182,7 +264,9 @@ class UpdateService {
       // it's backgrounded this is a no-op and the notification handles it.
       try {
         if (_taskId != null) await FlutterDownloader.open(taskId: _taskId!);
-      } catch (_) {/* notification fallback already covers this */}
+      } catch (_) {
+        /* notification fallback already covers this */
+      }
       status.value = DownloadStatus.complete;
     } else if (st == DownloadTaskStatus.failed ||
         st == DownloadTaskStatus.canceled) {
@@ -223,15 +307,19 @@ class UpdateService {
         lastError = '無法開啟安裝程式：${result.message}';
         status.value = DownloadStatus.failed;
         await _reportFailure(
-            'Foreground APK install failed to open: ${result.message}');
+          'Foreground APK install failed to open: ${result.message}',
+        );
         return;
       }
       status.value = DownloadStatus.complete;
     } catch (e, st) {
       lastError = '$e';
       status.value = DownloadStatus.failed;
-      await _reportFailure('Foreground APK download failed',
-          error: e, stack: st);
+      await _reportFailure(
+        'Foreground APK download failed',
+        error: e,
+        stack: st,
+      );
     }
   }
 
@@ -263,13 +351,21 @@ class UpdateService {
       }
 
       if (error != null) {
-        await Sentry.captureException(error,
-            stackTrace: stack, withScope: configure);
+        await Sentry.captureException(
+          error,
+          stackTrace: stack,
+          withScope: configure,
+        );
       } else {
-        await Sentry.captureMessage(message,
-            level: SentryLevel.error, withScope: configure);
+        await Sentry.captureMessage(
+          message,
+          level: SentryLevel.error,
+          withScope: configure,
+        );
       }
-    } catch (_) {/* reporting must never break the update flow */}
+    } catch (_) {
+      /* reporting must never break the update flow */
+    }
   }
 
   static const _fileName = 'ai_food_update.apk';
@@ -287,8 +383,9 @@ class UpdateService {
 /// isolate through the registered port.
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
-  IsolateNameServer.lookupPortByName(UpdateService.portName)
-      ?.send([id, status, progress]);
+  IsolateNameServer.lookupPortByName(
+    UpdateService.portName,
+  )?.send([id, status, progress]);
 }
 
 /// The backend builds the in-app download URL from its request origin, which
