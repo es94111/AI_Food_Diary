@@ -20,6 +20,7 @@ export async function GET() {
     headers: {
       "Content-Type": "application/vnd.android.package-archive",
       "Content-Disposition": `attachment; filename="${filename}"`,
+      ...(obj.ContentLength != null ? { "Content-Length": String(obj.ContentLength) } : {}),
       "Cache-Control": "public, max-age=300"
     }
   });
