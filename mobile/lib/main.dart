@@ -2,24 +2,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
-import 'screens/login_screen.dart';
-import 'screens/dashboard_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/api_client.dart';
-import 'services/auth_service.dart';
-import 'services/background_analysis.dart';
-import 'services/meal_analysis_controller.dart';
-import 'services/update_service.dart';
 
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Background meal analysis (Android): register the WorkManager dispatcher and
-  // notification channel, then recover any job left by a previous process.
-  await BackgroundAnalysis.init();
-  await MealAnalysisController.instance.init();
-  // Native background downloader for in-app APK updates (Android); no-ops
-  // elsewhere. Must run before any download can be enqueued.
-  await UpdateService.init();
+  // Only Sentry initialises here, because its appRunner has to wrap runApp so
+  // startup errors are captured and the tracing zone is set up before the first
+  // frame. The other service inits (WorkManager/notifications, pending-analysis
+  // recovery, the APK downloader) are NOT needed to draw the first screen, so
+  // they run behind the animated SplashScreen instead of blocking cold start.
   await SentryFlutter.init(
     (options) {
       options.dsn = 'https://9c5384849c931702f75c03a530b30445@o4511575169040384.ingest.de.sentry.io/4511575192502352';
@@ -87,42 +80,7 @@ class AiFoodApp extends StatelessWidget {
         useMaterial3: true,
         scaffoldBackgroundColor: const Color(0xFFFAF8F5),
       ),
-      home: const AppEntry(),
+      home: const SplashScreen(),
     );
-  }
-}
-
-class AppEntry extends StatefulWidget {
-  const AppEntry({super.key});
-
-  @override
-  State<AppEntry> createState() => _AppEntryState();
-}
-
-class _AppEntryState extends State<AppEntry> {
-  bool _loading = true;
-  bool _loggedIn = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _check();
-  }
-
-  Future<void> _check() async {
-    final has = await AuthService.hasSession();
-    if (!mounted) return;
-    setState(() {
-      _loggedIn = has;
-      _loading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    }
-    return _loggedIn ? const DashboardScreen() : const LoginScreen();
   }
 }

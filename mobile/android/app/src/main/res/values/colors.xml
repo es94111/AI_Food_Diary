@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App background (stone-50 / #FAF8F5). Used by the native launch screen so
+         the system splash matches the Flutter SplashScreen with no white flash. -->
+    <color name="splash_background">#FAF8F5</color>
+</resources>
