@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/metabolism.dart';
 
 const _genders = {'MALE': '男性', 'FEMALE': '女性'};
@@ -98,6 +99,7 @@ class _ProfileFormSheetState extends State<ProfileFormSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.85,
@@ -113,8 +115,8 @@ class _ProfileFormSheetState extends State<ProfileFormSheet> {
             const Text('BMR / TDEE 設定',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
-            const Text('填寫身體資料後會自動估算基礎代謝與每日總消耗。',
-                style: TextStyle(fontSize: 12, color: Colors.black54)),
+            Text('填寫身體資料後會自動估算基礎代謝與每日總消耗。',
+                style: TextStyle(fontSize: 12, color: p.inkSoft)),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _gender,
@@ -181,31 +183,31 @@ class _ProfileFormSheetState extends State<ProfileFormSheet> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
+                color: p.amberSurface,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('自動熱量目標',
+                  Text('自動熱量目標',
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: Color(0xFFB45309))),
+                          color: p.amberAccent)),
                   Text('$_computedTarget kcal',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF78350F))),
-                  const Text('依 TDEE 與目標自動計算：減脂 -400、增肌 +250、維持 = TDEE。',
+                          color: p.amberInkSoft)),
+                  Text('依 TDEE 與目標自動計算：減脂 -400、增肌 +250、維持 = TDEE。',
                       style: TextStyle(
-                          fontSize: 11, color: Color(0xFFB45309))),
+                          fontSize: 11, color: p.amberAccent)),
                 ],
               ),
             ),
             if (_message != null) ...[
               const SizedBox(height: 10),
-              Text(_message!, style: const TextStyle(color: Colors.red)),
+              Text(_message!, style: TextStyle(color: p.danger)),
             ],
             const SizedBox(height: 16),
             FilledButton(
@@ -213,11 +215,11 @@ class _ProfileFormSheetState extends State<ProfileFormSheet> {
               style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               child: _saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2, color: p.onBrand))
                   : const Text('儲存身體資料'),
             ),
             const SizedBox(height: 8),

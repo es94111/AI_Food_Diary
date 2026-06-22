@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/models.dart';
+import '../theme/app_theme.dart';
 import '../services/api_client.dart';
 import '../services/background_analysis.dart';
 import '../services/meal_analysis_controller.dart';
@@ -395,26 +396,27 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   /// Status banner for the background analysis: a live "分析中" hint, a "完成 →
   /// 查看結果" call to action, or the error with a retry.
   Widget _analysisBanner() {
+    final p = context.palette;
     if (_analysis.isRunning) {
       return Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7ED),
+          color: p.amberSurface,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFFED7AA)),
+          border: Border.all(color: p.amberBorder),
         ),
-        child: const Row(
+        child: Row(
           children: [
-            SizedBox(
+            const SizedBox(
               height: 16,
               width: 16,
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Expanded(
               child: Text('AI 正在分析這餐，完成後會通知你。可先切到其他分頁。',
-                  style: TextStyle(fontSize: 12, color: Color(0xFF9A3412))),
+                  style: TextStyle(fontSize: 12, color: p.amberInk)),
             ),
           ],
         ),
@@ -425,14 +427,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         width: double.infinity,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.red[50],
+          color: p.dangerSurface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
             Expanded(
               child: Text('分析失敗：${_analysis.error ?? ''}',
-                  style: TextStyle(fontSize: 12, color: Colors.red[900])),
+                  style: TextStyle(fontSize: 12, color: p.dangerInk)),
             ),
             TextButton(
               onPressed: () => _analysis.reset(),
@@ -447,15 +449,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.green[50],
+        color: p.successSurface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.shade200),
+        border: Border.all(color: p.success.withValues(alpha: 0.4)),
       ),
       child: Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Text('✅ AI 分析完成，點右側確認並儲存。',
-                style: TextStyle(fontSize: 12, color: Color(0xFF166534))),
+                style: TextStyle(fontSize: 12, color: p.successInk)),
           ),
           FilledButton.tonal(
             onPressed: _reviewing ? null : _openReview,
@@ -669,6 +671,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -680,9 +683,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               '選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(fontSize: 12, color: p.inkSoft),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
@@ -713,7 +716,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             ],
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(_error!, style: TextStyle(color: p.danger)),
             ],
             if (_analysis.isRunning || _analysis.isDone || _analysis.isError) ...[
               const SizedBox(height: 12),
@@ -728,7 +731,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 child: _analysis.isRunning
-                    ? const Row(
+                    ? Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           SizedBox(
@@ -736,27 +739,27 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                             width: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
+                              color: p.onBrand,
                             ),
                           ),
-                          SizedBox(width: 10),
-                          Text('AI 分析中（可切換分頁）'),
+                          const SizedBox(width: 10),
+                          const Text('AI 分析中（可切換分頁）'),
                         ],
                       )
                     : const Text('AI 分析並確認'),
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
+            Text(
               'AI 分析為估算值，請依實際份量修正。分析會在背景執行，切換分頁也不會中斷。',
-              style: TextStyle(fontSize: 11, color: Colors.black45),
+              style: TextStyle(fontSize: 11, color: p.inkFaint),
             ),
             if (widget.showAdvice && _adviceLoading)
-              const Padding(
-                padding: EdgeInsets.only(top: 12),
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
                 child: Text(
                   '正在產生下一餐建議...',
-                  style: TextStyle(color: Color(0xFFB45309)),
+                  style: TextStyle(color: p.amberAccent),
                 ),
               ),
             if (widget.showAdvice && _advice.isNotEmpty) _adviceCard(),
@@ -769,10 +772,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   /// Segmented control to pick one of the three capture modes, mirroring the
   /// web form's pill tabs.
   Widget _modeTabs() {
+    final p = context.palette;
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F4),
+        color: p.surfaceAlt,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -788,9 +792,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: selected
-                      ? const Color(0xFFB45309)
-                      : Colors.transparent,
+                  color: selected ? p.brand : Colors.transparent,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
@@ -798,7 +800,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: selected ? Colors.white : Colors.black54,
+                    color: selected ? p.onBrand : p.inkSoft,
                   ),
                 ),
               ),
@@ -811,10 +813,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   /// Photo-mode option: multiple recognitions, take the median (matches web).
   Widget _preciseModeTile() {
+    final p = context.palette;
     return Container(
       margin: const EdgeInsets.only(top: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: p.amberSurface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: CheckboxListTile(
@@ -822,45 +825,46 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         onChanged: (v) => setState(() => _preciseMode = v ?? false),
         controlAffinity: ListTileControlAffinity.leading,
         dense: true,
-        activeColor: const Color(0xFFB45309),
+        activeColor: p.brand,
         contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-        title: const Text(
+        title: Text(
           '精準模式',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            color: Color(0xFF78350F),
+            color: p.amberInkSoft,
           ),
         ),
-        subtitle: const Text(
+        subtitle: Text(
           '多次辨識取中位數，熱量更穩定（分析較慢、用量約 3 倍）。',
-          style: TextStyle(fontSize: 11, color: Color(0xFFB45309)),
+          style: TextStyle(fontSize: 11, color: p.amberAccent),
         ),
       ),
     );
   }
 
   Widget _describeSection() {
+    final p = context.palette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: p.amberSurface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             '用文字描述餐點',
             style: TextStyle(
               fontWeight: FontWeight.bold,
-              color: Color(0xFF78350F),
+              color: p.amberInkSoft,
             ),
           ),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             '例如：午餐吃一碗滷肉飯、一顆滷蛋、半碗青菜和無糖豆漿。',
-            style: TextStyle(fontSize: 11, color: Color(0xFFB45309)),
+            style: TextStyle(fontSize: 11, color: p.amberAccent),
           ),
           const SizedBox(height: 8),
           TextField(
@@ -868,11 +872,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             maxLines: 3,
             maxLength: 1200,
             onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               hintText: '描述你吃了什麼、份量大概多少...',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: p.surface,
             ),
           ),
         ],
@@ -881,22 +885,23 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   }
 
   Widget _imageSection() {
+    final p = context.palette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFFCD34D)),
+        border: Border.all(color: p.amberBorder),
         borderRadius: BorderRadius.circular(16),
-        color: const Color(0xFFFFFBEB),
+        color: p.amberSurface,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('從圖片上傳食物', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
-          const Text(
+          Text(
             '可一次拍照或上傳多張餐點照片（最多 $_maxImages 張），AI 會綜合所有照片辨識食物、估算營養並產生評分。',
-            style: TextStyle(fontSize: 11, color: Colors.black54),
+            style: TextStyle(fontSize: 11, color: p.inkSoft),
           ),
           if (_imageDataUrls.isNotEmpty) ...[
             const SizedBox(height: 10),
@@ -967,12 +972,13 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   }
 
   Widget _savedFoodsSection() {
+    final p = context.palette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE7E5E4)),
+        color: p.surface,
+        border: Border.all(color: p.hairline),
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -981,9 +987,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           const Text('常用食物', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           if (_savedFoods.isEmpty)
-            const Text(
+            Text(
               '尚無常用食物，可在下方食物列按「存常用」新增。',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(fontSize: 12, color: p.inkSoft),
             )
           else
             Wrap(
@@ -1051,7 +1057,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           const SizedBox(height: 6),
           Text(
             '待綁定條碼：$_pendingBarcode',
-            style: const TextStyle(fontSize: 12, color: Color(0xFFB45309)),
+            style: TextStyle(fontSize: 12, color: context.palette.amberAccent),
           ),
         ],
         const SizedBox(height: 8),
@@ -1113,7 +1119,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             if (onDelete != null)
               TextButton(
                 onPressed: onDelete,
-                child: const Text('刪除', style: TextStyle(color: Colors.red)),
+                child: Text('刪除',
+                    style: TextStyle(color: context.palette.danger)),
               ),
           ],
         ),
@@ -1122,12 +1129,13 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   }
 
   Widget _adviceCard() {
+    final p = context.palette;
     return Container(
       margin: const EdgeInsets.only(top: 14),
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFFBEB),
+        color: p.amberSurface,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Column(
@@ -1137,32 +1145,32 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             onTap: () => setState(() => _adviceExpanded = !_adviceExpanded),
             child: Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
                     '下一餐建議',
                     style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF92400E),
+                      color: p.amberInk,
                     ),
                   ),
                 ),
                 Icon(
                   _adviceExpanded ? Icons.expand_less : Icons.expand_more,
-                  color: const Color(0xFF92400E),
+                  color: p.amberInk,
                 ),
               ],
             ),
           ),
           if (_adviceExpanded) ...[
             const SizedBox(height: 2),
-            const Text(
+            Text(
               '此建議會保留到今天結束；新增下一餐後會自動更新。',
-              style: TextStyle(fontSize: 11, color: Color(0xFFB45309)),
+              style: TextStyle(fontSize: 11, color: p.amberAccent),
             ),
             const SizedBox(height: 6),
             MarkdownText(
               _advice,
-              style: const TextStyle(color: Color(0xFF78350F)),
+              style: TextStyle(color: p.amberInkSoft),
             ),
           ],
         ],
@@ -1190,10 +1198,11 @@ class ItemEditor extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     return Container(
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F4),
+        color: p.surfaceAlt,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1373,7 +1382,9 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
       expand: false,
       initialChildSize: 0.85,
       maxChildSize: 0.95,
-      builder: (ctx, scrollController) => Padding(
+      builder: (ctx, scrollController) {
+        final p = ctx.palette;
+        return Padding(
         padding: EdgeInsets.only(
           left: 16,
           right: 16,
@@ -1387,9 +1398,9 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               '請確認食物是否正確，可先修正、刪除或新增後再儲存。',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(fontSize: 12, color: p.inkSoft),
             ),
             if (widget.imageDataUrls.isNotEmpty) ...[
               const SizedBox(height: 12),
@@ -1427,9 +1438,9 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                       : TextButton(
                           onPressed: () =>
                               setState(() => _items.removeAt(entry.key)),
-                          child: const Text(
+                          child: Text(
                             '刪除',
-                            style: TextStyle(color: Colors.red),
+                            style: TextStyle(color: p.danger),
                           ),
                         ),
                 ),
@@ -1442,7 +1453,7 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(_error!, style: TextStyle(color: p.danger)),
             ],
             const SizedBox(height: 12),
             OutlinedButton.icon(
@@ -1460,9 +1471,9 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
               label: Text(_reanalyzing ? '重新辨識中...' : '依修改重新 AI 辨識'),
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               '修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。',
-              style: TextStyle(fontSize: 11, color: Colors.black45),
+              style: TextStyle(fontSize: 11, color: p.inkFaint),
             ),
             const SizedBox(height: 8),
             FilledButton(
@@ -1471,12 +1482,12 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
               child: _saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: p.onBrand,
                       ),
                     )
                   : const Text('確認並儲存餐點'),
@@ -1484,7 +1495,8 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
             const SizedBox(height: 8),
           ],
         ),
-      ),
+      );
+      },
     );
   }
 }

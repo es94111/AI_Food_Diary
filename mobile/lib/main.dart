@@ -4,6 +4,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'screens/splash_screen.dart';
 import 'services/api_client.dart';
+import 'theme/app_theme.dart';
 
 
 void main() async {
@@ -72,14 +73,9 @@ class AiFoodApp extends StatelessWidget {
       // the tracesSampleRate budget actually has transactions to sample and
       // errors carry the screen path that led to them.
       navigatorObservers: [SentryNavigatorObserver()],
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFB45309), // amber-700, matches web
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFFAF8F5),
-      ),
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
       home: const SplashScreen(),
     );
   }

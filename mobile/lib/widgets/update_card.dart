@@ -2,15 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../services/update_service.dart';
+import '../theme/app_theme.dart';
 import 'markdown_text.dart';
 
-// ── Shared palette (warm amber, matches the app seed color) ─────────────────
+// ── Brand amber (matches the app seed colour) ───────────────────────────────
+// These stay constant across themes: the hero gradient, its glow, and the
+// spinner all sit on a saturated amber fill where white/amber read in both
+// light and dark. Everything that sits on a card/sheet surface (text, tints,
+// borders) flips via `context.palette` instead.
 const _amber700 = Color(0xFFB45309);
 const _amber500 = Color(0xFFF59E0B);
-const _amber400 = Color(0xFFFBBF24);
-const _amberTint = Color(0xFFFFFBEB);
-const _brown900 = Color(0xFF78350F);
-const _brown700 = Color(0xFF92400E);
 
 const _amberGradient = LinearGradient(
   begin: Alignment.topLeft,
@@ -103,9 +104,10 @@ class _UpdateCardState extends State<UpdateCard> {
 
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: p.surface,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
@@ -140,11 +142,11 @@ class _UpdateCardState extends State<UpdateCard> {
                       color: Colors.white, size: 20),
                 ),
                 const SizedBox(width: 12),
-                const Text('版本資訊',
+                Text('版本資訊',
                     style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
-                        color: _brown900)),
+                        color: p.ink)),
               ],
             ),
             const SizedBox(height: 16),
@@ -191,21 +193,20 @@ class _UpdateCardState extends State<UpdateCard> {
   }
 
   Widget _versionRow(String label, String value, {required bool highlight}) {
+    final p = context.palette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: highlight ? _amberTint : const Color(0xFFF8F7F5),
+        color: highlight ? p.amberSurface : p.surfaceAlt,
         borderRadius: BorderRadius.circular(12),
-        border: highlight
-            ? Border.all(color: _amber400.withValues(alpha: 0.5))
-            : null,
+        border: highlight ? Border.all(color: p.amberBorder) : null,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label,
               style: TextStyle(
-                  color: highlight ? _brown700 : Colors.black54,
+                  color: highlight ? p.amberInk : p.inkSoft,
                   fontWeight: FontWeight.w600,
                   fontSize: 13)),
           Row(
@@ -231,7 +232,7 @@ class _UpdateCardState extends State<UpdateCard> {
                   style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 15,
-                      color: highlight ? _amber700 : _brown900)),
+                      color: highlight ? p.amberAccent : p.ink)),
             ],
           ),
         ],
@@ -240,61 +241,61 @@ class _UpdateCardState extends State<UpdateCard> {
   }
 
   Widget _releaseNotes(String notes) {
+    final p = context.palette;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _amberTint,
+        color: p.amberSurface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _amber400.withValues(alpha: 0.4)),
+        border: Border.all(color: p.amberBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome_rounded,
-                  size: 16, color: _brown700),
+              Icon(Icons.auto_awesome_rounded, size: 16, color: p.amberInk),
               const SizedBox(width: 6),
-              const Text('更新內容',
+              Text('更新內容',
                   style: TextStyle(
                       fontWeight: FontWeight.w900,
-                      color: _brown700,
+                      color: p.amberInk,
                       fontSize: 13,
                       letterSpacing: 0.3)),
             ],
           ),
           const SizedBox(height: 8),
           MarkdownText(notes,
-              style: const TextStyle(
-                  color: _brown900, fontSize: 13, height: 1.5)),
+              style: TextStyle(
+                  color: p.amberInkSoft, fontSize: 13, height: 1.5)),
         ],
       ),
     );
   }
 
   Widget _upToDateRow() {
+    final p = context.palette;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0FDF4),
+        color: p.successSurface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
-          const Icon(Icons.verified_rounded,
-              color: Color(0xFF16A34A), size: 20),
+          Icon(Icons.verified_rounded, color: p.success, size: 20),
           const SizedBox(width: 8),
-          const Text('已是最新版本',
+          Text('已是最新版本',
               style: TextStyle(
-                  color: Color(0xFF15803D), fontWeight: FontWeight.w700)),
+                  color: p.successInk, fontWeight: FontWeight.w700)),
           const Spacer(),
           TextButton.icon(
             onPressed: _load,
             icon: const Icon(Icons.refresh_rounded, size: 16),
             label: const Text('重新檢查'),
             style: TextButton.styleFrom(
-              foregroundColor: _amber700,
+              foregroundColor: p.amberAccent,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               visualDensity: VisualDensity.compact,
             ),
@@ -315,6 +316,7 @@ class _UpdatePromptDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final maxHeight = MediaQuery.of(context).size.height * 0.75;
+    final p = context.palette;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
@@ -328,7 +330,7 @@ class _UpdatePromptDialog extends StatelessWidget {
           constraints: BoxConstraints(maxHeight: maxHeight),
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: p.surface,
               borderRadius: BorderRadius.circular(28),
               boxShadow: [
                 BoxShadow(
@@ -349,18 +351,18 @@ class _UpdatePromptDialog extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _versionTransition(),
+                        _versionTransition(p),
                         if (info.releaseNotes.isNotEmpty) ...[
                           const SizedBox(height: 20),
                           Row(
                             children: [
-                              const Icon(Icons.auto_awesome_rounded,
-                                  size: 16, color: _brown700),
+                              Icon(Icons.auto_awesome_rounded,
+                                  size: 16, color: p.amberInk),
                               const SizedBox(width: 6),
-                              const Text('更新內容',
+                              Text('更新內容',
                                   style: TextStyle(
                                       fontWeight: FontWeight.w900,
-                                      color: _brown700,
+                                      color: p.amberInk,
                                       fontSize: 14,
                                       letterSpacing: 0.3)),
                             ],
@@ -370,14 +372,13 @@ class _UpdatePromptDialog extends StatelessWidget {
                             width: double.infinity,
                             padding: const EdgeInsets.all(14),
                             decoration: BoxDecoration(
-                              color: _amberTint,
+                              color: p.amberSurface,
                               borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                  color: _amber400.withValues(alpha: 0.4)),
+                              border: Border.all(color: p.amberBorder),
                             ),
                             child: MarkdownText(info.releaseNotes,
-                                style: const TextStyle(
-                                    color: _brown900,
+                                style: TextStyle(
+                                    color: p.amberInkSoft,
                                     fontSize: 13,
                                     height: 1.55)),
                           ),
@@ -430,40 +431,42 @@ class _UpdatePromptDialog extends StatelessWidget {
     );
   }
 
-  Widget _versionTransition() {
+  Widget _versionTransition(AppPalette p) {
     return Center(
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _versionChip('v${info.currentVersion}', muted: true),
+          _versionChip('v${info.currentVersion}', muted: true, p: p),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10),
             child: Icon(Icons.arrow_forward_rounded,
                 size: 18, color: _amber700.withValues(alpha: 0.6)),
           ),
-          _versionChip('v${info.latestVersion}', muted: false),
+          _versionChip('v${info.latestVersion}', muted: false, p: p),
         ],
       ),
     );
   }
 
-  Widget _versionChip(String text, {required bool muted}) {
+  Widget _versionChip(String text,
+      {required bool muted, required AppPalette p}) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       decoration: BoxDecoration(
         gradient: muted ? null : _amberGradient,
-        color: muted ? const Color(0xFFF1EFEC) : null,
+        color: muted ? p.surfaceAlt : null,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(text,
           style: TextStyle(
-              color: muted ? Colors.black54 : Colors.white,
+              color: muted ? p.inkSoft : Colors.white,
               fontWeight: FontWeight.w800,
               fontSize: 14)),
     );
   }
 
   Widget _actions(BuildContext context) {
+    final p = context.palette;
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
       child: Column(
@@ -477,7 +480,7 @@ class _UpdatePromptDialog extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             style: TextButton.styleFrom(
-              foregroundColor: Colors.black45,
+              foregroundColor: p.inkSoft,
               minimumSize: const Size(double.infinity, 44),
             ),
             child: const Text('稍後再說',
@@ -529,13 +532,14 @@ class _DownloadDialogState extends State<_DownloadDialog> {
   @override
   Widget build(BuildContext context) {
     final canBackground = UpdateService.backgroundSupported;
+    final p = context.palette;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 48),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: p.surface,
           borderRadius: BorderRadius.circular(28),
           boxShadow: [
             BoxShadow(
@@ -564,31 +568,31 @@ class _DownloadDialogState extends State<_DownloadDialog> {
                         child: CircularProgressIndicator(
                           value: indeterminate ? null : value,
                           strokeWidth: 7,
-                          backgroundColor: const Color(0xFFF1EFEC),
+                          backgroundColor: p.surfaceAlt,
                           valueColor:
                               const AlwaysStoppedAnimation<Color>(_amber500),
                           strokeCap: StrokeCap.round,
                         ),
                       ),
                       indeterminate
-                          ? const Icon(Icons.download_rounded,
-                              color: _amber700, size: 30)
+                          ? Icon(Icons.download_rounded,
+                              color: p.amberAccent, size: 30)
                           : Text('${(value * 100).toStringAsFixed(0)}%',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w900,
-                                  color: _brown900)),
+                                  color: p.ink)),
                     ],
                   ),
                 );
               },
             ),
             const SizedBox(height: 24),
-            const Text('下載更新中',
+            Text('下載更新中',
                 style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
-                    color: _brown900)),
+                    color: p.ink)),
             const SizedBox(height: 6),
             Text(
                 canBackground
@@ -598,7 +602,7 @@ class _DownloadDialogState extends State<_DownloadDialog> {
                 style: TextStyle(
                     fontSize: 12.5,
                     height: 1.4,
-                    color: Colors.black.withValues(alpha: 0.5))),
+                    color: p.inkSoft)),
             if (canBackground) ...[
               const SizedBox(height: 18),
               TextButton.icon(
@@ -606,7 +610,7 @@ class _DownloadDialogState extends State<_DownloadDialog> {
                 icon: const Icon(Icons.south_east_rounded, size: 18),
                 label: const Text('在背景繼續下載'),
                 style: TextButton.styleFrom(
-                  foregroundColor: _amber700,
+                  foregroundColor: p.amberAccent,
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
               ),

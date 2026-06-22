@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/meal_service.dart';
+import '../theme/app_theme.dart';
 import 'meal_capture_form.dart';
 
 const _maxMealImages = 5;
@@ -20,10 +21,11 @@ class MealList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (meals.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
         child: Center(
-          child: Text('尚無餐點紀錄', style: TextStyle(color: Colors.black45)),
+          child: Text('尚無餐點紀錄',
+              style: TextStyle(color: context.palette.inkFaint)),
         ),
       );
     }
@@ -207,9 +209,9 @@ class _MealCardState extends State<_MealCard> {
                   height: 120,
                   width: width ?? double.infinity,
                   alignment: Alignment.center,
-                  color: const Color(0xFFF5F5F4),
-                  child: const Text('圖片載入失敗',
-                      style: TextStyle(color: Colors.black45)),
+                  color: context.palette.surfaceAlt,
+                  child: Text('圖片載入失敗',
+                      style: TextStyle(color: context.palette.inkFaint)),
                 ),
               ),
             ),
@@ -277,7 +279,7 @@ class _MealCardState extends State<_MealCard> {
           Padding(
             padding: const EdgeInsets.only(top: 6),
             child: Text(_error!,
-                style: const TextStyle(color: Colors.red, fontSize: 12)),
+                style: TextStyle(color: context.palette.danger, fontSize: 12)),
           ),
       ],
     );
@@ -288,6 +290,7 @@ class _MealCardState extends State<_MealCard> {
     final headers = ApiClient.instance.sessionCookie != null
         ? {'Cookie': ApiClient.instance.sessionCookie!}
         : <String, String>{};
+    final p = context.palette;
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       child: Padding(
@@ -301,18 +304,18 @@ class _MealCardState extends State<_MealCard> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB),
+                    color: p.amberSurface,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(mealTypes[meal.mealType] ?? meal.mealType,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF92400E))),
+                          color: p.amberInk)),
                 ),
                 const SizedBox(width: 8),
                 Text(DateFormat('HH:mm').format(meal.eatenAt),
-                    style: const TextStyle(color: Colors.black45, fontSize: 12)),
+                    style: TextStyle(color: p.inkFaint, fontSize: 12)),
                 const Spacer(),
                 Text('${fmtNum(meal.totalCalories)} kcal',
                     style: const TextStyle(fontWeight: FontWeight.w900)),
@@ -328,7 +331,7 @@ class _MealCardState extends State<_MealCard> {
                           child: Text('${_ratingIcon(it.aiRating)} ${it.name}'
                               '${it.estimatedAmount.isNotEmpty ? ' · ${it.estimatedAmount}' : ''}')),
                       Text('${fmtNum(it.calories)} kcal',
-                          style: const TextStyle(color: Colors.black54)),
+                          style: TextStyle(color: p.inkSoft)),
                     ],
                   ),
                 )),
@@ -337,7 +340,7 @@ class _MealCardState extends State<_MealCard> {
                 '蛋白質 ${meal.totalProtein.toStringAsFixed(1)}g · '
                 '脂肪 ${meal.totalFat.toStringAsFixed(1)}g · '
                 '碳水 ${meal.totalCarbs.toStringAsFixed(1)}g',
-                style: const TextStyle(fontSize: 12, color: Colors.black54)),
+                style: TextStyle(fontSize: 12, color: p.inkSoft)),
             const SizedBox(height: 8),
             _MacroBars(
               protein: meal.totalProtein,
@@ -353,9 +356,8 @@ class _MealCardState extends State<_MealCard> {
                     label: const Text('編輯')),
                 TextButton.icon(
                     onPressed: _delete,
-                    icon: const Icon(Icons.delete, size: 16, color: Colors.red),
-                    label: const Text('刪除',
-                        style: TextStyle(color: Colors.red))),
+                    icon: Icon(Icons.delete, size: 16, color: p.danger),
+                    label: Text('刪除', style: TextStyle(color: p.danger))),
               ],
             ),
           ],
@@ -403,13 +405,13 @@ class _MacroBars extends StatelessWidget {
               children: [
                 Expanded(
                     flex: proteinFlex,
-                    child: Container(color: const Color(0xFF0EA5E9))),
+                    child: Container(color: AppColors.protein)),
                 Expanded(
                     flex: fatFlex,
-                    child: Container(color: const Color(0xFFF59E0B))),
+                    child: Container(color: AppColors.fat)),
                 Expanded(
                     flex: carbsFlex,
-                    child: Container(color: const Color(0xFFE11D48))),
+                    child: Container(color: AppColors.carbs)),
               ],
             ),
           ),
@@ -470,7 +472,9 @@ class _EditMealSheetState extends State<_EditMealSheet> {
       expand: false,
       initialChildSize: 0.85,
       maxChildSize: 0.95,
-      builder: (ctx, controller) => Padding(
+      builder: (ctx, controller) {
+        final p = ctx.palette;
+        return Padding(
         padding: EdgeInsets.only(
             left: 16,
             right: 16,
@@ -503,8 +507,8 @@ class _EditMealSheetState extends State<_EditMealSheet> {
                         : TextButton(
                             onPressed: () =>
                                 setState(() => _items.removeAt(entry.key)),
-                            child: const Text('刪除',
-                                style: TextStyle(color: Colors.red)),
+                            child: Text('刪除',
+                                style: TextStyle(color: p.danger)),
                           ),
                   ),
                 )),
@@ -515,7 +519,7 @@ class _EditMealSheetState extends State<_EditMealSheet> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(_error!, style: TextStyle(color: p.danger)),
             ],
             const SizedBox(height: 12),
             FilledButton(
@@ -523,17 +527,18 @@ class _EditMealSheetState extends State<_EditMealSheet> {
               style: FilledButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               child: _saving
-                  ? const SizedBox(
+                  ? SizedBox(
                       height: 20,
                       width: 20,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
+                          strokeWidth: 2, color: p.onBrand))
                   : const Text('儲存餐期與餐點'),
             ),
             const SizedBox(height: 8),
           ],
         ),
-      ),
+      );
+      },
     );
   }
 }

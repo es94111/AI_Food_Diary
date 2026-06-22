@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/saved_food_service.dart';
+import '../theme/app_theme.dart';
 
 const _sourceLabels = {
   'MANUAL': '手動新增',
@@ -239,9 +240,9 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
               ],
             ),
             const SizedBox(height: 4),
-            const Text(
+            Text(
               '管理常用食物、自建食物與產品條碼。封存不會影響過去餐點紀錄。',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(fontSize: 12, color: context.palette.inkSoft),
             ),
             const SizedBox(height: 12),
             _field(_name, '食物名稱'),
@@ -332,7 +333,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(_error!, style: TextStyle(color: context.palette.danger)),
             ],
             const Divider(height: 24),
             _tabs(),
@@ -340,7 +341,8 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
             if (_loading)
               const Center(child: CircularProgressIndicator())
             else if (_visibleFoods.isEmpty)
-              const Text('這個分類目前沒有食物。', style: TextStyle(color: Colors.black54))
+              Text('這個分類目前沒有食物。',
+                  style: TextStyle(color: context.palette.inkSoft))
             else
               ..._visibleFoods.map(_foodTile),
           ],
@@ -385,9 +387,10 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
   Widget _noPhotoBox(double size) => Container(
         width: size,
         height: size,
-        color: const Color(0xFFF5F5F4),
+        color: context.palette.surfaceAlt,
         alignment: Alignment.center,
-        child: const Text('無', style: TextStyle(color: Colors.black38, fontSize: 12)),
+        child: Text('無',
+            style: TextStyle(color: context.palette.inkFaint, fontSize: 12)),
       );
 
   /// Photo picker row for the create/edit form: preview + upload + remove.
@@ -431,7 +434,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
                 _imageDataUrl = null;
                 _removeImage = true;
               }),
-              child: const Text('移除', style: TextStyle(color: Colors.red)),
+              child: Text('移除', style: TextStyle(color: context.palette.danger)),
             ),
         ],
       ),
@@ -483,7 +486,7 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
           ),
           IconButton(
             tooltip: '封存',
-            icon: const Icon(Icons.archive_outlined, color: Colors.red),
+            icon: Icon(Icons.archive_outlined, color: context.palette.danger),
             onPressed: () => _archive(food),
           ),
         ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/ai_settings_service.dart';
+import '../theme/app_theme.dart';
 
 /// Settings card: lets each user bring their own AI API key
 /// (OpenAI / Gemini / OpenAI-compatible). The key is sent to the server,
@@ -154,6 +155,7 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
   @override
   Widget build(BuildContext context) {
     final def = aiProviderById(_provider);
+    final p = context.palette;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -163,8 +165,8 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
             const Text('AI 設定',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
             const SizedBox(height: 4),
-            const Text('選擇 AI 服務商並輸入你自己的 API 金鑰。金鑰會加密儲存，僅用於分析你的餐點。',
-                style: TextStyle(fontSize: 12, color: Colors.black54)),
+            Text('選擇 AI 服務商並輸入你自己的 API 金鑰。金鑰會加密儲存，僅用於分析你的餐點。',
+                style: TextStyle(fontSize: 12, color: p.inkSoft)),
             const SizedBox(height: 12),
             if (_loading)
               const Padding(
@@ -278,12 +280,12 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                 Padding(
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(_modelMessage!,
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.black54)),
+                      style: TextStyle(
+                          fontSize: 12, color: p.inkSoft)),
                 ),
               if (_error != null) ...[
                 const SizedBox(height: 10),
-                Text(_error!, style: const TextStyle(color: Colors.red)),
+                Text(_error!, style: TextStyle(color: p.danger)),
               ],
               const SizedBox(height: 12),
               SizedBox(
@@ -293,11 +295,11 @@ class _AiSettingsCardState extends State<AiSettingsCard> {
                   style: FilledButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 14)),
                   child: _saving
-                      ? const SizedBox(
+                      ? SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
+                              strokeWidth: 2, color: p.onBrand))
                       : const Text('儲存 AI 設定'),
                 ),
               ),

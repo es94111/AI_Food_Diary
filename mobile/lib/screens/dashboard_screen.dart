@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
+import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
 import '../services/health_service.dart';
@@ -348,7 +349,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_error!, style: const TextStyle(color: Colors.red)),
+              child: Text(_error!,
+                  style: TextStyle(color: context.palette.danger)),
             ),
           _dateSwitcher(),
           const SizedBox(height: 12),
@@ -428,7 +430,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           icon: const Icon(Icons.logout),
           label: const Text('登出'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: Colors.red,
+            foregroundColor: context.palette.danger,
             padding: const EdgeInsets.symmetric(vertical: 14),
           ),
         ),
@@ -593,11 +595,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final progress = target == 0
         ? 0.0
         : (totals.calories / target).clamp(0.0, 1.0);
-    return Card(
-      color: const Color(0xFF1C1917),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppColors.heroGradient,
+        borderRadius: BorderRadius.circular(AppRadius.card),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -640,7 +651,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 value: progress.toDouble(),
                 minHeight: 8,
                 backgroundColor: Colors.white12,
-                valueColor: const AlwaysStoppedAnimation(Color(0xFFF59E0B)),
+                valueColor: const AlwaysStoppedAnimation(AppColors.amber),
               ),
             ),
             const SizedBox(height: 16),
@@ -664,7 +675,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
         ),
-      ),
     );
   }
 
@@ -676,10 +686,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final net = intake - burn;
     final deficit = net < 0;
     final color = deficit
-        ? const Color(0xFF059669)
+        ? context.palette.success
         : net > 0
-        ? const Color(0xFFE11D48)
-        : Colors.black54;
+        ? context.palette.danger
+        : context.palette.inkSoft;
     final label = deficit ? '熱量赤字' : (net > 0 ? '熱量盈餘' : '持平');
     return Card(
       child: Padding(
@@ -689,7 +699,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Row(
               children: [
-                const Text('當日淨熱量', style: TextStyle(color: Colors.black54)),
+                Text('當日淨熱量',
+                    style: TextStyle(color: context.palette.inkSoft)),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -723,12 +734,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fontWeight: FontWeight.w900,
                   ),
                 ),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 6, left: 4),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6, left: 4),
                   child: Text(
                     'kcal',
                     style: TextStyle(
-                      color: Colors.black45,
+                      color: context.palette.inkFaint,
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
@@ -739,11 +750,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 2),
             Text(
               '攝取 $intake − 實測總消耗 $burn kcal',
-              style: const TextStyle(color: Colors.black54, fontSize: 13),
+              style: TextStyle(color: context.palette.inkSoft, fontSize: 13),
             ),
-            const Text(
+            Text(
               '總消耗為 Health Connect 同步的實測值（基礎＋活動）。',
-              style: TextStyle(color: Colors.black38, fontSize: 11),
+              style: TextStyle(color: context.palette.inkFaint, fontSize: 11),
             ),
           ],
         ),
@@ -794,15 +805,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Expanded(
               flex: macroFlex(protein),
-              child: Container(color: const Color(0xFF0EA5E9)),
+              child: Container(color: AppColors.protein),
             ),
             Expanded(
               flex: macroFlex(fat),
-              child: Container(color: const Color(0xFFF59E0B)),
+              child: Container(color: AppColors.fat),
             ),
             Expanded(
               flex: macroFlex(carbs),
-              child: Container(color: const Color(0xFFE11D48)),
+              child: Container(color: AppColors.carbs),
             ),
           ],
         ),
@@ -836,9 +847,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
+            Text(
               '使用 Mifflin-St Jeor 公式估算，需填寫性別、生日、身高、體重與活動量。',
-              style: TextStyle(fontSize: 11, color: Colors.black45),
+              style: TextStyle(fontSize: 11, color: context.palette.inkFaint),
             ),
             Align(
               alignment: Alignment.centerRight,
@@ -859,7 +870,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F4),
+          color: context.palette.surfaceAlt,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -872,7 +883,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 2),
             Text(
               label,
-              style: const TextStyle(fontSize: 11, color: Colors.black54),
+              style: TextStyle(fontSize: 11, color: context.palette.inkSoft),
             ),
           ],
         ),
@@ -970,23 +981,23 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
               ],
             ),
             if (_summary == null && !_loading && !canGenerate)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   '今日總結需等今天結束後才能產生。',
-                  style: TextStyle(color: Colors.black54, fontSize: 13),
+                  style: TextStyle(color: context.palette.inkSoft, fontSize: 13),
                 ),
               ),
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Text(
                   'AI 正在分析今日飲食...',
-                  style: TextStyle(color: Color(0xFFB45309)),
+                  style: TextStyle(color: context.palette.brand),
                 ),
               ),
             if (_error != null)
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              Text(_error!, style: TextStyle(color: context.palette.danger)),
             if (_summary != null) ...[
               const SizedBox(height: 8),
               MarkdownText(_summary!.aiSummary),
@@ -995,23 +1006,24 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFFBEB),
+                  color: context.palette.amberSurface,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: context.palette.amberBorder),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '建議',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF92400E),
+                        color: context.palette.amberInk,
                       ),
                     ),
                     const SizedBox(height: 4),
                     MarkdownText(
                       _summary!.aiRecommendation,
-                      style: const TextStyle(color: Color(0xFF78350F)),
+                      style: TextStyle(color: context.palette.amberInkSoft),
                     ),
                   ],
                 ),
@@ -1156,22 +1168,23 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
             if (_linked)
               Row(
                 children: [
-                  Icon(Icons.check_circle, color: Colors.green[600], size: 20),
+                  Icon(Icons.check_circle,
+                      color: context.palette.success, size: 20),
                   const SizedBox(width: 6),
                   const Expanded(child: Text('已綁定 Google 帳號')),
                   TextButton(
                     onPressed: _busy ? null : _unbind,
-                    child: const Text(
+                    child: Text(
                       '解除綁定',
-                      style: TextStyle(color: Colors.red),
+                      style: TextStyle(color: context.palette.danger),
                     ),
                   ),
                 ],
               )
             else ...[
-              const Text(
+              Text(
                 '綁定後即可使用 Google 一鍵登入。',
-                style: TextStyle(fontSize: 12, color: Colors.black54),
+                style: TextStyle(fontSize: 12, color: context.palette.inkSoft),
               ),
               const SizedBox(height: 10),
               SizedBox(
