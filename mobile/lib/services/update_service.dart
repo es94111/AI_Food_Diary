@@ -165,8 +165,14 @@ class UpdateService {
         st == DownloadTaskStatus.canceled) {
       lastError = '下載未完成，請稍後再試';
       status.value = DownloadStatus.failed;
-      final reason = st == DownloadTaskStatus.canceled ? 'canceled' : 'failed';
-      await _reportFailure('Background APK download $reason');
+      // A *canceled* download is a user/expected action (canceled from the
+      // system download notification, or superseded by a re-enqueue), not an
+      // app fault — don't report it to Sentry, the same way connectivity
+      // failures are filtered out in beforeSend. Genuine failures are still
+      // reported so real install problems surface.
+      if (st == DownloadTaskStatus.failed) {
+        await _reportFailure('Background APK download failed');
+      }
     }
   }
 
