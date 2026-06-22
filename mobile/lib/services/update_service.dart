@@ -52,6 +52,7 @@ class UpdateService {
 
   static final ReceivePort _port = ReceivePort();
   static bool _initialised = false;
+  static Future<void>? _initialising;
   static String? _taskId;
 
   /// 0..1 download progress.
@@ -70,7 +71,26 @@ class UpdateService {
   /// cheap) to call on platforms without background support — it just no-ops.
   static Future<void> init() async {
     if (!backgroundSupported || _initialised) return;
-    _initialised = true;
+    // Splash startup is time-capped, so a user can reach the update action
+    // while this initialization is still running. Share one future across all
+    // callers instead of allowing enqueue() to race plugin initialization.
+    final inFlight = _initialising;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+
+    final future = _initializeBackgroundDownloader();
+    _initialising = future;
+    try {
+      await future;
+      _initialised = true;
+    } finally {
+      _initialising = null;
+    }
+  }
+
+  static Future<void> _initializeBackgroundDownloader() async {
     await FlutterDownloader.initialize(debug: kDebugMode);
     IsolateNameServer.removePortNameMapping(portName);
     IsolateNameServer.registerPortWithName(_port.sendPort, portName);
@@ -122,6 +142,9 @@ class UpdateService {
     progress.value = 0;
     status.value = DownloadStatus.running;
     if (backgroundSupported) {
+      // init() normally starts from the splash screen, but that work has a
+      // deadline and may still be running when the user taps update.
+      await init();
       await _startBackground(apkUrl);
     } else {
       await _foregroundDownloadAndInstall(apkUrl);
