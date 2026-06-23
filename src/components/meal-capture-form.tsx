@@ -3,7 +3,7 @@
 import { type DragEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { MarkdownContent } from "@/components/markdown-content";
+import { NextMealAdvice } from "@/components/next-meal-advice";
 
 type ManualItem = {
   id: string;
@@ -622,7 +622,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
           {adviceExpanded ? (
             <>
               <p className="mt-1 text-xs text-amber-700">此建議會保留到今天結束；新增下一餐後會自動更新。</p>
-              <MarkdownContent className="mt-2 text-amber-900" content={nextMealAdvice} />
+              <NextMealAdvice advice={nextMealAdvice} />
             </>
           ) : null}
         </div>
