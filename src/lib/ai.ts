@@ -47,7 +47,7 @@ const defaultNutritionLabelAnalysisPrompt =
   '你是營養標示辨識助手。請讀取圖片中的營養標示。每一張不同商品的營養標示都要各自建立一個 foods 項目（例如提供三張標示就回傳三個項目）；若同一張標示分多張照片拍攝，則合併成一個項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
 
 const defaultNextMealAdvicePrompt =
-  "請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，包含建議餐點、避免事項與原因，避免醫療診斷。";
+  '請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，避免醫療診斷。只輸出 JSON，不要 Markdown，必須使用這個格式：{"remainingCalories":0,"suggestedMeal":{"name":"餐點名稱","items":["品項與份量"],"calories":0,"protein":0,"fat":0,"carbs":0,"reason":"建議原因"},"avoid":[{"item":"應避免的食物","reason":"原因"}],"notes":"提醒或免責說明"}。remainingCalories 為每日熱量目標減去今日已攝取（可為負）。suggestedMeal 的 calories/protein/fat/carbs 為該建議餐點的估算值，protein/fat/carbs 使用公克、calories 使用 kcal，全部為 number。items 至少列出 2 項、avoid 至少列出 1 項。';
 
 const defaultDailySummaryPrompt =
   "請用繁體中文產生 {{date}} 的飲食總結與今日建議。目標熱量 {{calorieTarget}} kcal。實際攝取 {{totalCalories}} kcal，蛋白質 {{totalProtein}}g，脂肪 {{totalFat}}g，碳水 {{totalCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，避免醫療診斷。請只用 JSON 輸出，欄位為 summary 與 recommendation。";
@@ -500,11 +500,16 @@ export async function generateNextMealAdvice(config: AiConfig, input: {
     healthContext: input.healthContext ?? "尚未同步"
   });
 
-  // Plain-text advice — no JSON mode, but still temperature-bounded for stability.
+  // Structured advice in JSON mode. `max_tokens` is generous but capped so the
+  // model can't run away — without a ceiling some providers truncate mid-object
+  // (the old plain-text path showed users the raw, broken JSON). Clients parse
+  // the JSON into a card and fall back to plain text if it isn't parseable, so a
+  // non-JSON answer (e.g. a custom prompt override) still renders gracefully.
   const response = await withAgent("next-meal-advice", config.textModel, () =>
     createCompletion(config, {
       model: config.textModel,
-      ...completionOptions(),
+      ...completionOptions({ json: true }),
+      max_tokens: Math.round(numberEnv("AI_NEXT_MEAL_ADVICE_MAX_TOKENS", 800)),
       messages: [
         {
           role: "user",

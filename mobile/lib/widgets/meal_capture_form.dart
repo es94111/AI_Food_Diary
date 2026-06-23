@@ -1168,14 +1168,165 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               style: TextStyle(fontSize: 11, color: p.amberAccent),
             ),
             const SizedBox(height: 6),
-            MarkdownText(
-              _advice,
-              style: TextStyle(color: p.amberInkSoft),
-            ),
+            _adviceContent(p),
           ],
         ],
       ),
     );
+  }
+
+  /// Parses the stored advice string as the structured next-meal JSON. Returns
+  /// null for older plain-text answers or a custom prompt override so the caller
+  /// can fall back to Markdown prose instead of ever showing raw JSON.
+  Map<String, dynamic>? _parseAdvice() {
+    var text = _advice.trim();
+    if (text.isEmpty) return null;
+    final fence = RegExp(r'^```(?:json)?\s*([\s\S]*?)\s*```$', caseSensitive: false)
+        .firstMatch(text);
+    if (fence != null) text = fence.group(1)!.trim();
+    if (!text.startsWith('{')) return null;
+    try {
+      final parsed = jsonDecode(text);
+      if (parsed is Map<String, dynamic> &&
+          (parsed.containsKey('suggestedMeal') ||
+              parsed.containsKey('remainingCalories') ||
+              parsed.containsKey('avoid'))) {
+        return parsed;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
+  Widget _macroChip(AppPalette p, String label, dynamic value, String unit) {
+    if (value is! num) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: p.amberBorder.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$label ${value.round()}$unit',
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.amberInk),
+      ),
+    );
+  }
+
+  Widget _adviceContent(AppPalette p) {
+    final data = _parseAdvice();
+    if (data == null) {
+      return MarkdownText(_advice, style: TextStyle(color: p.amberInkSoft));
+    }
+
+    final children = <Widget>[];
+
+    final remaining = data['remainingCalories'];
+    if (remaining is num) {
+      children.add(Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: p.amberBorder.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          remaining < 0
+              ? '今日已超標 ${remaining.abs().round()} kcal'
+              : '今日剩餘可攝取 ${remaining.round()} kcal',
+          style: TextStyle(fontWeight: FontWeight.w700, color: p.amberInk),
+        ),
+      ));
+    }
+
+    final meal = data['suggestedMeal'];
+    if (meal is Map) {
+      final mealChildren = <Widget>[];
+      final name = meal['name'];
+      if (name is String && name.isNotEmpty) {
+        mealChildren.add(Text(name,
+            style: TextStyle(fontWeight: FontWeight.w900, color: p.amberInk)));
+      }
+      final items = meal['items'];
+      if (items is List && items.isNotEmpty) {
+        mealChildren.add(const SizedBox(height: 4));
+        for (final item in items) {
+          mealChildren.add(Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text('• $item', style: TextStyle(fontSize: 13, color: p.amberInkSoft)),
+          ));
+        }
+      }
+      final chips = <Widget>[
+        _macroChip(p, '熱量', meal['calories'], ' kcal'),
+        _macroChip(p, '蛋白', meal['protein'], 'g'),
+        _macroChip(p, '脂肪', meal['fat'], 'g'),
+        _macroChip(p, '碳水', meal['carbs'], 'g'),
+      ].where((w) => w is! SizedBox).toList();
+      if (chips.isNotEmpty) {
+        mealChildren.add(const SizedBox(height: 8));
+        mealChildren.add(Wrap(spacing: 6, runSpacing: 6, children: chips));
+      }
+      final reason = meal['reason'];
+      if (reason is String && reason.isNotEmpty) {
+        mealChildren.add(const SizedBox(height: 8));
+        mealChildren.add(Text(reason, style: TextStyle(fontSize: 13, color: p.amberInkSoft)));
+      }
+      if (mealChildren.isNotEmpty) {
+        children.add(const SizedBox(height: 10));
+        children.add(Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: p.surface.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: mealChildren),
+        ));
+      }
+    }
+
+    final avoid = data['avoid'];
+    if (avoid is List && avoid.isNotEmpty) {
+      final avoidChildren = <Widget>[
+        Text('建議避免', style: TextStyle(fontWeight: FontWeight.w700, color: p.amberInk)),
+      ];
+      for (final entry in avoid) {
+        if (entry is! Map) continue;
+        final item = entry['item'];
+        if (item is! String || item.isEmpty) continue;
+        final reason = entry['reason'];
+        avoidChildren.add(Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(fontSize: 13, color: p.amberInkSoft),
+              children: [
+                TextSpan(text: item, style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (reason is String && reason.isNotEmpty) TextSpan(text: '：$reason'),
+              ],
+            ),
+          ),
+        ));
+      }
+      if (avoidChildren.length > 1) {
+        children.add(const SizedBox(height: 10));
+        children.add(Column(crossAxisAlignment: CrossAxisAlignment.start, children: avoidChildren));
+      }
+    }
+
+    final notes = data['notes'];
+    if (notes is String && notes.isNotEmpty) {
+      children.add(const SizedBox(height: 10));
+      children.add(Text(notes, style: TextStyle(fontSize: 11, color: p.amberAccent)));
+    }
+
+    if (children.isEmpty) {
+      return MarkdownText(_advice, style: TextStyle(color: p.amberInkSoft));
+    }
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
   }
 }
 
