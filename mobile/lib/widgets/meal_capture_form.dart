@@ -576,7 +576,13 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       setState(() => _pickedFoodIds.add(food.id));
     }
     if (markUsed) {
-      SavedFoodService.markUsed(food.id).then((_) => _loadSavedFoods());
+      SavedFoodService.markUsed(food.id).then((updated) {
+        if (!mounted) return;
+        setState(() {
+          final index = _savedFoods.indexWhere((f) => f.id == updated.id);
+          if (index != -1) _savedFoods[index] = updated;
+        });
+      }).catchError((_) {});
     }
   }
 

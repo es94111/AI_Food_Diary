@@ -40,6 +40,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double? _todayTotalCalories;
   String _nextMealAdvice = '';
   int _tabIndex = 0;
+  int _savedFoodsManagerReloadKey = 0;
   bool _loading = true;
   String? _error;
 
@@ -318,7 +319,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
-        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        onDestinationSelected: (i) => setState(() {
+          _tabIndex = i;
+          if (i == 2) _savedFoodsManagerReloadKey++;
+        }),
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.restaurant_menu_outlined),
@@ -410,7 +414,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         const AiSettingsCard(),
         const SizedBox(height: 12),
-        const SavedFoodsManagerCard(),
+        SavedFoodsManagerCard(
+          key: ValueKey('saved-foods-manager-$_savedFoodsManagerReloadKey'),
+        ),
         if (GoogleAuth.isConfigured) ...[
           const SizedBox(height: 12),
           _GoogleLinkCard(
