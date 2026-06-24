@@ -346,7 +346,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   }
 
   async function loadSavedFoods() {
-    const response = await fetch("/api/saved-foods");
+    const response = await fetch("/api/saved-foods", { cache: "no-store" });
     const data = await response.json().catch(() => ({}));
     if (response.ok) setSavedFoods(data.foods ?? []);
   }
@@ -377,7 +377,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         ...(previews.length ? { imageDataUrl: previews[0] } : {})
       })
     });
-    if (response.ok) await loadSavedFoods();
+    if (response.ok) {
+      await loadSavedFoods();
+      router.refresh();
+    }
   }
 
   async function lookupBarcode() {
@@ -403,8 +406,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   }
 
   async function markSavedFoodUsed(id: string) {
-    await fetch(`/api/saved-foods/${id}`, { method: "POST" });
-    await loadSavedFoods();
+    const response = await fetch(`/api/saved-foods/${id}`, { method: "POST" });
+    const data = await response.json().catch(() => ({}));
+    const updated = data.food as SavedFood | undefined;
+    if (response.ok && updated) {
+      setSavedFoods((foods) => foods.map((food) => (food.id === id ? updated : food)));
+    }
   }
 
   function addSavedFood(food: SavedFood, options: { markUsed: boolean } = { markUsed: true }) {
@@ -426,7 +433,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     if (food.hasImage) {
       setPickedFoodIds((current) => (current.includes(food.id) ? current : [...current, food.id]));
     }
-    if (options.markUsed) markSavedFoodUsed(food.id);
+    if (options.markUsed) void markSavedFoodUsed(food.id);
   }
 
   return (

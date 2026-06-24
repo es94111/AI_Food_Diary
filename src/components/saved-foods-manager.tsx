@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type SavedFoodSource = "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM";
 
@@ -77,6 +77,28 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
       return true;
     });
   }, [activeTab, foods]);
+
+  const loadFoods = useCallback(async () => {
+    const response = await fetch("/api/saved-foods", { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) setFoods(data.foods ?? []);
+  }, []);
+
+  useEffect(() => {
+    void loadFoods();
+
+    const reloadVisibleFoods = () => {
+      if (document.visibilityState === "visible") void loadFoods();
+    };
+    const reloadFocusedFoods = () => void loadFoods();
+
+    document.addEventListener("visibilitychange", reloadVisibleFoods);
+    window.addEventListener("focus", reloadFocusedFoods);
+    return () => {
+      document.removeEventListener("visibilitychange", reloadVisibleFoods);
+      window.removeEventListener("focus", reloadFocusedFoods);
+    };
+  }, [loadFoods]);
 
   function edit(food: SavedFood) {
     setEditingId(food.id);

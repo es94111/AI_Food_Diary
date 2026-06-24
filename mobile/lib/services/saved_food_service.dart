@@ -127,10 +127,15 @@ class SavedFoodService {
     await _api.delete('/api/saved-foods/$id');
   }
 
-  static Future<void> markUsed(String id) async {
+  static Future<SavedFood> markUsed(String id) async {
     final res = await _api.post('/api/saved-foods/$id');
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '更新常用食物使用紀錄失敗'));
     }
+    final food = res.data['food'];
+    if (food is! Map<String, dynamic>) {
+      throw const FormatException('Invalid saved food response');
+    }
+    return SavedFood.fromJson(food);
   }
 }
