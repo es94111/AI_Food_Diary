@@ -5,6 +5,7 @@ import 'dart:ui';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -46,6 +47,22 @@ enum DownloadStatus { idle, running, complete, failed }
 /// APK, so this path is effectively a safety net).
 class UpdateService {
   static final _api = ApiClient.instance;
+  static const _channel = MethodChannel('aifood.shao.one/update');
+
+  static Future<bool> canRequestPackageInstalls() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final bool? result = await _channel.invokeMethod<bool>('canRequestPackageInstalls');
+      return result ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> openInstallPermissionSettings() async {
+    if (!Platform.isAndroid) return;
+    await _channel.invokeMethod<void>('openUnknownAppSourcesSettings');
+  }
 
   /// Name the background download isolate looks up to send progress back to the
   /// UI isolate. Must be stable across isolates, hence a top-level const.
@@ -187,6 +204,9 @@ class UpdateService {
   static Future<void> _startBackground(String apkUrl) async {
     _activeApkUrl = apkUrl;
     final dir = await _backgroundDir();
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
     await _removeStaleUpdateTasks();
     // Remove a stale APK so DownloadManager writes "ai_food_update.apk" rather
     // than "ai_food_update (1).apk".
@@ -274,9 +294,36 @@ class UpdateService {
       // Launch the installer immediately while the app is in the foreground; if
       // it's backgrounded this is a no-op and the notification handles it.
       try {
-        if (_taskId != null) await FlutterDownloader.open(taskId: _taskId!);
-      } catch (_) {
-        /* notification fallback already covers this */
+        final dir = await _backgroundDir();
+        final path = '${dir.path}/$_fileName';
+        final result = await OpenFilex.open(path);
+        if (result.type != ResultType.done) {
+          lastError = '無法開啟安裝程式：${result.message}';
+          status.value = DownloadStatus.failed;
+          await _reportFailure(
+            'Background APK install failed to open: ${result.message}',
+            downloaderContext: _downloaderContext(
+              status: st,
+              rawProgress: pr,
+              recovery: 'none',
+            ),
+          );
+          return;
+        }
+      } catch (e, st) {
+        lastError = '無法開啟安裝程式：$e';
+        status.value = DownloadStatus.failed;
+        await _reportFailure(
+          'Background APK install exception',
+          error: e,
+          stack: st,
+          downloaderContext: _downloaderContext(
+            status: DownloadTaskStatus.complete,
+            rawProgress: pr,
+            recovery: 'none',
+          ),
+        );
+        return;
       }
       status.value = DownloadStatus.complete;
     } else if (st == DownloadTaskStatus.failed ||
@@ -370,7 +417,10 @@ class UpdateService {
     Map<String, Object?>? downloaderContext,
   }) async {
     try {
-      final dir = await getTemporaryDirectory();
+      final dir = await _backgroundDir();
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
       final path = '${dir.path}/$_fileName';
       await Dio().download(
         apkUrl,

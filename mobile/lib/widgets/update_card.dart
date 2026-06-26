@@ -43,6 +43,8 @@ class UpdateCard extends StatefulWidget {
   /// download keeps running, so switching away from the app never fails the
   /// update — the OS finishes it and notifies the user to install.
   static Future<void> runUpdate(BuildContext context, String apkUrl) async {
+    if (!await _ensureInstallPermission(context)) return;
+
     try {
       await UpdateService.start(apkUrl);
     } catch (e, st) {
@@ -58,6 +60,27 @@ class UpdateCard extends StatefulWidget {
       barrierColor: Colors.black54,
       builder: (_) => const _DownloadDialog(),
     );
+  }
+
+  static Future<bool> _ensureInstallPermission(BuildContext context) async {
+    if (await UpdateService.canRequestPackageInstalls()) return true;
+    if (!context.mounted) return false;
+
+    final openSettings = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (_) => const _InstallPermissionDialog(),
+    );
+    if (openSettings != true || !context.mounted) return false;
+
+    try {
+      await UpdateService.openInstallPermissionSettings();
+    } catch (e, st) {
+      await Sentry.captureException(e, stackTrace: st,
+          withScope: (scope) => scope.setTag('feature', 'app_update'));
+      if (context.mounted) _showError(context, '無法開啟系統設定：$e');
+    }
+    return false;
   }
 
   static void _showError(BuildContext context, String message) {
@@ -79,6 +102,88 @@ class UpdateCard extends StatefulWidget {
 
   @override
   State<UpdateCard> createState() => _UpdateCardState();
+}
+
+class _InstallPermissionDialog extends StatelessWidget {
+  const _InstallPermissionDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+        decoration: BoxDecoration(
+          color: p.surface,
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.24),
+              blurRadius: 36,
+              offset: const Offset(0, 18),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                gradient: _amberGradient,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: _amber500.withValues(alpha: 0.34),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.admin_panel_settings_rounded,
+                  color: Colors.white, size: 28),
+            ),
+            const SizedBox(height: 18),
+            Text('允許安裝更新',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: p.ink,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900)),
+            const SizedBox(height: 8),
+            Text(
+              '請在系統設定允許 AI Food Diary 安裝未知應用程式，回到 App 後再按一次更新。',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: p.inkSoft,
+                  fontSize: 13,
+                  height: 1.45,
+                  fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 22),
+            _GradientButton(
+              icon: Icons.settings_rounded,
+              label: '開啟設定',
+              onTap: () => Navigator.pop(context, true),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: TextButton.styleFrom(
+                foregroundColor: p.inkSoft,
+                minimumSize: const Size(double.infinity, 44),
+              ),
+              child:
+                  const Text('稍後再說', style: TextStyle(fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _UpdateCardState extends State<UpdateCard> {
