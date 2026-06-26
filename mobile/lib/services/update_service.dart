@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:ui';
@@ -55,6 +56,10 @@ class UpdateService {
   static Future<void>? _initialising;
   static Future<void>? _starting;
   static String? _taskId;
+  static String? _activeApkUrl;
+  static int _backgroundFailures = 0;
+  static bool _recoveringBackgroundFailure = false;
+  static const _maxBackgroundRetries = 1;
 
   /// 0..1 download progress.
   static final ValueNotifier<double> progress = ValueNotifier(0);
@@ -102,7 +107,9 @@ class UpdateService {
       final st = DownloadTaskStatus.fromInt(data[1] as int);
       final pr = data[2] as int;
       // Ignore callbacks for any earlier/stale task.
-      if (_taskId != null && id == _taskId) _onBackgroundUpdate(st, pr);
+      if (_taskId != null && id == _taskId) {
+        unawaited(_onBackgroundUpdate(st, pr));
+      }
     });
     await FlutterDownloader.registerCallback(downloadCallback, step: 2);
     await _restoreSingleActiveTask();
@@ -158,6 +165,8 @@ class UpdateService {
 
   static Future<void> _start(String apkUrl) async {
     lastError = null;
+    _activeApkUrl = apkUrl;
+    _backgroundFailures = 0;
     if (backgroundSupported) {
       // init() normally starts from the splash screen, but that work has a
       // deadline and may still be running when the user taps update.
@@ -176,6 +185,7 @@ class UpdateService {
   // ---- Android background path (DownloadManager via flutter_downloader) ----
 
   static Future<void> _startBackground(String apkUrl) async {
+    _activeApkUrl = apkUrl;
     final dir = await _backgroundDir();
     await _removeStaleUpdateTasks();
     // Remove a stale APK so DownloadManager writes "ai_food_update.apk" rather
@@ -216,6 +226,7 @@ class UpdateService {
 
   static void _adoptTask(DownloadTask task) {
     _taskId = task.taskId;
+    _activeApkUrl = task.url;
     progress.value = task.progress.clamp(0, 100) / 100.0;
     status.value = DownloadStatus.running;
   }
@@ -270,6 +281,11 @@ class UpdateService {
       status.value = DownloadStatus.complete;
     } else if (st == DownloadTaskStatus.failed ||
         st == DownloadTaskStatus.canceled) {
+      if (st == DownloadTaskStatus.failed &&
+          await _recoverBackgroundFailure(pr)) {
+        return;
+      }
+
       lastError = '下載未完成，請稍後再試';
       status.value = DownloadStatus.failed;
       // A *canceled* download is a user/expected action (canceled from the
@@ -278,8 +294,66 @@ class UpdateService {
       // failures are filtered out in beforeSend. Genuine failures are still
       // reported so real install problems surface.
       if (st == DownloadTaskStatus.failed) {
-        await _reportFailure('Background APK download failed');
+        await _reportFailure(
+          'Background APK download failed',
+          downloaderContext: _downloaderContext(
+            status: st,
+            rawProgress: pr,
+            recovery: 'unavailable',
+          ),
+        );
       }
+    }
+  }
+
+  static Future<bool> _recoverBackgroundFailure(int pr) async {
+    if (_recoveringBackgroundFailure) return true;
+
+    final apkUrl = _activeApkUrl;
+    if (apkUrl == null || apkUrl.isEmpty) return false;
+
+    _recoveringBackgroundFailure = true;
+    try {
+      if (_backgroundFailures < _maxBackgroundRetries) {
+        _backgroundFailures += 1;
+        lastError = null;
+        progress.value = 0;
+        status.value = DownloadStatus.running;
+        await Future<void>.delayed(const Duration(seconds: 2));
+        await _startBackground(apkUrl);
+        return true;
+      }
+
+      await _removeStaleUpdateTasks();
+      lastError = null;
+      progress.value = 0;
+      status.value = DownloadStatus.running;
+      await _foregroundDownloadAndInstall(
+        apkUrl,
+        failureMessage: 'APK download failed after Android background retry',
+        downloaderContext: _downloaderContext(
+          status: DownloadTaskStatus.failed,
+          rawProgress: pr,
+          recovery: 'foreground_fallback',
+        ),
+      );
+      return true;
+    } catch (e, st) {
+      lastError = '$e';
+      status.value = DownloadStatus.failed;
+      await _reportFailure(
+        'Background APK download recovery failed',
+        error: e,
+        stack: st,
+        downloaderContext: _downloaderContext(
+          status: DownloadTaskStatus.failed,
+          rawProgress: pr,
+          recovery: 'failed',
+        ),
+      );
+      return true;
+    } finally {
+      _recoveringBackgroundFailure = false;
     }
   }
 
@@ -290,7 +364,11 @@ class UpdateService {
 
   // ---- Non-Android foreground fallback ----
 
-  static Future<void> _foregroundDownloadAndInstall(String apkUrl) async {
+  static Future<void> _foregroundDownloadAndInstall(
+    String apkUrl, {
+    String failureMessage = 'Foreground APK download failed',
+    Map<String, Object?>? downloaderContext,
+  }) async {
     try {
       final dir = await getTemporaryDirectory();
       final path = '${dir.path}/$_fileName';
@@ -308,6 +386,7 @@ class UpdateService {
         status.value = DownloadStatus.failed;
         await _reportFailure(
           'Foreground APK install failed to open: ${result.message}',
+          downloaderContext: downloaderContext,
         );
         return;
       }
@@ -316,9 +395,10 @@ class UpdateService {
       lastError = '$e';
       status.value = DownloadStatus.failed;
       await _reportFailure(
-        'Foreground APK download failed',
+        failureMessage,
         error: e,
         stack: st,
+        downloaderContext: downloaderContext,
       );
     }
   }
@@ -335,6 +415,7 @@ class UpdateService {
     String message, {
     Object? error,
     StackTrace? stack,
+    Map<String, Object?>? downloaderContext,
   }) async {
     try {
       String? version;
@@ -347,6 +428,7 @@ class UpdateService {
           'message': message,
           'currentVersion': version ?? 'unknown',
           'platform': defaultTargetPlatform.name,
+          if (downloaderContext != null) 'downloader': downloaderContext,
         });
       }
 
@@ -369,6 +451,23 @@ class UpdateService {
   }
 
   static const _fileName = 'ai_food_update.apk';
+
+  static Map<String, Object?> _downloaderContext({
+    required DownloadTaskStatus status,
+    required int rawProgress,
+    required String recovery,
+  }) {
+    final uri = Uri.tryParse(_activeApkUrl ?? '');
+    return {
+      'taskId': _taskId ?? 'unknown',
+      'status': status.name,
+      'progress': rawProgress,
+      'backgroundFailures': _backgroundFailures,
+      'recovery': recovery,
+      'urlHost': uri?.host ?? 'unknown',
+      'urlPath': uri?.path ?? 'unknown',
+    };
+  }
 
   static Future<void> _deleteQuietly(String path) async {
     try {
