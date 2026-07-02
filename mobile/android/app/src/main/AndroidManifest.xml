@@ -84,6 +84,30 @@
             </intent-filter>
         </activity-alias>
 
+        <receiver
+            android:name=".CalorieProgressWidgetProvider"
+            android:exported="false"
+            android:label="@string/calorie_progress_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/calorie_progress_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".QuickCaptureWidgetProvider"
+            android:exported="false"
+            android:label="@string/quick_capture_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/quick_capture_widget_info" />
+        </receiver>
+
         <!-- flutter_downloader: exposes the downloaded APK file to the system
              package installer so the background-downloaded update can be
              installed (incl. by tapping the completion notification). -->

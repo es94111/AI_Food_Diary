@@ -103,11 +103,13 @@ class MealCaptureForm extends StatefulWidget {
   const MealCaptureForm({
     super.key,
     required this.onSaved,
+    this.controller,
     this.initialAdvice = '',
     this.showAdvice = true,
   });
 
   final Future<void> Function() onSaved;
+  final MealCaptureController? controller;
   final String initialAdvice;
 
   /// The next-meal advice is for "today"; hide it when browsing other dates.
@@ -115,6 +117,27 @@ class MealCaptureForm extends StatefulWidget {
 
   @override
   State<MealCaptureForm> createState() => _MealCaptureFormState();
+}
+
+class MealCaptureController {
+  Object? _owner;
+  Future<void> Function()? _openCameraAndAnalyze;
+
+  Future<void> openCameraAndAnalyze() async {
+    await _openCameraAndAnalyze?.call();
+  }
+
+  void _attach(Object owner, Future<void> Function() callback) {
+    _owner = owner;
+    _openCameraAndAnalyze = callback;
+  }
+
+  void _detach(Object owner) {
+    if (_owner == owner) {
+      _owner = null;
+      _openCameraAndAnalyze = null;
+    }
+  }
 }
 
 /// The three ways to log a meal, mirroring the web form's tabbed selector.
@@ -171,10 +194,21 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     super.initState();
     _loadSavedFoods();
     _analysis.addListener(_onAnalysisChanged);
+    widget.controller?._attach(this, _openCameraAndAnalyze);
+  }
+
+  @override
+  void didUpdateWidget(covariant MealCaptureForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller?._detach(this);
+      widget.controller?._attach(this, _openCameraAndAnalyze);
+    }
   }
 
   @override
   void dispose() {
+    widget.controller?._detach(this);
     _analysis.removeListener(_onAnalysisChanged);
     _descriptionCtrl.dispose();
     super.dispose();
@@ -240,6 +274,29 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       _maxImages - _imageDataUrls.length,
     );
     if (urls.isNotEmpty) setState(() => _imageDataUrls.addAll(urls));
+  }
+
+  Future<void> _openCameraAndAnalyze() async {
+    if (_analysis.isRunning) {
+      setState(() => _error = 'AI 正在分析上一餐，完成後再拍下一餐。');
+      return;
+    }
+    setState(() {
+      _mode = CaptureMode.photo;
+      _mealType = nearestMealType();
+      _imageDataUrls.clear();
+      _pickedFoodIds.clear();
+      _descriptionCtrl.clear();
+      _error = null;
+    });
+    try {
+      final urls = await _pickImageDataUrls(ImageSource.camera, _maxImages);
+      if (!mounted || urls.isEmpty) return;
+      setState(() => _imageDataUrls.addAll(urls));
+      await _submit();
+    } catch (e) {
+      if (mounted) setState(() => _error = '快速拍照失敗：$e');
+    }
   }
 
   Future<void> _scanNutritionLabel(ImageSource source) async {

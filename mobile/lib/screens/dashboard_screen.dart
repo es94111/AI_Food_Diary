@@ -6,6 +6,7 @@ import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
 import '../services/health_service.dart';
+import '../services/home_widget_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../utils/metabolism.dart';
@@ -47,17 +48,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   static const _tabTitles = ['飲食', '健康', '設定'];
 
   final _analysis = MealAnalysisController.instance;
+  final _captureController = MealCaptureController();
   MealAnalysisStatus _lastAnalysisStatus = MealAnalysisStatus.idle;
+  bool _quickCaptureOpening = false;
 
   @override
   void initState() {
     super.initState();
+    HomeWidgetService.setQuickCaptureHandler(_startQuickCaptureFromWidget);
     _bootstrap();
     _analysis.addListener(_onAnalysisChanged);
   }
 
   @override
   void dispose() {
+    HomeWidgetService.clearQuickCaptureHandler();
     _analysis.removeListener(_onAnalysisChanged);
     super.dispose();
   }
@@ -102,6 +107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _user = await AuthService.fetchMe();
       await _loadMeals();
       await _loadSyncedWeight();
+      await _publishCalorieWidget();
       // Re-display today's stored next-meal advice (persists across restarts).
       _nextMealAdvice = await MealService.peekNextMealAdvice();
     } catch (e) {
@@ -109,10 +115,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+    final handledWidgetAction = mounted
+        ? await _consumeInitialWidgetAction()
+        : false;
     // After the dashboard is up, check for a newer app version and prompt.
-    if (mounted) UpdateCard.checkAndPrompt(context);
+    if (mounted && !handledWidgetAction) UpdateCard.checkAndPrompt(context);
     // Once per day, surface yesterday's pre-computed summary (peek only, no AI).
-    if (mounted) _maybeShowYesterdaySummary();
+    if (mounted && !handledWidgetAction) _maybeShowYesterdaySummary();
   }
 
   // On the first open of each local day, show yesterday's summary. Normally the
@@ -217,6 +226,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           : await MealService.mealsForDay(_selectedDate);
       meals.sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
       if (mounted) setState(() => _meals = meals);
+      if (!_weekView && _isToday) {
+        await _publishCalorieWidget(meals);
+      }
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     }
@@ -225,6 +237,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _logout() async {
     await GoogleAuth.signOut();
     await AuthService.logout();
+    await HomeWidgetService.clearCalorieProgress();
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
@@ -232,6 +245,61 @@ class _DashboardScreenState extends State<DashboardScreen> {
           settings: const RouteSettings(name: '/login')),
       (route) => false,
     );
+  }
+
+  Future<bool> _consumeInitialWidgetAction() async {
+    final action = await HomeWidgetService.consumeInitialAction();
+    if (action != HomeWidgetService.quickCaptureAction) return false;
+    await _startQuickCaptureFromWidget();
+    return true;
+  }
+
+  Future<void> _startQuickCaptureFromWidget() async {
+    if (_quickCaptureOpening || !mounted) return;
+    _quickCaptureOpening = true;
+    try {
+      while (_loading && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      if (!mounted) return;
+      final today = startOfLocalDay(DateTime.now());
+      final needsReload = _weekView || isoDate(_selectedDate) != isoDate(today);
+      setState(() {
+        _tabIndex = 0;
+        _weekView = false;
+        _selectedDate = today;
+      });
+      if (needsReload) await _loadMeals();
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      await _captureController.openCameraAndAnalyze();
+    } finally {
+      _quickCaptureOpening = false;
+    }
+  }
+
+  Future<void> _publishCalorieWidget([List<Meal>? todayMeals]) async {
+    if (_user == null) return;
+    try {
+      final today = startOfLocalDay(DateTime.now());
+      final meals = todayMeals ??
+          (!_weekView && _isToday
+              ? _meals
+              : await MealService.mealsForDay(today));
+      final totals = Totals.fromMeals(meals);
+      final metabolism = metabolismFor(
+        _user?.profile,
+        syncedWeightKg: _syncedWeight,
+        syncedHeightCm: _syncedHeight,
+      );
+      await HomeWidgetService.updateCalorieProgress(
+        consumedCalories: totals.calories.round(),
+        targetCalories: metabolism.target,
+        dateIso: isoDate(today),
+      );
+    } catch (_) {
+      // Home widget sync is best-effort and should never interrupt the dashboard.
+    }
   }
 
   Future<void> _openProfile() async {
@@ -375,6 +443,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ],
           const SizedBox(height: 12),
           MealCaptureForm(
+            controller: _captureController,
             onSaved: _loadMeals,
             initialAdvice: _nextMealAdvice,
             showAdvice: !_weekView && _isToday,
@@ -501,6 +570,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _onHealthSynced() async {
     await _loadSyncedWeight();
     await _persistSyncedWeightToProfile();
+    await _publishCalorieWidget();
   }
 
   /// After a sync, write the latest Health Connect weight/height back into the
@@ -536,6 +606,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
       _user = await AuthService.fetchMe();
       if (mounted) setState(() {});
+      await _publishCalorieWidget();
     } catch (_) {}
   }
 
