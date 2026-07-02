@@ -12,6 +12,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.widget.RemoteViews
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -30,6 +31,11 @@ object HomeWidgetUpdater {
         val waterGoalMl: Int,
         val dateIso: String,
         val waterDateIso: String,
+        val yesterdaySummaryDateIso: String,
+        val yesterdaySummaryText: String,
+        val yesterdayRecommendationText: String,
+        val activeCalories: Int,
+        val activeCaloriesDateIso: String,
         val updatedAtMillis: Long,
         val waterStatus: String,
     )
@@ -46,6 +52,11 @@ object HomeWidgetUpdater {
         carbsTargetGrams: Float,
         waterTotalMl: Int,
         waterGoalMl: Int,
+        yesterdaySummaryDateIso: String,
+        yesterdaySummaryText: String,
+        yesterdayRecommendationText: String,
+        activeCalories: Int,
+        activeCaloriesDateIso: String,
         dateIso: String,
         updatedAtMillis: Long,
         sessionCookie: String?,
@@ -64,6 +75,11 @@ object HomeWidgetUpdater {
             .putInt(HomeWidgetContract.KEY_WATER_GOAL_ML, waterGoalMl.coerceAtLeast(0))
             .putString(HomeWidgetContract.KEY_DATE_ISO, dateIso)
             .putString(HomeWidgetContract.KEY_WATER_DATE_ISO, dateIso)
+            .putString(HomeWidgetContract.KEY_YESTERDAY_SUMMARY_DATE_ISO, yesterdaySummaryDateIso)
+            .putString(HomeWidgetContract.KEY_YESTERDAY_SUMMARY_TEXT, yesterdaySummaryText)
+            .putString(HomeWidgetContract.KEY_YESTERDAY_RECOMMENDATION_TEXT, yesterdayRecommendationText)
+            .putInt(HomeWidgetContract.KEY_ACTIVE_CALORIES, activeCalories)
+            .putString(HomeWidgetContract.KEY_ACTIVE_CALORIES_DATE_ISO, activeCaloriesDateIso)
             .putLong(HomeWidgetContract.KEY_UPDATED_AT_MILLIS, updatedAtMillis)
             .putString(HomeWidgetContract.KEY_WATER_STATUS, "點一下 +250 ml")
             .apply()
@@ -113,6 +129,8 @@ object HomeWidgetUpdater {
         updateCalorieProgressWidgets(context)
         updateMacroOverviewWidgets(context)
         updateWaterQuickAddWidgets(context)
+        updateDailySummaryWidgets(context)
+        updateNetCaloriesWidgets(context)
     }
 
     fun updateCalorieProgressWidgets(context: Context) {
@@ -173,12 +191,44 @@ object HomeWidgetUpdater {
         }
     }
 
+    fun updateDailySummaryWidgets(context: Context) {
+        val manager = AppWidgetManager.getInstance(context)
+        val component = ComponentName(context, DailySummaryWidgetProvider::class.java)
+        updateDailySummaryWidgets(context, manager, manager.getAppWidgetIds(component))
+    }
+
+    fun updateDailySummaryWidgets(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetIds: IntArray,
+    ) {
+        appWidgetIds.forEach { id ->
+            appWidgetManager.updateAppWidget(id, dailySummaryViews(context, id))
+        }
+    }
+
+    fun updateNetCaloriesWidgets(context: Context) {
+        val manager = AppWidgetManager.getInstance(context)
+        val component = ComponentName(context, NetCaloriesWidgetProvider::class.java)
+        updateNetCaloriesWidgets(context, manager, manager.getAppWidgetIds(component))
+    }
+
+    fun updateNetCaloriesWidgets(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetIds: IntArray,
+    ) {
+        appWidgetIds.forEach { id ->
+            appWidgetManager.updateAppWidget(id, netCaloriesViews(context, id))
+        }
+    }
+
     private fun calorieProgressViews(context: Context, appWidgetId: Int): RemoteViews {
         val views = RemoteViews(context.packageName, R.layout.widget_calorie_progress)
         val snapshot = readSnapshot(context)
         val fresh = snapshot != null && snapshot.dateIso == todayIso()
 
-        if (fresh && snapshot != null && snapshot.targetCalories > 0) {
+        if (fresh && snapshot.targetCalories > 0) {
             val consumed = snapshot.consumedCalories
             val target = snapshot.targetCalories
             val remaining = target - consumed
@@ -221,7 +271,7 @@ object HomeWidgetUpdater {
         val snapshot = readSnapshot(context)
         val fresh = snapshot != null && snapshot.dateIso == todayIso()
 
-        if (fresh && snapshot != null && snapshot.targetCalories > 0) {
+        if (fresh && snapshot.targetCalories > 0) {
             val calorieProgress =
                 (snapshot.consumedCalories.toFloat() / snapshot.targetCalories).coerceIn(0f, 1f)
             val remaining = snapshot.targetCalories - snapshot.consumedCalories
@@ -301,7 +351,7 @@ object HomeWidgetUpdater {
         val views = RemoteViews(context.packageName, R.layout.widget_water_quick_add)
         val snapshot = readSnapshot(context)
         val fresh = snapshot != null && snapshot.waterDateIso == todayIso()
-        val total = if (fresh && snapshot != null) snapshot.waterTotalMl else 0
+        val total = if (fresh) snapshot.waterTotalMl else 0
         val goal = snapshot?.waterGoalMl?.takeIf { it > 0 } ?: 2000
         val progress = (total.toFloat() / goal.toFloat()).coerceIn(0f, 1f)
 
@@ -309,7 +359,7 @@ object HomeWidgetUpdater {
         views.setTextViewText(R.id.water_percent, "${(progress * 100).roundToInt()}%")
         views.setTextViewText(
             R.id.water_widget_status,
-            if (fresh && snapshot != null) snapshot.waterStatus else "點一下 +250 ml",
+            if (fresh) snapshot.waterStatus else "點一下 +250 ml",
         )
         views.setImageViewBitmap(
             R.id.water_progress_bar,
@@ -319,6 +369,71 @@ object HomeWidgetUpdater {
         val pendingIntent = waterQuickAddPendingIntent(context, appWidgetId)
         views.setOnClickPendingIntent(R.id.water_widget_root, pendingIntent)
         views.setOnClickPendingIntent(R.id.water_add_button, pendingIntent)
+        return views
+    }
+
+    private fun dailySummaryViews(context: Context, appWidgetId: Int): RemoteViews {
+        val views = RemoteViews(context.packageName, R.layout.widget_daily_summary)
+        val snapshot = readSnapshot(context)
+        val hasSummary = snapshot != null &&
+            snapshot.yesterdaySummaryDateIso == yesterdayIso() &&
+            snapshot.yesterdaySummaryText.isNotBlank()
+
+        if (hasSummary) {
+            views.setTextViewText(R.id.summary_date, "${snapshot.yesterdaySummaryDateIso} 回顧")
+            views.setTextViewText(R.id.summary_text, snapshot.yesterdaySummaryText)
+            views.setTextViewText(
+                R.id.summary_recommendation,
+                snapshot.yesterdayRecommendationText.ifBlank { "點開 App 查看完整建議" },
+            )
+            views.setTextViewText(R.id.summary_status, "Worker 已預先整理，未即時產生 AI")
+        } else {
+            views.setTextViewText(R.id.summary_date, "昨日 AI 總結")
+            views.setTextViewText(R.id.summary_text, "昨日總結尚未產生。")
+            views.setTextViewText(R.id.summary_recommendation, "開啟 App 後會顯示已儲存的飲食回顧。")
+            views.setTextViewText(R.id.summary_status, "不會在桌面即時呼叫 AI")
+        }
+
+        views.setOnClickPendingIntent(
+            R.id.summary_widget_root,
+            openAppPendingIntent(context, 40_000 + appWidgetId),
+        )
+        return views
+    }
+
+    private fun netCaloriesViews(context: Context, appWidgetId: Int): RemoteViews {
+        val views = RemoteViews(context.packageName, R.layout.widget_net_calories)
+        val snapshot = readSnapshot(context)
+        val hasHealthData = snapshot != null &&
+            snapshot.dateIso == todayIso() &&
+            snapshot.activeCaloriesDateIso == todayIso() &&
+            snapshot.activeCalories >= 0
+
+        if (hasHealthData) {
+            val intake = snapshot.consumedCalories
+            val active = snapshot.activeCalories
+            val net = intake - active
+            val over = net > 0
+            views.setTextViewText(R.id.net_value, if (net > 0) "+$net" else "$net")
+            views.setTextViewText(R.id.net_formula, "攝取 $intake - 活動 $active kcal")
+            views.setTextViewText(R.id.net_label, if (over) "活動後仍有攝取" else "活動已抵銷攝取")
+            views.setTextColor(
+                R.id.net_value,
+                if (over) Color.rgb(220, 38, 38) else Color.rgb(22, 163, 74),
+            )
+            views.setTextViewText(R.id.net_status, "Health Connect 今日資料")
+        } else {
+            views.setTextViewText(R.id.net_value, "--")
+            views.setTextViewText(R.id.net_formula, "攝取 - 活動消耗")
+            views.setTextViewText(R.id.net_label, "同步 Health Connect")
+            views.setTextColor(R.id.net_value, Color.rgb(28, 25, 23))
+            views.setTextViewText(R.id.net_status, "等待今日活動熱量")
+        }
+
+        views.setOnClickPendingIntent(
+            R.id.net_widget_root,
+            openAppPendingIntent(context, 50_000 + appWidgetId),
+        )
         return views
     }
 
@@ -352,6 +467,15 @@ object HomeWidgetUpdater {
             waterGoalMl = prefs.getInt(HomeWidgetContract.KEY_WATER_GOAL_ML, 2000),
             dateIso = prefs.getString(HomeWidgetContract.KEY_DATE_ISO, "") ?: "",
             waterDateIso = prefs.getString(HomeWidgetContract.KEY_WATER_DATE_ISO, "") ?: "",
+            yesterdaySummaryDateIso =
+                prefs.getString(HomeWidgetContract.KEY_YESTERDAY_SUMMARY_DATE_ISO, "") ?: "",
+            yesterdaySummaryText =
+                prefs.getString(HomeWidgetContract.KEY_YESTERDAY_SUMMARY_TEXT, "") ?: "",
+            yesterdayRecommendationText =
+                prefs.getString(HomeWidgetContract.KEY_YESTERDAY_RECOMMENDATION_TEXT, "") ?: "",
+            activeCalories = prefs.getInt(HomeWidgetContract.KEY_ACTIVE_CALORIES, -1),
+            activeCaloriesDateIso =
+                prefs.getString(HomeWidgetContract.KEY_ACTIVE_CALORIES_DATE_ISO, "") ?: "",
             updatedAtMillis = prefs.getLong(HomeWidgetContract.KEY_UPDATED_AT_MILLIS, 0L),
             waterStatus = prefs.getString(HomeWidgetContract.KEY_WATER_STATUS, "點一下 +250 ml")
                 ?: "點一下 +250 ml",
@@ -399,6 +523,12 @@ object HomeWidgetUpdater {
 
     private fun todayIso(): String =
         SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    private fun yesterdayIso(): String {
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.DAY_OF_YEAR, -1)
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(calendar.time)
+    }
 
     private fun fmtGram(value: Float): String = value.roundToInt().toString()
 

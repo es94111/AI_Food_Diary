@@ -40,6 +40,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // Today's measured total energy expenditure (Health Connect
   // TotalCaloriesBurned), for the net-calorie card. Null unless synced today.
   double? _todayTotalCalories;
+  double? _todayActiveCalories;
+  String _yesterdaySummaryDateIso = '';
+  String _yesterdaySummaryText = '';
+  String _yesterdayRecommendationText = '';
   String _nextMealAdvice = '';
   // Latest water total (ml) reported by the WaterCard, cached so the home-widget
   // publish can reuse it instead of issuing its own /api/water request.
@@ -111,6 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _user = await AuthService.fetchMe();
       await _loadMeals();
       await _loadSyncedWeight();
+      await _loadYesterdaySummaryForWidget();
       await _publishCalorieWidget();
       // Re-display today's stored next-meal advice (persists across restarts).
       _nextMealAdvice = await MealService.peekNextMealAdvice();
@@ -195,6 +200,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final weight = status.latestByType['WEIGHT'];
       final height = status.latestByType['HEIGHT'];
       final total = status.latestByType['TOTAL_CALORIES'];
+      final active = status.latestByType['ACTIVE_CALORIES'];
       final now = DateTime.now();
       bool isToday(DateTime d) =>
           d.year == now.year && d.month == now.month && d.day == now.day;
@@ -211,6 +217,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _todayTotalCalories =
             (total != null && total.value > 0 && isToday(total.measuredAt))
             ? total.value
+            : null;
+        _todayActiveCalories =
+            (active != null && active.value >= 0 && isToday(active.measuredAt))
+            ? active.value
             : null;
       });
     } catch (_) {}
@@ -311,12 +321,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
         // doesn't add its own /api/water round-trip.
         waterTotalMl: _waterTotalMl,
         waterGoalMl: _user?.profile?.waterGoalMl ?? 2000,
+        yesterdaySummaryDateIso: _yesterdaySummaryDateIso,
+        yesterdaySummaryText: _yesterdaySummaryText,
+        yesterdayRecommendationText: _yesterdayRecommendationText,
+        activeCalories: _todayActiveCalories?.round(),
+        activeCaloriesDateIso:
+            _todayActiveCalories == null ? '' : isoDate(today),
         dateIso: isoDate(today),
         sessionCookie: ApiClient.instance.sessionCookie,
       );
     } catch (_) {
       // Home widget sync is best-effort and should never interrupt the dashboard.
     }
+  }
+
+  Future<void> _loadYesterdaySummaryForWidget() async {
+    final yesterday = startOfLocalDay(
+      DateTime.now().subtract(const Duration(days: 1)),
+    );
+    try {
+      final summary = await MealService.dailySummary(yesterday);
+      _yesterdaySummaryDateIso = isoDate(yesterday);
+      _yesterdaySummaryText = _widgetText(summary?.aiSummary ?? '');
+      _yesterdayRecommendationText =
+          _widgetText(summary?.aiRecommendation ?? '');
+    } catch (_) {
+      _yesterdaySummaryDateIso = isoDate(yesterday);
+      _yesterdaySummaryText = '';
+      _yesterdayRecommendationText = '';
+    }
+  }
+
+  String _widgetText(String value) {
+    return value
+        .replaceAll(RegExp(r'[`*_>#\[\]]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   Future<void> _openProfile() async {

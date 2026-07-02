@@ -29,5 +29,10 @@ object HomeWidgetContract {
     const val KEY_WATER_STATUS = "water_status"
     const val KEY_DATE_ISO = "date_iso"
     const val KEY_WATER_DATE_ISO = "water_date_iso"
+    const val KEY_YESTERDAY_SUMMARY_DATE_ISO = "yesterday_summary_date_iso"
+    const val KEY_YESTERDAY_SUMMARY_TEXT = "yesterday_summary_text"
+    const val KEY_YESTERDAY_RECOMMENDATION_TEXT = "yesterday_recommendation_text"
+    const val KEY_ACTIVE_CALORIES = "active_calories"
+    const val KEY_ACTIVE_CALORIES_DATE_ISO = "active_calories_date_iso"
     const val KEY_UPDATED_AT_MILLIS = "updated_at_millis"
 }

@@ -133,6 +133,30 @@
         </receiver>
 
         <receiver
+            android:name=".DailySummaryWidgetProvider"
+            android:exported="false"
+            android:label="@string/daily_summary_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/daily_summary_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".NetCaloriesWidgetProvider"
+            android:exported="false"
+            android:label="@string/net_calories_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/net_calories_widget_info" />
+        </receiver>
+
+        <receiver
             android:name=".WaterQuickAddReceiver"
             android:exported="false" />
 

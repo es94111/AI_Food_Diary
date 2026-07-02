@@ -38,6 +38,11 @@ class HomeWidgetService {
     required int carbsTargetGrams,
     required int waterTotalMl,
     required int waterGoalMl,
+    required String yesterdaySummaryDateIso,
+    required String yesterdaySummaryText,
+    required String yesterdayRecommendationText,
+    required int? activeCalories,
+    required String activeCaloriesDateIso,
     required String dateIso,
     String? sessionCookie,
   }) async {
@@ -53,6 +58,11 @@ class HomeWidgetService {
         'carbsTargetGrams': carbsTargetGrams,
         'waterTotalMl': waterTotalMl,
         'waterGoalMl': waterGoalMl,
+        'yesterdaySummaryDateIso': yesterdaySummaryDateIso,
+        'yesterdaySummaryText': yesterdaySummaryText,
+        'yesterdayRecommendationText': yesterdayRecommendationText,
+        if (activeCalories != null) 'activeCalories': activeCalories,
+        'activeCaloriesDateIso': activeCaloriesDateIso,
         'dateIso': dateIso,
         if (sessionCookie != null && sessionCookie.isNotEmpty)
           'sessionCookie': sessionCookie,

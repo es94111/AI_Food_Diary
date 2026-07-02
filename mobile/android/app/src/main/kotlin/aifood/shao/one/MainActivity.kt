@@ -55,6 +55,15 @@ class MainActivity : FlutterFragmentActivity() {
                         carbsTargetGrams = floatArgument(call, "carbsTargetGrams") ?: 0f,
                         waterTotalMl = intArgument(call, "waterTotalMl") ?: 0,
                         waterGoalMl = intArgument(call, "waterGoalMl") ?: 2000,
+                        yesterdaySummaryDateIso =
+                            call.argument<String>("yesterdaySummaryDateIso") ?: "",
+                        yesterdaySummaryText =
+                            call.argument<String>("yesterdaySummaryText") ?: "",
+                        yesterdayRecommendationText =
+                            call.argument<String>("yesterdayRecommendationText") ?: "",
+                        activeCalories = intArgument(call, "activeCalories") ?: -1,
+                        activeCaloriesDateIso =
+                            call.argument<String>("activeCaloriesDateIso") ?: "",
                         dateIso = call.argument<String>("dateIso") ?: "",
                         updatedAtMillis =
                             longArgument(call, "updatedAtMillis") ?: System.currentTimeMillis(),
