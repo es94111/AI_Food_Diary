@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
 import '../theme/app_theme.dart';
+import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
 import '../services/health_service.dart';
@@ -40,6 +41,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // TotalCaloriesBurned), for the net-calorie card. Null unless synced today.
   double? _todayTotalCalories;
   String _nextMealAdvice = '';
+  // Latest water total (ml) reported by the WaterCard, cached so the home-widget
+  // publish can reuse it instead of issuing its own /api/water request.
+  int _waterTotalMl = 0;
   int _tabIndex = 0;
   int _savedFoodsManagerReloadKey = 0;
   bool _loading = true;
@@ -292,10 +296,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         syncedWeightKg: _syncedWeight,
         syncedHeightCm: _syncedHeight,
       );
+      final macroTargets =
+          macroTargetsFor(metabolism.target, _user?.profile?.goal);
       await HomeWidgetService.updateCalorieProgress(
         consumedCalories: totals.calories.round(),
         targetCalories: metabolism.target,
+        proteinGrams: totals.protein,
+        fatGrams: totals.fat,
+        carbsGrams: totals.carbs,
+        proteinTargetGrams: macroTargets.protein,
+        fatTargetGrams: macroTargets.fat,
+        carbsTargetGrams: macroTargets.carbs,
+        // Reuse the total the WaterCard already fetched, so the widget refresh
+        // doesn't add its own /api/water round-trip.
+        waterTotalMl: _waterTotalMl,
+        waterGoalMl: _user?.profile?.waterGoalMl ?? 2000,
         dateIso: isoDate(today),
+        sessionCookie: ApiClient.instance.sessionCookie,
       );
     } catch (_) {
       // Home widget sync is best-effort and should never interrupt the dashboard.
@@ -439,6 +456,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               goalMl: _user?.profile?.waterGoalMl ?? 2000,
               isToday: _isToday,
               onGoalChanged: _refreshUserAndMeals,
+              onChanged: (totalMl) {
+                _waterTotalMl = totalMl;
+                return _publishCalorieWidget();
+              },
             ),
           ],
           const SizedBox(height: 12),

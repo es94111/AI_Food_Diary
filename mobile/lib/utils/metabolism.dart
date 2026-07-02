@@ -60,6 +60,36 @@ int? calorieTargetFromGoal(int? tdee, String? goal) {
   }
 }
 
+/// Daily macronutrient goals (grams) derived from the user's own settings:
+/// their calorie [target] and [goal]. The energy split (protein / fat / carbs)
+/// follows the goal — higher protein when losing fat, more carbs when building
+/// muscle. protein & carbs = 4 kcal/g, fat = 9 kcal/g.
+({int protein, int fat, int carbs}) macroTargetsFor(int target, String? goal) {
+  final kcal = target > 0 ? target : 0;
+  final double proteinPct, fatPct, carbsPct;
+  switch (goal) {
+    case 'LOSE_FAT':
+      proteinPct = 0.40;
+      fatPct = 0.30;
+      carbsPct = 0.30;
+      break;
+    case 'BUILD_MUSCLE':
+      proteinPct = 0.30;
+      fatPct = 0.25;
+      carbsPct = 0.45;
+      break;
+    default: // MAINTAIN (and any unknown value)
+      proteinPct = 0.30;
+      fatPct = 0.30;
+      carbsPct = 0.40;
+  }
+  return (
+    protein: (kcal * proteinPct / 4).round(),
+    fat: (kcal * fatPct / 9).round(),
+    carbs: (kcal * carbsPct / 4).round(),
+  );
+}
+
 /// Convenience wrapper computing all three from a profile, honoring a
 /// Health-Connect-synced weight override when available.
 class MetabolismResult {

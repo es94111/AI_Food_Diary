@@ -30,13 +30,32 @@ class HomeWidgetService {
   static Future<void> updateCalorieProgress({
     required int consumedCalories,
     required int targetCalories,
+    required double proteinGrams,
+    required double fatGrams,
+    required double carbsGrams,
+    required int proteinTargetGrams,
+    required int fatTargetGrams,
+    required int carbsTargetGrams,
+    required int waterTotalMl,
+    required int waterGoalMl,
     required String dateIso,
+    String? sessionCookie,
   }) async {
     try {
       await _channel.invokeMethod<void>('updateCalorieProgress', {
         'consumedCalories': consumedCalories,
         'targetCalories': targetCalories,
+        'proteinGrams': proteinGrams,
+        'fatGrams': fatGrams,
+        'carbsGrams': carbsGrams,
+        'proteinTargetGrams': proteinTargetGrams,
+        'fatTargetGrams': fatTargetGrams,
+        'carbsTargetGrams': carbsTargetGrams,
+        'waterTotalMl': waterTotalMl,
+        'waterGoalMl': waterGoalMl,
         'dateIso': dateIso,
+        if (sessionCookie != null && sessionCookie.isNotEmpty)
+          'sessionCookie': sessionCookie,
         'updatedAtMillis': DateTime.now().millisecondsSinceEpoch,
       });
     } on MissingPluginException {
