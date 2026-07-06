@@ -24,8 +24,8 @@
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1077.0",
-    "@aws-sdk/s3-request-presigner": "^3.1077.0",
+    "@aws-sdk/client-s3": "^3.1079.0",
+    "@aws-sdk/s3-request-presigner": "^3.1079.0",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@sentry/nextjs": "^10.63.0",
@@ -35,7 +35,7 @@
     "dotenv": "^17.4.2",
     "ioredis": "^5.11.1",
     "jose": "^6.2.3",
-    "next": "^16.2.9",
+    "next": "^16.2.10",
     "openai": "^6.45.0",
     "prisma": "^7.8.0",
     "react": "^19.2.7",
@@ -49,9 +49,9 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "eslint": "^10.6.0",
-    "eslint-config-next": "^16.2.9",
+    "eslint-config-next": "^16.2.10",
     "tailwindcss": "^4.3.2",
-    "tsx": "^4.22.4",
+    "tsx": "^4.23.0",
     "typescript": "^6.0.3"
   },
   "overrides": {
