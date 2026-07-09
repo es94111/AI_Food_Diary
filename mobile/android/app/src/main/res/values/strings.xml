@@ -4,4 +4,12 @@
     <string name="calorie_progress_widget_description">顯示今日已攝取、目標與剩餘熱量。</string>
     <string name="quick_capture_widget_name">快速拍照記錄</string>
     <string name="quick_capture_widget_description">一鍵開啟相機並開始 AI 餐點辨識。</string>
+    <string name="macro_overview_widget_name">營養總覽</string>
+    <string name="macro_overview_widget_description">顯示今日熱量與蛋白、脂肪、碳水進度。</string>
+    <string name="water_quick_add_widget_name">喝水 +250ml</string>
+    <string name="water_quick_add_widget_description">顯示今日水量並快速新增 250ml。</string>
+    <string name="daily_summary_widget_name">昨日 AI 總結</string>
+    <string name="daily_summary_widget_description">顯示已預先產生的昨日飲食總結。</string>
+    <string name="net_calories_widget_name">淨熱量</string>
+    <string name="net_calories_widget_description">顯示攝取扣除 Health Connect 活動熱量後的今日淨熱量。</string>
 </resources>

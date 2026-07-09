@@ -15,12 +15,18 @@ class WaterCard extends StatefulWidget {
     required this.goalMl,
     required this.isToday,
     this.onGoalChanged,
+    this.onChanged,
   });
 
   final DateTime date;
   final int goalMl;
   final bool isToday;
   final Future<void> Function()? onGoalChanged;
+
+  /// Called whenever the day's water total changes (initial load, add, delete,
+  /// goal change), passing the current total in ml. Lets the parent refresh the
+  /// home-screen widget without re-fetching water from the API.
+  final Future<void> Function(int totalMl)? onChanged;
 
   @override
   State<WaterCard> createState() => _WaterCardState();
@@ -55,6 +61,7 @@ class _WaterCardState extends State<WaterCard> {
         _logs = result.logs;
         _totalMl = result.totalMl;
       });
+      await widget.onChanged?.call(_totalMl);
     } catch (_) {}
   }
 

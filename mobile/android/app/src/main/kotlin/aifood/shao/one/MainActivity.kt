@@ -43,17 +43,36 @@ class MainActivity : FlutterFragmentActivity() {
         widgetChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "updateCalorieProgress" -> {
-                    HomeWidgetUpdater.saveCalorieProgress(
+                    HomeWidgetUpdater.saveDailySnapshot(
                         this,
-                        intArgument(call, "consumedCalories") ?: 0,
-                        intArgument(call, "targetCalories") ?: 0,
-                        call.argument<String>("dateIso") ?: "",
-                        longArgument(call, "updatedAtMillis") ?: System.currentTimeMillis(),
+                        consumedCalories = intArgument(call, "consumedCalories") ?: 0,
+                        targetCalories = intArgument(call, "targetCalories") ?: 0,
+                        proteinGrams = floatArgument(call, "proteinGrams") ?: 0f,
+                        fatGrams = floatArgument(call, "fatGrams") ?: 0f,
+                        carbsGrams = floatArgument(call, "carbsGrams") ?: 0f,
+                        proteinTargetGrams = floatArgument(call, "proteinTargetGrams") ?: 0f,
+                        fatTargetGrams = floatArgument(call, "fatTargetGrams") ?: 0f,
+                        carbsTargetGrams = floatArgument(call, "carbsTargetGrams") ?: 0f,
+                        waterTotalMl = intArgument(call, "waterTotalMl") ?: 0,
+                        waterGoalMl = intArgument(call, "waterGoalMl") ?: 2000,
+                        yesterdaySummaryDateIso =
+                            call.argument<String>("yesterdaySummaryDateIso") ?: "",
+                        yesterdaySummaryText =
+                            call.argument<String>("yesterdaySummaryText") ?: "",
+                        yesterdayRecommendationText =
+                            call.argument<String>("yesterdayRecommendationText") ?: "",
+                        activeCalories = intArgument(call, "activeCalories") ?: -1,
+                        activeCaloriesDateIso =
+                            call.argument<String>("activeCaloriesDateIso") ?: "",
+                        dateIso = call.argument<String>("dateIso") ?: "",
+                        updatedAtMillis =
+                            longArgument(call, "updatedAtMillis") ?: System.currentTimeMillis(),
+                        sessionCookie = call.argument<String>("sessionCookie"),
                     )
                     result.success(true)
                 }
                 "clearCalorieProgress" -> {
-                    HomeWidgetUpdater.clearCalorieProgress(this)
+                    HomeWidgetUpdater.clearDailySnapshot(this)
                     result.success(true)
                 }
                 "consumeInitialAction" -> {
@@ -137,6 +156,14 @@ class MainActivity : FlutterFragmentActivity() {
         return when (val value = call.argument<Any>(name)) {
             is Number -> value.toLong()
             is String -> value.toLongOrNull()
+            else -> null
+        }
+    }
+
+    private fun floatArgument(call: MethodCall, name: String): Float? {
+        return when (val value = call.argument<Any>(name)) {
+            is Number -> value.toFloat()
+            is String -> value.toFloatOrNull()
             else -> null
         }
     }
