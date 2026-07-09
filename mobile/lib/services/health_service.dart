@@ -705,11 +705,24 @@ class HealthService {
   // ---- status & device management (cookie session) ----
 
   static Future<HealthSyncStatus> status() async {
-    final res = await _api.get('/api/health/sync');
+    final res = await _api.get('/api/health/sync', cache: true);
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '健康同步狀態讀取失敗'));
     }
     return HealthSyncStatus.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  /// Last cached sync status from a previous [status] call, or null if none
+  /// cached yet. Lets the health card paint instantly on open instead of
+  /// waiting on the network.
+  static Future<HealthSyncStatus?> cachedStatus() async {
+    final data = await _api.cached('/api/health/sync');
+    if (data is! Map<String, dynamic>) return null;
+    try {
+      return HealthSyncStatus.fromJson(data);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Recent history time series for one or more metric [types] (joined into the

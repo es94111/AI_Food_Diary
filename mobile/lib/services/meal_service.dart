@@ -10,12 +10,28 @@ class MealService {
   /// Meals for a single local day (date = yyyy-MM-dd).
   static Future<List<Meal>> mealsForDay(DateTime day) async {
     final res = await _api.get('/api/meals',
-        query: {'date': isoDate(day), 'tzOffset': '${localTzOffsetMinutes()}'});
+        query: {'date': isoDate(day), 'tzOffset': '${localTzOffsetMinutes()}'},
+        cache: true);
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法載入餐點'));
     }
     final list = res.data['meals'] as List? ?? [];
     return list.map((e) => Meal.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Last cached meals for [day] from a previous [mealsForDay] call, or an
+  /// empty list if none cached yet. Lets the dashboard paint instantly on
+  /// open instead of waiting on the network.
+  static Future<List<Meal>> cachedMealsForDay(DateTime day) async {
+    final data = await _api.cached('/api/meals',
+        query: {'date': isoDate(day), 'tzOffset': '${localTzOffsetMinutes()}'});
+    if (data is! Map<String, dynamic>) return [];
+    final list = data['meals'] as List? ?? [];
+    try {
+      return list.map((e) => Meal.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Meals across a 7-day week starting at [weekStart] (one request per day,

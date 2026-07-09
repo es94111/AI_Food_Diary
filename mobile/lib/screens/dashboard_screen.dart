@@ -111,6 +111,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _bootstrap() async {
+    // Paint instantly from whatever was cached last session, so opening the
+    // app never blocks on the network before showing something. The network
+    // refresh below still runs right after and silently replaces this with
+    // fresh data.
+    await _loadFromCache();
     try {
       _user = await AuthService.fetchMe();
       await _loadMeals();
@@ -120,7 +125,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       // Re-display today's stored next-meal advice (persists across restarts).
       _nextMealAdvice = await MealService.peekNextMealAdvice();
     } catch (e) {
-      setState(() => _error = e.toString());
+      // Keep any cached data on screen; only surface the error if we truly
+      // have nothing to show.
+      if (_user == null && _meals.isEmpty) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -131,6 +138,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (mounted && !handledWidgetAction) UpdateCard.checkAndPrompt(context);
     // Once per day, surface yesterday's pre-computed summary (peek only, no AI).
     if (mounted && !handledWidgetAction) _maybeShowYesterdaySummary();
+  }
+
+  /// Reads last session's cached `/api/me` and meals-for-[_selectedDate]
+  /// responses (if any) and paints them immediately, flipping off the
+  /// full-screen spinner so the app opens instantly instead of waiting on the
+  /// network. No-op (leaves `_loading` true) when there's nothing cached yet,
+  /// e.g. right after a fresh login.
+  Future<void> _loadFromCache() async {
+    final cachedUser = await AuthService.cachedMe();
+    final cachedMeals = await MealService.cachedMealsForDay(_selectedDate);
+    if (!mounted || (cachedUser == null && cachedMeals.isEmpty)) return;
+    cachedMeals.sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
+    setState(() {
+      _user = cachedUser;
+      _meals = cachedMeals;
+      _loading = false;
+    });
   }
 
   // On the first open of each local day, show yesterday's summary. Normally the
