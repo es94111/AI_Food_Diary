@@ -80,6 +80,15 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
   }
 
   Future<void> _load() async {
+    // Paint instantly from last session's cache while the real fetch below
+    // refreshes it in the background.
+    final cached = await SavedFoodService.cachedList();
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        _foods = cached;
+        _loading = false;
+      });
+    }
     try {
       final foods = await SavedFoodService.list();
       if (mounted) setState(() => _foods = foods);

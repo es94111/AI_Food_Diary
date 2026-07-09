@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_dio/sentry_dio.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+import 'cache_service.dart';
+
 /// Central HTTP client that mirrors the web app's cookie-session auth.
 ///
 /// The Next.js backend authorises every food-diary endpoint via the
@@ -115,14 +117,61 @@ class ApiClient {
   Future<void> clearSession() async {
     _sessionCookie = null;
     await _storage.delete(key: _sessionKey);
+    // Cached responses belong to the signed-out account; drop them so the
+    // next sign-in never briefly shows stale data from a previous user.
+    await CacheService.clearAll();
   }
 
+  /// GET, optionally backed by a local cache (keyed on [path] + [query]).
+  ///
+  /// With `cache: true`, a successful response is written through to
+  /// [CacheService] so a later call — even in a future app session — can read
+  /// it back via [cached] to paint instantly instead of waiting on the
+  /// network. If the request fails with a pure connectivity error (offline,
+  /// DNS, timeout) and a cached copy exists, that cached copy is returned
+  /// instead of throwing, so callers degrade gracefully rather than failing.
   Future<Response<dynamic>> get(String path,
-      {Map<String, dynamic>? query, Map<String, String>? headers}) async {
+      {Map<String, dynamic>? query,
+      Map<String, String>? headers,
+      bool cache = false}) async {
     final dio = await _client();
-    return dio.get(path,
-        queryParameters: query,
-        options: headers == null ? null : Options(headers: headers));
+    final cacheKey = cache ? _cacheKey(path, query) : null;
+    try {
+      final res = await dio.get(path,
+          queryParameters: query,
+          options: headers == null ? null : Options(headers: headers));
+      if (cacheKey != null && ok(res)) {
+        await CacheService.write(cacheKey, res.data);
+      }
+      return res;
+    } catch (e) {
+      if (cacheKey != null && isConnectivityError(e)) {
+        final cached = await CacheService.read(cacheKey);
+        if (cached != null) {
+          return Response<dynamic>(
+            requestOptions: RequestOptions(path: path),
+            statusCode: 200,
+            data: cached,
+          );
+        }
+      }
+      rethrow;
+    }
+  }
+
+  /// Last cached copy of a `cache: true` [get] response for [path] + [query],
+  /// or null if nothing has been cached yet. Read-only — never hits the
+  /// network — so callers can paint instantly on app start while the real
+  /// [get] call refreshes in the background.
+  Future<dynamic> cached(String path, {Map<String, dynamic>? query}) =>
+      CacheService.read(_cacheKey(path, query));
+
+  static String _cacheKey(String path, Map<String, dynamic>? query) {
+    if (query == null || query.isEmpty) return path;
+    final entries = query.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final qs = entries.map((e) => '${e.key}=${e.value}').join('&');
+    return '$path?$qs';
   }
 
   /// GET returning raw bytes (e.g. an image), with the session cookie attached.

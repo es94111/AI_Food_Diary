@@ -54,6 +54,15 @@ class _WaterCardState extends State<WaterCard> {
   }
 
   Future<void> _load() async {
+    // Paint instantly from last session's cache while the real fetch below
+    // refreshes it in the background.
+    final cached = await WaterService.cachedForDay(widget.date);
+    if (cached != null && mounted) {
+      setState(() {
+        _logs = cached.logs;
+        _totalMl = cached.totalMl;
+      });
+    }
     try {
       final result = await WaterService.forDay(widget.date);
       if (!mounted) return;

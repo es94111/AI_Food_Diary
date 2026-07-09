@@ -173,6 +173,10 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   }
 
   Future<void> _load() async {
+    // Paint instantly from last session's cache while the real fetch below
+    // refreshes it in the background.
+    final cached = await HealthService.cachedStatus();
+    if (cached != null && mounted) setState(() => _status = cached);
     try {
       final status = await HealthService.status();
       if (mounted) {

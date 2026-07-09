@@ -57,12 +57,26 @@ class AuthService {
   }
 
   static Future<AppUser> fetchMe() async {
-    final res = await _api.get('/api/me');
+    final res = await _api.get('/api/me', cache: true);
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法取得使用者資料'),
           statusCode: res.statusCode);
     }
     return AppUser.fromJson(res.data['user'] as Map<String, dynamic>);
+  }
+
+  /// Last cached profile from a previous [fetchMe], or null if none yet. Lets
+  /// the dashboard paint instantly on open instead of waiting on the network.
+  static Future<AppUser?> cachedMe() async {
+    final data = await _api.cached('/api/me');
+    if (data is! Map<String, dynamic>) return null;
+    final user = data['user'];
+    if (user is! Map<String, dynamic>) return null;
+    try {
+      return AppUser.fromJson(user);
+    } catch (_) {
+      return null;
+    }
   }
 
   static Future<void> linkGoogle(String idToken) async {

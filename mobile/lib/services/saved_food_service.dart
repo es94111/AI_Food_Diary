@@ -25,7 +25,7 @@ class SavedFoodService {
 
   static Future<List<SavedFood>> list() async {
     try {
-      final res = await _api.get('/api/saved-foods');
+      final res = await _api.get('/api/saved-foods', cache: true);
       if (!ApiClient.ok(res)) return [];
       final foods = res.data['foods'] as List? ?? [];
       return foods
@@ -38,6 +38,22 @@ class SavedFoodService {
       // (parsing, unexpected types) still propagate.
       if (ApiClient.isConnectivityError(e)) return [];
       rethrow;
+    }
+  }
+
+  /// Last cached list from a previous [list] call, or an empty list if none
+  /// cached yet. Lets the saved-foods manager paint instantly on open instead
+  /// of waiting on the network.
+  static Future<List<SavedFood>> cachedList() async {
+    final data = await _api.cached('/api/saved-foods');
+    if (data is! Map<String, dynamic>) return [];
+    final foods = data['foods'] as List? ?? [];
+    try {
+      return foods
+          .map((e) => SavedFood.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
     }
   }
 
