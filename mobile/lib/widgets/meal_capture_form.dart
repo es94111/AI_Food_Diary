@@ -204,6 +204,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       oldWidget.controller?._detach(this);
       widget.controller?._attach(this, _openCameraAndAnalyze);
     }
+    if (oldWidget.initialAdvice != widget.initialAdvice &&
+        widget.initialAdvice.isNotEmpty &&
+        _advice.isEmpty) {
+      _advice = widget.initialAdvice;
+    }
   }
 
   @override

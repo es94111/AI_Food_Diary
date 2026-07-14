@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -10,6 +12,7 @@ import '../services/health_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
+import '../services/update_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/ai_settings_form.dart';
 import '../widgets/health_sync_card.dart';
@@ -44,12 +47,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _yesterdaySummaryDateIso = '';
   String _yesterdaySummaryText = '';
   String _yesterdayRecommendationText = '';
+  DailySummary? _yesterdaySummary;
+  bool _yesterdaySummaryLoaded = false;
   String _nextMealAdvice = '';
   // Latest water total (ml) reported by the WaterCard, cached so the home-widget
   // publish can reuse it instead of issuing its own /api/water request.
   int _waterTotalMl = 0;
   int _tabIndex = 0;
   int _savedFoodsManagerReloadKey = 0;
+  final Set<int> _mountedTabs = {0};
   bool _loading = true;
   String? _error;
 
@@ -120,24 +126,57 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _user = await AuthService.fetchMe();
       await _loadMeals();
       await _loadSyncedWeight();
-      await _loadYesterdaySummaryForWidget();
-      await _publishCalorieWidget();
-      // Re-display today's stored next-meal advice (persists across restarts).
-      _nextMealAdvice = await MealService.peekNextMealAdvice();
     } catch (e) {
       // Keep any cached data on screen; only surface the error if we truly
       // have nothing to show.
-      if (_user == null && _meals.isEmpty) setState(() => _error = e.toString());
+      if (_user == null && _meals.isEmpty) {
+        setState(() => _error = e.toString());
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
-    final handledWidgetAction = mounted
-        ? await _consumeInitialWidgetAction()
-        : false;
-    // After the dashboard is up, check for a newer app version and prompt.
-    if (mounted && !handledWidgetAction) UpdateCard.checkAndPrompt(context);
-    // Once per day, surface yesterday's pre-computed summary (peek only, no AI).
-    if (mounted && !handledWidgetAction) _maybeShowYesterdaySummary();
+
+    if (!mounted) return;
+    final handledWidgetAction = await _consumeInitialWidgetAction();
+    if (!mounted) return;
+
+    // These jobs do not affect the first usable dashboard frame. Start them
+    // after entry so they cannot serialise startup or compete with hidden-tab
+    // requests for the first network connection.
+    unawaited(_refreshAfterEntry(showPrompts: !handledWidgetAction));
+  }
+
+  Future<void> _refreshAfterEntry({required bool showPrompts}) async {
+    await WidgetsBinding.instance.endOfFrame;
+    final results = await Future.wait([
+      _loadYesterdaySummaryForWidget().catchError((_) {}),
+      MealService.peekNextMealAdvice().catchError((_) => ''),
+      UpdateService.check(),
+    ]);
+    _nextMealAdvice = results[1] as String;
+    final updateInfo = results[2] as AppVersionInfo;
+    await _publishCalorieWidget();
+
+    if (mounted && showPrompts) {
+      await UpdateCard.promptIfAvailable(context, updateInfo);
+      if (mounted) await _maybeShowYesterdaySummary();
+    }
+
+    // Health Connect can do substantial native reads and uploads. Give the user
+    // a quiet interaction window before starting it, and never await it from UI.
+    await Future<void>.delayed(const Duration(seconds: 30));
+    if (mounted) unawaited(_syncHealthAfterEntry());
+  }
+
+  Future<void> _syncHealthAfterEntry() async {
+    try {
+      if (!await HealthService.hasPermissions()) return;
+      await HealthService.syncNow(days: 2);
+      await _loadSyncedWeight();
+      await _publishCalorieWidget();
+    } catch (_) {
+      // The health card exposes retry/error UI. Startup refresh stays invisible.
+    }
   }
 
   /// Reads last session's cached `/api/me` and meals-for-[_selectedDate]
@@ -157,10 +196,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // On the first open of each local day, show yesterday's summary. Normally the
-  // server worker has already pre-computed it, so the peek is instant and no AI
-  // runs. If it hasn't yet (first day, worker missed its window, etc.) we
-  // generate it once on demand with a spinner so the user still sees it.
+  // On the first open of each local day, show yesterday's summary only when the
+  // worker has already pre-computed it. Startup never falls back to a live AI
+  // generation; the summary card still lets the user request that explicitly.
   Future<void> _maybeShowYesterdaySummary() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -169,52 +207,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (prefs.getString('last_summary_popup_date') == todayKey) return;
       final yesterday = DateTime(now.year, now.month, now.day - 1);
 
-      var summary = await MealService.dailySummary(yesterday); // peek, no AI
-      if (summary == null && mounted) {
-        summary = await _generateYesterdaySummary(yesterday);
-      }
-      // Mark handled for today so we don't re-generate on every open.
+      final summary = _yesterdaySummaryLoaded
+          ? _yesterdaySummary
+          : await MealService.dailySummary(yesterday); // peek, no AI
+      if (summary == null) return;
       await prefs.setString('last_summary_popup_date', todayKey);
-      if (!mounted || summary == null) return;
+      if (!mounted) return;
       await showDailySummaryPopup(context, summary);
     } catch (_) {
       // Non-critical: never block the dashboard if the popup check fails.
-    }
-  }
-
-  // Generates yesterday's summary on demand behind a blocking spinner. Returns
-  // null if it couldn't be produced (no meals / no AI key / error).
-  Future<DailySummary?> _generateYesterdaySummary(DateTime day) async {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-                SizedBox(width: 14),
-                Text('正在整理昨日總結…'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    try {
-      final summary = await MealService.dailySummary(day, generate: true);
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
-      return summary;
-    } catch (_) {
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
-      return null;
     }
   }
 
@@ -365,6 +366,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     try {
       final summary = await MealService.dailySummary(yesterday);
+      _yesterdaySummary = summary;
+      _yesterdaySummaryLoaded = true;
       _yesterdaySummaryDateIso = isoDate(yesterday);
       _yesterdaySummaryText = _widgetText(summary?.aiSummary ?? '');
       _yesterdayRecommendationText =
@@ -462,14 +465,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         index: _tabIndex,
         children: [
           _foodTab(totals, target),
-          _healthTab(metabolism),
-          _settingsTab(metabolism),
+          _mountedTabs.contains(1)
+              ? _healthTab(metabolism)
+              : const SizedBox.shrink(),
+          _mountedTabs.contains(2)
+              ? _settingsTab(metabolism)
+              : const SizedBox.shrink(),
         ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: (i) => setState(() {
           _tabIndex = i;
+          _mountedTabs.add(i);
           if (i == 2) _savedFoodsManagerReloadKey++;
         }),
         destinations: const [
