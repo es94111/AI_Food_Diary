@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
 import '../services/background_analysis.dart';
-import '../services/health_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/update_service.dart';
 import 'dashboard_screen.dart';
@@ -23,13 +22,11 @@ import 'login_screen.dart';
 /// Timing:
 ///  * The local session check runs during the animation and has the same hard
 ///    deadline.
-///  * For a signed-in user who already granted Health Connect access, the last
-///    two days are synced while the ring keeps spinning. Navigation waits for
-///    that sync to finish, so the dashboard starts with current health data.
 ///  * Non-critical service initialization is detached from navigation. Slow or
 ///    failed plugins never delay entry into the dashboard/login screen.
-///  * [_splashDuration] is the minimum animation time; a health sync may keep
-///    the looping ring visible for longer.
+///  * Health Connect sync starts after the dashboard is interactive; reading and
+///    uploading health history never extends the splash screen.
+///  * [_splashDuration] is the single source of truth for the animation wait.
 ///
 /// (Sentry is initialised before `runApp` in main(), so it's already up by the
 /// time this screen renders — the native launch screen covers that phase.)
@@ -72,13 +69,12 @@ class _SplashScreenState extends State<SplashScreen>
 
   Future<void> _boot() async {
     // Start optional plugin setup and the minimum animation timer immediately.
-    // Plugin setup stays detached, while an authorised health sync participates
-    // in navigation so the dashboard never races stale startup data.
+    // Only the fast local session read participates in navigation; network and
+    // Health Connect work begin after the destination screen is interactive.
     unawaited(_initServices());
-    final minimumAnimation = Future<void>.delayed(_splashDuration);
-    final loggedIn = await _hasSessionWithDeadline();
-    if (loggedIn) await _syncHealthIfAvailable();
-    await minimumAnimation;
+    final session = _hasSessionWithDeadline();
+    await Future<void>.delayed(_splashDuration);
+    final loggedIn = await session;
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -88,28 +84,6 @@ class _SplashScreenState extends State<SplashScreen>
         settings: RouteSettings(name: loggedIn ? '/dashboard' : '/login'),
       ),
     );
-  }
-
-  /// Runs only when Health Connect read access has already been granted. The
-  /// normal sync flow handles the existing nutrition/water write permissions.
-  Future<void> _syncHealthIfAvailable() async {
-    const days = 2;
-    try {
-      if (!await HealthService.hasPermissions()) return;
-
-      // Mirror app-owned meals/water before reading Health Connect so the same
-      // startup sync can upload the latest nutrition and hydration values.
-      try {
-        await HealthService.writeRecentMealsToHealth(days: days);
-      } catch (_) {}
-      try {
-        await HealthService.writeRecentWaterToHealth(days: days);
-      } catch (_) {}
-      await HealthService.syncNow(days: days);
-    } catch (_) {
-      // Startup sync is best-effort. Offline/plugin failures should finish the
-      // splash and let the signed-in user retry from the health card.
-    }
   }
 
   Future<bool> _hasSessionWithDeadline() async {

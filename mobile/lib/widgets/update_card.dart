@@ -27,6 +27,16 @@ class UpdateCard extends StatefulWidget {
   /// with a polished update sheet.
   static Future<void> checkAndPrompt(BuildContext context) async {
     final info = await UpdateService.check();
+    if (!context.mounted) return;
+    await promptIfAvailable(context, info);
+  }
+
+  /// Prompts from an already-fetched [info]. Startup can fetch the version in
+  /// parallel with other non-critical refreshes without issuing it twice.
+  static Future<void> promptIfAvailable(
+    BuildContext context,
+    AppVersionInfo info,
+  ) async {
     if (!info.updateAvailable || !context.mounted) return;
     final go = await showDialog<bool>(
       context: context,
