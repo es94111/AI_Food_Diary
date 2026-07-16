@@ -1,5 +1,7 @@
 // Plain data models mirroring the web app's API JSON shapes.
 
+part 'saved_food.dart';
+
 double _toDouble(dynamic v) {
   if (v is num) return v.toDouble();
   if (v is String) return double.tryParse(v) ?? 0;
@@ -16,7 +18,8 @@ int _toInt(dynamic v) {
 /// (e.g. 150.0 → "150", 53.5 → "53.5"). Calories are stored as decimals so
 /// labels like "53.5 大卡" survive, but are usually whole numbers — this keeps
 /// "150 kcal" from rendering as "150.0 kcal".
-String fmtNum(num v) => v == v.roundToDouble() ? v.round().toString() : v.toString();
+String fmtNum(num v) =>
+    v == v.roundToDouble() ? v.round().toString() : v.toString();
 
 class UserProfile {
   final String? gender;
@@ -176,7 +179,8 @@ class Meal {
     mealType: (j['mealType'] as String?) ?? 'LUNCH',
     imageStorageKey: j['imageStorageKey'] as String?,
     // Older API responses have no imageCount — fall back to the single-image marker.
-    imageCount: (j['imageCount'] as num?)?.toInt() ??
+    imageCount:
+        (j['imageCount'] as num?)?.toInt() ??
         ((j['imageStorageKey'] != null) ? 1 : 0),
     totalCalories: _toDouble(j['totalCalories']),
     totalProtein: _toDouble(j['totalProtein']),
@@ -222,56 +226,6 @@ class FoodAnalysisItem {
     fat: _toDouble(j['fat']),
     carbs: _toDouble(j['carbs']),
     aiRating: (j['aiRating'] as String?) ?? 'OK',
-  );
-}
-
-class SavedFood {
-  final String id;
-  final String? barcode;
-  final String name;
-  final String estimatedAmount;
-  final double calories;
-  final double protein;
-  final double fat;
-  final double carbs;
-  final String source;
-  final bool isFavorite;
-  final int useCount;
-  final DateTime? lastUsedAt;
-  final bool hasImage;
-
-  SavedFood({
-    required this.id,
-    this.barcode,
-    required this.name,
-    required this.estimatedAmount,
-    required this.calories,
-    required this.protein,
-    required this.fat,
-    required this.carbs,
-    this.source = 'MANUAL',
-    this.isFavorite = false,
-    this.useCount = 0,
-    this.lastUsedAt,
-    this.hasImage = false,
-  });
-
-  factory SavedFood.fromJson(Map<String, dynamic> j) => SavedFood(
-    id: j['id'] as String,
-    barcode: j['barcode'] as String?,
-    name: (j['name'] as String?) ?? '',
-    estimatedAmount: (j['estimatedAmount'] as String?) ?? '',
-    calories: _toDouble(j['calories']),
-    protein: _toDouble(j['protein']),
-    fat: _toDouble(j['fat']),
-    carbs: _toDouble(j['carbs']),
-    source: (j['source'] as String?) ?? 'MANUAL',
-    isFavorite: j['isFavorite'] == true,
-    hasImage: j['hasImage'] == true,
-    useCount: _toInt(j['useCount']),
-    lastUsedAt: j['lastUsedAt'] is String
-        ? DateTime.tryParse(j['lastUsedAt'] as String)
-        : null,
   );
 }
 

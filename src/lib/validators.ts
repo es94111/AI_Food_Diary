@@ -103,8 +103,20 @@ export const savedFoodSchema = z.object({
   removeImage: z.coerce.boolean().optional()
 });
 
-export const savedFoodPatchSchema = savedFoodSchema.extend({
+export const savedFoodCreateSchema = savedFoodSchema.extend({
+  allowDuplicate: z.coerce.boolean().optional()
+});
+
+// PATCH is intentionally partial so archive restore can send only
+// `{ archived: false }`; the route merges omitted fields with the stored food.
+export const savedFoodPatchSchema = savedFoodSchema.partial().extend({
+  // `null` explicitly clears an existing barcode; omission keeps it unchanged.
+  barcode: z.string().trim().min(4).max(80).nullable().optional(),
   archived: z.coerce.boolean().optional()
+});
+
+export const savedFoodBatchArchiveSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100)
 });
 
 export const aiSettingsSchema = z

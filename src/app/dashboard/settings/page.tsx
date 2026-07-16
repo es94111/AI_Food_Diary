@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptProfile } from "@/lib/profile-crypto";
@@ -7,9 +8,7 @@ import { AiSettingsForm } from "@/components/ai-settings-form";
 import { LogoutButton } from "@/components/logout-button";
 import { GoogleLinkPanel } from "@/components/google-link-panel";
 import { AdminPanel } from "@/components/admin-panel";
-import { SavedFoodsManager, type SavedFoodSource } from "@/components/saved-foods-manager";
 import { Metric } from "@/components/health-cards";
-import { decryptSavedFood } from "@/lib/b2-crypto";
 import { WEB_VERSION } from "@/lib/version";
 import { getLatestAppRelease } from "@/lib/app-release";
 
@@ -32,11 +31,6 @@ export default async function SettingsPage() {
     ? await prisma.appConfig.findUnique({ where: { id: "singleton" } })
     : null;
   const appRelease = await getLatestAppRelease();
-  const savedFoods = await prisma.savedFood.findMany({
-    where: { userId: user.id, archivedAt: null },
-    orderBy: [{ isFavorite: "desc" }, { lastUsedAt: "desc" }, { useCount: "desc" }, { updatedAt: "desc" }]
-  });
-
   return (
     <>
       <header className="mt-6">
@@ -54,26 +48,10 @@ export default async function SettingsPage() {
         <div className="glass glass-lift rounded-[2rem] p-6">
           <AiSettingsForm />
         </div>
-        <SavedFoodsManager
-          initialFoods={savedFoods.map((food) => {
-            const decrypted = decryptSavedFood(food);
-            return {
-              id: decrypted.id,
-              barcode: decrypted.barcode,
-              name: decrypted.name,
-              estimatedAmount: decrypted.estimatedAmount,
-              calories: decrypted.calories,
-              protein: decrypted.protein,
-              fat: decrypted.fat,
-              carbs: decrypted.carbs,
-              source: decrypted.source as SavedFoodSource,
-              isFavorite: decrypted.isFavorite,
-              useCount: decrypted.useCount,
-              lastUsedAt: decrypted.lastUsedAt?.toISOString() ?? null,
-              hasImage: decrypted.hasImage
-            };
-          })}
-        />
+        <Link className="glass glass-lift block rounded-[2rem] p-6" href="/dashboard/foods">
+          <h2 className="text-xl font-black">我的食物管理</h2>
+          <p className="mt-1 text-sm text-stone-500">前往獨立頁面搜尋、整理、批次封存與處理重複資料。</p>
+        </Link>
         <GoogleLinkPanel clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID} linked={!!user.googleId} />
         {user.isAdmin && <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />}
         <div className="glass glass-lift rounded-[2rem] p-6">

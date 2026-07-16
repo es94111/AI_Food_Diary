@@ -1,87 +1,68 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/saved_food_list_logic.dart';
 import '../services/saved_food_service.dart';
 import '../theme/app_theme.dart';
+import 'saved_food_editor.dart';
 
-const _sourceLabels = {
-  'MANUAL': '手動新增',
-  'NUTRITION_LABEL': '營養標示',
-  'BARCODE': '條碼綁定',
-  'MEAL_ITEM': '從餐點保存',
+const _sortLabels = {
+  SavedFoodSort.recommended: '推薦順序',
+  SavedFoodSort.name: '名稱 A-Z',
+  SavedFoodSort.mostUsed: '使用次數',
+  SavedFoodSort.recentlyUpdated: '最近更新',
+  SavedFoodSort.newest: '最新建立',
 };
 
-enum _FoodTab { favorites, mine, barcoded, recent }
+const _tabLabels = {
+  SavedFoodTab.favorites: '常用',
+  SavedFoodTab.all: '全部',
+  SavedFoodTab.barcoded: '有條碼',
+  SavedFoodTab.recent: '最近使用',
+  SavedFoodTab.unused: '未使用',
+  SavedFoodTab.possibleDuplicates: '可能重複',
+  SavedFoodTab.incomplete: '資料不完整',
+  SavedFoodTab.archived: '已封存',
+};
 
-class SavedFoodsManagerCard extends StatefulWidget {
-  const SavedFoodsManagerCard({super.key});
+class SavedFoodsManager extends StatefulWidget {
+  const SavedFoodsManager({super.key});
 
   @override
-  State<SavedFoodsManagerCard> createState() => _SavedFoodsManagerCardState();
+  State<SavedFoodsManager> createState() => _SavedFoodsManagerState();
 }
 
-class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
+class _SavedFoodsManagerState extends State<SavedFoodsManager> {
   List<SavedFood> _foods = [];
+  List<SavedFood> _archivedFoods = [];
+  final Set<String> _selectedIds = {};
   SavedFood? _editing;
-  _FoodTab _tab = _FoodTab.favorites;
+  SavedFoodTab _tab = SavedFoodTab.favorites;
+  SavedFoodSort _sort = SavedFoodSort.recommended;
+  String _search = '';
   bool _loading = true;
-  bool _saving = false;
-  bool _favorite = false;
-  String _source = 'MANUAL';
+  bool _archivedLoading = false;
+  bool _archivedLoaded = false;
+  bool _batchArchiving = false;
   String? _error;
-  // New photo to upload (data URL) and whether to clear the existing one.
-  String? _imageDataUrl;
-  bool _removeImage = false;
-  final _picker = ImagePicker();
 
-  final _name = TextEditingController();
-  final _barcode = TextEditingController();
-  final _amount = TextEditingController(text: '1 份');
-  final _calories = TextEditingController(text: '0');
-  final _protein = TextEditingController(text: '0');
-  final _fat = TextEditingController(text: '0');
-  final _carbs = TextEditingController(text: '0');
+  List<SavedFood> get _visibleFoods => visibleSavedFoods(
+    foods: _tab == SavedFoodTab.archived ? _archivedFoods : _foods,
+    tab: _tab,
+    sort: _sort,
+    search: _search,
+  );
 
-  List<SavedFood> get _visibleFoods {
-    return _foods.where((food) {
-      switch (_tab) {
-        case _FoodTab.favorites:
-          return food.isFavorite;
-        case _FoodTab.barcoded:
-          return food.barcode != null && food.barcode!.isNotEmpty;
-        case _FoodTab.recent:
-          return food.lastUsedAt != null || food.useCount > 0;
-        case _FoodTab.mine:
-          return true;
-      }
-    }).toList();
-  }
+  bool get _selectionMode => _selectedIds.isNotEmpty;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadActive();
   }
 
-  @override
-  void dispose() {
-    _name.dispose();
-    _barcode.dispose();
-    _amount.dispose();
-    _calories.dispose();
-    _protein.dispose();
-    _fat.dispose();
-    _carbs.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    // Paint instantly from last session's cache while the real fetch below
-    // refreshes it in the background.
+  Future<void> _loadActive() async {
     final cached = await SavedFoodService.cachedList();
     if (cached.isNotEmpty && mounted) {
       setState(() {
@@ -92,430 +73,444 @@ class _SavedFoodsManagerCardState extends State<SavedFoodsManagerCard> {
     try {
       final foods = await SavedFoodService.list();
       if (mounted) setState(() => _foods = foods);
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  void _edit(SavedFood food) {
+  Future<void> _loadArchived({bool force = false}) async {
+    if (_archivedLoading || (_archivedLoaded && !force)) return;
     setState(() {
-      _editing = food;
-      _name.text = food.name;
-      _barcode.text = food.barcode ?? '';
-      _amount.text = food.estimatedAmount;
-      _calories.text = fmtNum(food.calories);
-      _protein.text = food.protein.toString();
-      _fat.text = food.fat.toString();
-      _carbs.text = food.carbs.toString();
-      _source = food.source;
-      _favorite = food.isFavorite;
-      _imageDataUrl = null;
-      _removeImage = false;
-      _error = null;
-    });
-  }
-
-  void _reset() {
-    setState(() {
-      _editing = null;
-      _imageDataUrl = null;
-      _removeImage = false;
-      _name.clear();
-      _barcode.clear();
-      _amount.text = '1 份';
-      _calories.text = '0';
-      _protein.text = '0';
-      _fat.text = '0';
-      _carbs.text = '0';
-      _source = 'MANUAL';
-      _favorite = false;
-      _error = null;
-    });
-  }
-
-  Future<void> _pickImage() async {
-    final file = await _picker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1600,
-      imageQuality: 80,
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    final mime =
-        file.name.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
-    setState(() {
-      _imageDataUrl = 'data:$mime;base64,${base64Encode(bytes)}';
-      _removeImage = false;
-    });
-  }
-
-  Future<void> _save() async {
-    if (_name.text.trim().isEmpty) {
-      setState(() => _error = '請填寫食物名稱。');
-      return;
-    }
-    setState(() {
-      _saving = true;
+      _archivedLoading = true;
       _error = null;
     });
     try {
-      final barcode = _barcode.text.trim().isEmpty
-          ? null
-          : _barcode.text.trim();
-      final editing = _editing;
-      if (editing == null) {
-        await SavedFoodService.create(
-          barcode: barcode,
-          name: _name.text.trim(),
-          estimatedAmount: _amount.text.trim().isEmpty
-              ? '1 份'
-              : _amount.text.trim(),
-          calories: double.tryParse(_calories.text.trim()) ?? 0,
-          protein: double.tryParse(_protein.text.trim()) ?? 0,
-          fat: double.tryParse(_fat.text.trim()) ?? 0,
-          carbs: double.tryParse(_carbs.text.trim()) ?? 0,
-          source: _source,
-          isFavorite: _favorite,
-          imageDataUrl: _imageDataUrl,
-        );
-      } else {
-        await SavedFoodService.update(
-          editing.id,
-          barcode: barcode,
-          name: _name.text.trim(),
-          estimatedAmount: _amount.text.trim().isEmpty
-              ? '1 份'
-              : _amount.text.trim(),
-          calories: double.tryParse(_calories.text.trim()) ?? 0,
-          protein: double.tryParse(_protein.text.trim()) ?? 0,
-          fat: double.tryParse(_fat.text.trim()) ?? 0,
-          carbs: double.tryParse(_carbs.text.trim()) ?? 0,
-          source: _source,
-          isFavorite: _favorite,
-          imageDataUrl: _imageDataUrl,
-          removeImage: _removeImage,
-        );
+      final foods = await SavedFoodService.list(archived: true);
+      if (mounted) {
+        setState(() {
+          _archivedFoods = foods;
+          _archivedLoaded = true;
+        });
       }
-      _reset();
-      await _load();
-    } catch (e) {
-      setState(() => _error = e.toString());
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) setState(() => _archivedLoading = false);
     }
   }
 
+  void _selectTab(SavedFoodTab tab) {
+    setState(() {
+      _tab = tab;
+      _editing = null;
+      _selectedIds.clear();
+      _error = null;
+    });
+    if (tab == SavedFoodTab.archived) _loadArchived();
+  }
+
+  Future<void> _onSaved(SavedFood food) async {
+    setState(() {
+      _foods = [food, ..._foods.where((item) => item.id != food.id)];
+      _archivedFoods.removeWhere((item) => item.id == food.id);
+      _editing = null;
+      _error = null;
+    });
+  }
+
   Future<void> _toggleFavorite(SavedFood food) async {
-    await SavedFoodService.update(
-      food.id,
-      barcode: food.barcode,
-      name: food.name,
-      estimatedAmount: food.estimatedAmount,
-      calories: food.calories,
-      protein: food.protein,
-      fat: food.fat,
-      carbs: food.carbs,
-      source: food.source,
-      isFavorite: !food.isFavorite,
-    );
-    await _load();
+    try {
+      final updated = await SavedFoodService.update(
+        food.id,
+        barcode: food.barcode,
+        name: food.name,
+        estimatedAmount: food.estimatedAmount,
+        calories: food.calories,
+        protein: food.protein,
+        fat: food.fat,
+        carbs: food.carbs,
+        isFavorite: !food.isFavorite,
+      );
+      if (mounted) {
+        setState(() {
+          _foods = _foods
+              .map((item) => item.id == updated.id ? updated : item)
+              .toList();
+          _error = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
   }
 
   Future<void> _archive(SavedFood food) async {
-    await SavedFoodService.delete(food.id);
-    await _load();
+    try {
+      await SavedFoodService.archive(food.id);
+      if (!mounted) return;
+      setState(() {
+        _foods.removeWhere((item) => item.id == food.id);
+        _selectedIds.remove(food.id);
+        if (_editing?.id == food.id) _editing = null;
+        _error = null;
+      });
+      if (_archivedLoaded) await _loadArchived(force: true);
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  Future<void> _archiveSelected() async {
+    if (_selectedIds.isEmpty || _batchArchiving) return;
+    final confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('封存 ${_selectedIds.length} 筆食物？'),
+            content: const Text('封存不會影響過去的餐點紀錄，之後仍可從「已封存」還原。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('取消'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('批次封存'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) return;
+
+    final ids = _selectedIds.toList(growable: false);
+    setState(() {
+      _batchArchiving = true;
+      _error = null;
+    });
+    try {
+      final archivedCount = await SavedFoodService.archiveBatch(ids);
+      if (!mounted) return;
+      final archivedIds = ids.toSet();
+      setState(() {
+        _foods.removeWhere((food) => archivedIds.contains(food.id));
+        _selectedIds.clear();
+        _error = archivedCount == ids.length
+            ? null
+            : '已封存 $archivedCount 筆；部分項目可能已先被移動，請重新整理。';
+      });
+      if (_archivedLoaded && archivedCount > 0) {
+        await _loadArchived(force: true);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _error = error.toString());
+      // Earlier chunks may already have committed. Reload instead of leaving
+      // archived rows visible after a later chunk fails.
+      await _loadActive();
+    } finally {
+      if (mounted) setState(() => _batchArchiving = false);
+    }
+  }
+
+  Future<void> _restore(SavedFood food) async {
+    try {
+      final restored = await SavedFoodService.restore(food.id);
+      if (!mounted) return;
+      setState(() {
+        _archivedFoods.removeWhere((item) => item.id == food.id);
+        _foods = [restored, ..._foods.where((item) => item.id != restored.id)];
+        _error = null;
+      });
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+    }
+  }
+
+  void _toggleSelection(SavedFood food) {
+    if (_tab == SavedFoodTab.archived || _batchArchiving) return;
+    setState(() {
+      if (!_selectedIds.add(food.id)) _selectedIds.remove(food.id);
+      _editing = null;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    final waiting = _tab == SavedFoodTab.archived ? _archivedLoading : _loading;
+    final visibleFoods = _visibleFoods;
+    return CustomScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      slivers: [
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Expanded(
-                  child: Text(
-                    '我的食物管理',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                Text(
+                  '管理常用、自建與條碼食物。封存不會影響過去餐點紀錄。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: context.palette.inkSoft,
                   ),
                 ),
-                if (_editing != null)
-                  TextButton(onPressed: _reset, child: const Text('取消')),
+                const SizedBox(height: 12),
+                SavedFoodEditor(
+                  editing: _editing,
+                  onSaved: _onSaved,
+                  onCancelEdit: () {
+                    if (mounted) setState(() => _editing = null);
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  onChanged: (value) => setState(() {
+                    _search = value;
+                    _selectedIds.clear();
+                  }),
+                  decoration: const InputDecoration(
+                    labelText: '搜尋名稱或條碼',
+                    prefixIcon: Icon(Icons.search),
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                DropdownButtonFormField<SavedFoodSort>(
+                  initialValue: _sort,
+                  decoration: const InputDecoration(
+                    labelText: '排序',
+                    prefixIcon: Icon(Icons.sort),
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _sortLabels.entries
+                      .map(
+                        (entry) => DropdownMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) setState(() => _sort = value);
+                  },
+                ),
+                const SizedBox(height: 12),
+                _tabs(),
+                if (_selectionMode) ...[
+                  const SizedBox(height: 12),
+                  _selectionBar(),
+                ],
+                if (_error != null) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    _error!,
+                    style: TextStyle(color: context.palette.danger),
+                  ),
+                ],
               ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              '管理常用食物、自建食物與產品條碼。封存不會影響過去餐點紀錄。',
-              style: TextStyle(fontSize: 12, color: context.palette.inkSoft),
-            ),
-            const SizedBox(height: 12),
-            _field(_name, '食物名稱'),
-            _field(_barcode, '產品條碼（選填）', keyboard: TextInputType.number),
-            _field(_amount, '份量，例如：1 份 / 100g'),
-            DropdownButtonFormField<String>(
-              initialValue: _source,
-              decoration: const InputDecoration(
-                labelText: '來源',
-                border: OutlineInputBorder(),
-              ),
-              items: _sourceLabels.entries
-                  .map(
-                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                  )
-                  .toList(),
-              onChanged: (v) => setState(() => _source = v ?? 'MANUAL'),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _field(
-                    _calories,
-                    '熱量 kcal',
-                    keyboard: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _field(
-                    _protein,
-                    '蛋白質 g',
-                    keyboard: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Row(
-              children: [
-                Expanded(
-                  child: _field(
-                    _fat,
-                    '脂肪 g',
-                    keyboard: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: _field(
-                    _carbs,
-                    '碳水 g',
-                    keyboard: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: _favorite,
-              onChanged: (v) => setState(() => _favorite = v ?? false),
-              title: const Text('加入常用'),
-              controlAffinity: ListTileControlAffinity.leading,
-            ),
-            _imageRow(),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _saving ? null : _save,
-                icon: const Icon(Icons.save),
-                label: Text(
-                  _saving
-                      ? '儲存中...'
-                      : _editing == null
-                      ? '新增食物'
-                      : '儲存修改',
-                ),
+          ),
+        ),
+        if (waiting)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(child: CircularProgressIndicator()),
+          )
+        else if (visibleFoods.isEmpty)
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Text(
+                '這個分類目前沒有食物。',
+                style: TextStyle(color: context.palette.inkSoft),
               ),
             ),
-            if (_error != null) ...[
-              const SizedBox(height: 8),
-              Text(_error!, style: TextStyle(color: context.palette.danger)),
-            ],
-            const Divider(height: 24),
-            _tabs(),
-            const SizedBox(height: 8),
-            if (_loading)
-              const Center(child: CircularProgressIndicator())
-            else if (_visibleFoods.isEmpty)
-              Text('這個分類目前沒有食物。',
-                  style: TextStyle(color: context.palette.inkSoft))
-            else
-              ..._visibleFoods.map(_foodTile),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _tabs() {
-    return Wrap(
-      spacing: 8,
-      children: [
-        ChoiceChip(
-          label: const Text('常用'),
-          selected: _tab == _FoodTab.favorites,
-          onSelected: (_) => setState(() => _tab = _FoodTab.favorites),
-        ),
-        ChoiceChip(
-          label: const Text('我的新增'),
-          selected: _tab == _FoodTab.mine,
-          onSelected: (_) => setState(() => _tab = _FoodTab.mine),
-        ),
-        ChoiceChip(
-          label: const Text('有條碼'),
-          selected: _tab == _FoodTab.barcoded,
-          onSelected: (_) => setState(() => _tab = _FoodTab.barcoded),
-        ),
-        ChoiceChip(
-          label: const Text('最近使用'),
-          selected: _tab == _FoodTab.recent,
-          onSelected: (_) => setState(() => _tab = _FoodTab.recent),
-        ),
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _foodTile(visibleFoods[index]),
+                childCount: visibleFoods.length,
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  Map<String, String> _authHeaders() =>
-      ApiClient.instance.sessionCookie != null
-          ? {'Cookie': ApiClient.instance.sessionCookie!}
-          : <String, String>{};
-
-  Widget _noPhotoBox(double size) => Container(
-        width: size,
-        height: size,
-        color: context.palette.surfaceAlt,
-        alignment: Alignment.center,
-        child: Text('無',
-            style: TextStyle(color: context.palette.inkFaint, fontSize: 12)),
-      );
-
-  /// Photo picker row for the create/edit form: preview + upload + remove.
-  Widget _imageRow() {
-    final editing = _editing;
-    final hasExisting = editing != null && editing.hasImage && !_removeImage;
-    Widget preview;
-    if (_imageDataUrl != null) {
-      preview = Image.memory(
-        base64Decode(_imageDataUrl!.split(',').last),
-        width: 56,
-        height: 56,
-        fit: BoxFit.cover,
-      );
-    } else if (hasExisting) {
-      preview = Image.network(
-        SavedFoodService.imageUrl(editing.id),
-        headers: _authHeaders(),
-        width: 56,
-        height: 56,
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => _noPhotoBox(56),
-      );
-    } else {
-      preview = _noPhotoBox(56);
-    }
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          ClipRRect(borderRadius: BorderRadius.circular(8), child: preview),
-          const SizedBox(width: 12),
-          OutlinedButton.icon(
-            onPressed: _pickImage,
-            icon: const Icon(Icons.photo_camera_outlined, size: 18),
-            label: const Text('上傳食物照片'),
-          ),
-          if (_imageDataUrl != null || hasExisting)
-            TextButton(
-              onPressed: () => setState(() {
-                _imageDataUrl = null;
-                _removeImage = true;
-              }),
-              child: Text('移除', style: TextStyle(color: context.palette.danger)),
-            ),
-        ],
-      ),
+  Widget _tabs() {
+    final counts = savedFoodTabCounts(_foods);
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _tabLabels.entries.map((entry) {
+        final count = entry.key == SavedFoodTab.archived
+            ? (_archivedLoaded ? _archivedFoods.length : null)
+            : counts[entry.key];
+        return ChoiceChip(
+          label: Text('${entry.value}${count == null ? '' : ' ($count)'}'),
+          selected: _tab == entry.key,
+          onSelected: (_) => _selectTab(entry.key),
+        );
+      }).toList(),
     );
   }
 
+  Widget _selectionBar() => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      color: context.palette.surfaceAlt,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      children: [
+        Expanded(child: Text('已選取 ${_selectedIds.length} 筆')),
+        TextButton(
+          onPressed: _batchArchiving
+              ? null
+              : () => setState(() => _selectedIds.clear()),
+          child: const Text('取消選取'),
+        ),
+        FilledButton.icon(
+          onPressed: _batchArchiving ? null : _archiveSelected,
+          icon: _batchArchiving
+              ? const SizedBox.square(
+                  dimension: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.archive_outlined),
+          label: const Text('封存'),
+        ),
+      ],
+    ),
+  );
+
+  Map<String, String> _authHeaders() => ApiClient.instance.sessionCookie == null
+      ? const {}
+      : {'Cookie': ApiClient.instance.sessionCookie!};
+
   Widget _foodTile(SavedFood food) {
+    final archived = _tab == SavedFoodTab.archived;
+    final selected = _selectedIds.contains(food.id);
     final lastUsed = food.lastUsedAt == null
         ? ''
         : ' · 上次 ${food.lastUsedAt!.month}/${food.lastUsedAt!.day}';
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      leading: food.hasImage
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                SavedFoodService.imageUrl(food.id),
-                headers: _authHeaders(),
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => _noPhotoBox(48),
+    return Material(
+      color: selected ? context.palette.surfaceAlt : Colors.transparent,
+      child: InkWell(
+        onLongPress: archived || _batchArchiving
+            ? null
+            : () => _toggleSelection(food),
+        onTap: _selectionMode && !_batchArchiving
+            ? () => _toggleSelection(food)
+            : null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            border: Border(bottom: BorderSide(color: context.palette.hairline)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_selectionMode && !archived) ...[
+                    Checkbox(
+                      value: selected,
+                      onChanged: _batchArchiving
+                          ? null
+                          : (_) => _toggleSelection(food),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                  if (food.hasImage) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        SavedFoodService.imageUrl(food.id),
+                        headers: _authHeaders(),
+                        width: 48,
+                        height: 48,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${food.isFavorite ? '★ ' : ''}${food.name} · ${fmtNum(food.calories)} kcal',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          [
+                            food.estimatedAmount,
+                            if (food.barcode?.isNotEmpty ?? false)
+                              '條碼 ${food.barcode}',
+                            '蛋白質 ${fmtNum(food.protein)}g / 脂肪 ${fmtNum(food.fat)}g / 碳水 ${fmtNum(food.carbs)}g',
+                            '${savedFoodSourceLabels[food.source] ?? '手動新增'} · 使用 ${food.useCount} 次$lastUsed',
+                          ].join(' · '),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: context.palette.inkSoft,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            )
-          : null,
-      title: Text(
-        '${food.isFavorite ? '★ ' : ''}${food.name} · ${fmtNum(food.calories)} kcal',
-      ),
-      subtitle: Text(
-        [
-          food.estimatedAmount,
-          if (food.barcode != null) '條碼 ${food.barcode}',
-          '蛋白質 ${food.protein}g / 脂肪 ${food.fat}g / 碳水 ${food.carbs}g',
-          '${_sourceLabels[food.source] ?? '手動新增'} · 使用 ${food.useCount} 次$lastUsed',
-        ].join(' · '),
-      ),
-      trailing: Wrap(
-        spacing: 4,
-        children: [
-          IconButton(
-            tooltip: food.isFavorite ? '取消常用' : '設為常用',
-            icon: Icon(food.isFavorite ? Icons.star : Icons.star_border),
-            onPressed: () => _toggleFavorite(food),
+              if (!_selectionMode || archived) ...[
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: archived
+                      ? TextButton.icon(
+                          onPressed: () => _restore(food),
+                          icon: const Icon(Icons.unarchive_outlined),
+                          label: const Text('還原'),
+                        )
+                      : Wrap(
+                          spacing: 4,
+                          children: [
+                            IconButton(
+                              tooltip: food.isFavorite ? '取消常用' : '設為常用',
+                              icon: Icon(
+                                food.isFavorite
+                                    ? Icons.star
+                                    : Icons.star_border,
+                              ),
+                              onPressed: () => _toggleFavorite(food),
+                            ),
+                            IconButton(
+                              tooltip: '編輯',
+                              icon: const Icon(Icons.edit),
+                              onPressed: () => setState(() => _editing = food),
+                            ),
+                            IconButton(
+                              tooltip: '封存',
+                              icon: Icon(
+                                Icons.archive_outlined,
+                                color: context.palette.danger,
+                              ),
+                              onPressed: () => _archive(food),
+                            ),
+                          ],
+                        ),
+                ),
+              ],
+            ],
           ),
-          IconButton(
-            tooltip: '編輯',
-            icon: const Icon(Icons.edit),
-            onPressed: () => _edit(food),
-          ),
-          IconButton(
-            tooltip: '封存',
-            icon: Icon(Icons.archive_outlined, color: context.palette.danger),
-            onPressed: () => _archive(food),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _field(
-    TextEditingController controller,
-    String label, {
-    TextInputType? keyboard,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextField(
-        controller: controller,
-        keyboardType: keyboard,
-        decoration: InputDecoration(
-          labelText: label,
-          border: const OutlineInputBorder(),
         ),
       ),
     );

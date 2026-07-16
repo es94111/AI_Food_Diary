@@ -8,6 +8,45 @@ import { encryptBytes, decryptBytes } from "./encryption";
 // feature have no prefix (real image bytes never start with "ENC1") and are
 // served as-is, so the change is backward compatible.
 const ENVELOPE_MAGIC = Buffer.from("ENC1", "ascii");
+const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
+const IMAGE_EXTENSIONS = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/avif": "avif"
+} as const;
+
+type SupportedImageType = keyof typeof IMAGE_EXTENSIONS;
+
+function hasExpectedImageSignature(buffer: Buffer, contentType: SupportedImageType): boolean {
+  switch (contentType) {
+    case "image/jpeg":
+      return buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    case "image/png":
+      return buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    case "image/webp":
+      return buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+    case "image/gif":
+      return buffer.length >= 6 && ["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString("ascii"));
+    case "image/avif":
+      return buffer.length >= 16 && buffer.subarray(4, 8).toString("ascii") === "ftyp" && /avif|avis/.test(buffer.subarray(8, 32).toString("ascii"));
+  }
+}
+
+function decodeImageDataUrl(dataUrl: string): { buffer: Buffer; contentType: SupportedImageType; ext: string } {
+  const match = dataUrl.match(/^data:(image\/(?:jpeg|png|webp|gif|avif));base64,([A-Za-z0-9+/]+={0,2})$/i);
+  if (!match) throw new Error("Invalid or unsupported image data URL");
+  const contentType = match[1].toLowerCase() as SupportedImageType;
+  const base64 = match[2];
+  const maxEncodedLength = Math.ceil(MAX_IMAGE_BYTES / 3) * 4;
+  if (base64.length > maxEncodedLength) throw new Error("Image exceeds 6 MB limit");
+  const buffer = Buffer.from(base64, "base64");
+  if (!buffer.length || buffer.length > MAX_IMAGE_BYTES || !hasExpectedImageSignature(buffer, contentType)) {
+    throw new Error("Image content does not match its declared type");
+  }
+  return { buffer, contentType, ext: IMAGE_EXTENSIONS[contentType] };
+}
 
 // Encrypts [data] and wraps it (with its content type) in the envelope above.
 function packEnvelope(data: Buffer, contentType: string): Buffer {
@@ -67,11 +106,7 @@ function bucket() {
 }
 
 export async function uploadImage(dataUrl: string, userId: string): Promise<string> {
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-  if (!match) throw new Error("Invalid image data URL");
-  const [, contentType, base64] = match;
-  const buffer = Buffer.from(base64, "base64");
-  const ext = contentType.split("/")[1]?.replace("jpeg", "jpg") ?? "jpg";
+  const { buffer, contentType, ext } = decodeImageDataUrl(dataUrl);
   const key = `meals/${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   // Encrypt at rest: the object body is an envelope (ciphertext + content type),
   // so the S3-level ContentType is generic and the real type travels inside.
