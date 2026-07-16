@@ -69,18 +69,23 @@ export const POST = apiRoute(async (request: Request, context: { params: Promise
 
   const accepted = imageDataUrls.slice(0, room);
   const uploadedKeys: string[] = [];
-  for (const dataUrl of accepted) {
-    uploadedKeys.push(await uploadImage(dataUrl, user.id));
+  try {
+    for (const dataUrl of accepted) {
+      uploadedKeys.push(await uploadImage(dataUrl, user.id));
+    }
+    const keys = [...existing, ...uploadedKeys];
+
+    await prisma.meal.update({
+      where: { id },
+      data: { imageStorageKeys: keys, imageStorageKey: keys[0] ?? null }
+    });
+
+    const skipped = imageDataUrls.length - accepted.length;
+    return NextResponse.json({ imageCount: keys.length, skipped });
+  } catch (error) {
+    await Promise.all(uploadedKeys.map((key) => deleteImageIfUnreferenced(key).catch(() => undefined)));
+    throw error;
   }
-  const keys = [...existing, ...uploadedKeys];
-
-  await prisma.meal.update({
-    where: { id },
-    data: { imageStorageKeys: keys, imageStorageKey: keys[0] ?? null }
-  });
-
-  const skipped = imageDataUrls.length - accepted.length;
-  return NextResponse.json({ imageCount: keys.length, skipped });
 });
 
 // Remove a single photo from a meal by its index (?i=).

@@ -36,7 +36,8 @@ class BackgroundAnalysis {
     await _ensureNotifications();
     await FlutterLocalNotificationsPlugin()
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
   }
 
@@ -49,6 +50,7 @@ class BackgroundAnalysis {
     required String mealType,
     required List<String> imageDataUrls,
     List<String> savedFoodImageIds = const [],
+    List<String?> savedFoodIds = const [],
     required String description,
     required Map<String, dynamic> body,
   }) async {
@@ -57,14 +59,17 @@ class BackgroundAnalysis {
     final resultPath = '$dir/$_resultFileName';
     // Clear any stale result from a previous run before starting.
     await _deleteQuietly(resultPath);
-    await File(requestPath).writeAsString(jsonEncode({
-      'mode': mode,
-      'mealType': mealType,
-      'imageDataUrls': imageDataUrls,
-      'savedFoodImageIds': savedFoodImageIds,
-      'description': description,
-      'body': body,
-    }));
+    await File(requestPath).writeAsString(
+      jsonEncode({
+        'mode': mode,
+        'mealType': mealType,
+        'imageDataUrls': imageDataUrls,
+        'savedFoodImageIds': savedFoodImageIds,
+        'savedFoodIds': savedFoodIds,
+        'description': description,
+        'body': body,
+      }),
+    );
 
     // Make sure the in-memory session cookie is loaded, then hand it to the
     // isolate (it can't read flutter_secure_storage as reliably as we can here).
@@ -94,7 +99,8 @@ class BackgroundAnalysis {
       final dir = (await getApplicationSupportDirectory()).path;
       final file = File('$dir/$_resultFileName');
       if (!await file.exists()) return null;
-      final data = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+      final data =
+          jsonDecode(await file.readAsString()) as Map<String, dynamic>;
       await _deleteQuietly(file.path);
       return data;
     } catch (_) {
@@ -159,13 +165,16 @@ class BackgroundAnalysis {
     await FlutterLocalNotificationsPlugin().initialize(settings: settings);
     await FlutterLocalNotificationsPlugin()
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(const AndroidNotificationChannel(
-      _channelId,
-      _channelName,
-      description: '餐點 AI 分析進度與結果',
-      importance: Importance.high,
-    ));
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            _channelId,
+            _channelName,
+            description: '餐點 AI 分析進度與結果',
+            importance: Importance.high,
+          ),
+        );
   }
 
   static Future<void> _showProgressNotification() async {
@@ -192,8 +201,10 @@ class BackgroundAnalysis {
 
   /// Replaces the progress notification with the finished result. Called from
   /// the background isolate.
-  static Future<void> showResultNotification(
-      {required bool done, String? error}) async {
+  static Future<void> showResultNotification({
+    required bool done,
+    String? error,
+  }) async {
     await _ensureNotifications();
     final plugin = FlutterLocalNotificationsPlugin();
     await plugin.cancel(id: _progressNotifId);
@@ -244,8 +255,9 @@ void analysisCallbackDispatcher() {
     }
 
     try {
-      final req = jsonDecode(await File(requestPath).readAsString())
-          as Map<String, dynamic>;
+      final req =
+          jsonDecode(await File(requestPath).readAsString())
+              as Map<String, dynamic>;
       final mode = req['mode'] as String;
       final body = req['body'] as Map<String, dynamic>;
       final path = switch (mode) {
@@ -254,19 +266,22 @@ void analysisCallbackDispatcher() {
         _ => '/api/meals/analyze-manual',
       };
 
-      final dio = Dio(BaseOptions(
-        baseUrl: baseUrl,
-        connectTimeout: const Duration(seconds: 15),
-        receiveTimeout: const Duration(minutes: 10),
-        validateStatus: (status) => status != null && status < 600,
-      ));
+      final dio = Dio(
+        BaseOptions(
+          baseUrl: baseUrl,
+          connectTimeout: const Duration(seconds: 15),
+          receiveTimeout: const Duration(minutes: 10),
+          validateStatus: (status) => status != null && status < 600,
+        ),
+      );
       final res = await dio.post(
         path,
         data: body,
         options: Options(
-            headers: (cookie != null && cookie.isNotEmpty)
-                ? {'Cookie': cookie}
-                : null),
+          headers: (cookie != null && cookie.isNotEmpty)
+              ? {'Cookie': cookie}
+              : null,
+        ),
       );
 
       final code = res.statusCode ?? 0;
@@ -283,12 +298,16 @@ void analysisCallbackDispatcher() {
             : 'AI 分析失敗（$code）';
         await writeResult({'status': 'error', 'error': error});
         await BackgroundAnalysis.showResultNotification(
-            done: false, error: error);
+          done: false,
+          error: error,
+        );
       }
     } catch (e) {
       await writeResult({'status': 'error', 'error': e.toString()});
       await BackgroundAnalysis.showResultNotification(
-          done: false, error: e.toString());
+        done: false,
+        error: e.toString(),
+      );
     }
     return true;
   });

@@ -30,42 +30,48 @@ class ApiClient {
   Future<Dio> _client() async {
     if (_dio != null) return _dio!;
     _sessionCookie ??= await _storage.read(key: _sessionKey);
-    final dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(minutes: 10), // match web OpenAI client (SDK default 10 min); AI analysis can be slow
-      // Accept all HTTP statuses as normal responses so callers can read the
-      // backend's {error} body (including 5xx) instead of a raw DioException.
-      validateStatus: (status) => status != null && status < 600,
-    ));
+    final dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(
+          minutes: 10,
+        ), // match web OpenAI client (SDK default 10 min); AI analysis can be slow
+        // Accept all HTTP statuses as normal responses so callers can read the
+        // backend's {error} body (including 5xx) instead of a raw DioException.
+        validateStatus: (status) => status != null && status < 600,
+      ),
+    );
     // Sentry: create an http.client span per request and inject distributed
     // tracing headers (gated by tracePropagationTargets) so requests join the
     // active transaction's trace and continue into the backend's server spans.
     dio.addSentry();
-    dio.interceptors.add(InterceptorsWrapper(
-      onRequest: (options, handler) {
-        if (_sessionCookie != null) {
-          options.headers['Cookie'] = _sessionCookie;
-        }
-        // Stamp the start time and bump the in-flight gauge so we can report
-        // request latency + concurrency to Sentry once the request completes.
-        options.extra['sentry_start'] = DateTime.now();
-        _inFlight++;
-        Sentry.metrics.gauge('api_in_flight_requests', _inFlight);
-        handler.next(options);
-      },
-      onResponse: (response, handler) {
-        _captureSessionCookie(response.headers.map['set-cookie']);
-        _recordRequestMetrics(response.requestOptions);
-        handler.next(response);
-      },
-      onError: (error, handler) {
-        // Errors (timeouts, connection failures) skip onResponse, so close out
-        // the metrics here too — otherwise the in-flight gauge leaks upward.
-        _recordRequestMetrics(error.requestOptions);
-        handler.next(error);
-      },
-    ));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (_sessionCookie != null) {
+            options.headers['Cookie'] = _sessionCookie;
+          }
+          // Stamp the start time and bump the in-flight gauge so we can report
+          // request latency + concurrency to Sentry once the request completes.
+          options.extra['sentry_start'] = DateTime.now();
+          _inFlight++;
+          Sentry.metrics.gauge('api_in_flight_requests', _inFlight);
+          handler.next(options);
+        },
+        onResponse: (response, handler) {
+          _captureSessionCookie(response.headers.map['set-cookie']);
+          _recordRequestMetrics(response.requestOptions);
+          handler.next(response);
+        },
+        onError: (error, handler) {
+          // Errors (timeouts, connection failures) skip onResponse, so close out
+          // the metrics here too — otherwise the in-flight gauge leaks upward.
+          _recordRequestMetrics(error.requestOptions);
+          handler.next(error);
+        },
+      ),
+    );
     _dio = dio;
     return dio;
   }
@@ -130,16 +136,20 @@ class ApiClient {
   /// network. If the request fails with a pure connectivity error (offline,
   /// DNS, timeout) and a cached copy exists, that cached copy is returned
   /// instead of throwing, so callers degrade gracefully rather than failing.
-  Future<Response<dynamic>> get(String path,
-      {Map<String, dynamic>? query,
-      Map<String, String>? headers,
-      bool cache = false}) async {
+  Future<Response<dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+    Map<String, String>? headers,
+    bool cache = false,
+  }) async {
     final dio = await _client();
     final cacheKey = cache ? _cacheKey(path, query) : null;
     try {
-      final res = await dio.get(path,
-          queryParameters: query,
-          options: headers == null ? null : Options(headers: headers));
+      final res = await dio.get(
+        path,
+        queryParameters: query,
+        options: headers == null ? null : Options(headers: headers),
+      );
       if (cacheKey != null && ok(res)) {
         await CacheService.write(cacheKey, res.data);
       }
@@ -177,15 +187,23 @@ class ApiClient {
   /// GET returning raw bytes (e.g. an image), with the session cookie attached.
   Future<Response<List<int>>> getBytes(String path) async {
     final dio = await _client();
-    return dio.get<List<int>>(path,
-        options: Options(responseType: ResponseType.bytes));
+    return dio.get<List<int>>(
+      path,
+      options: Options(responseType: ResponseType.bytes),
+    );
   }
 
-  Future<Response<dynamic>> post(String path,
-      {Object? data, Map<String, String>? headers}) async {
+  Future<Response<dynamic>> post(
+    String path, {
+    Object? data,
+    Map<String, String>? headers,
+  }) async {
     final dio = await _client();
-    return dio.post(path,
-        data: data, options: headers == null ? null : Options(headers: headers));
+    return dio.post(
+      path,
+      data: data,
+      options: headers == null ? null : Options(headers: headers),
+    );
   }
 
   Future<Response<dynamic>> patch(String path, {Object? data}) async {
@@ -233,9 +251,10 @@ class ApiClient {
 
 /// Thrown by services when an API call returns a non-2xx response.
 class ApiException implements Exception {
-  ApiException(this.message, {this.statusCode});
+  ApiException(this.message, {this.statusCode, this.data});
   final String message;
   final int? statusCode;
+  final Map<String, dynamic>? data;
   @override
   String toString() => message;
 }

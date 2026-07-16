@@ -22,9 +22,9 @@ import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
 import '../widgets/water_card.dart';
 import '../widgets/profile_form.dart';
-import '../widgets/saved_foods_manager.dart';
 import '../widgets/update_card.dart';
 import 'login_screen.dart';
+import 'saved_foods_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -54,7 +54,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   // publish can reuse it instead of issuing its own /api/water request.
   int _waterTotalMl = 0;
   int _tabIndex = 0;
-  int _savedFoodsManagerReloadKey = 0;
+  int _savedFoodsRevision = 0;
   final Set<int> _mountedTabs = {0};
   bool _loading = true;
   String? _error;
@@ -95,24 +95,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (status == MealAnalysisStatus.done) {
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          content: const Text('AI 分析完成'),
-          duration: const Duration(seconds: 8),
-          action: SnackBarAction(
-            label: '查看',
-            onPressed: () {
-              setState(() => _tabIndex = 0);
-              _analysis.requestReview();
-            },
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('AI 分析完成'),
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: '查看',
+              onPressed: () {
+                setState(() => _tabIndex = 0);
+                _analysis.requestReview();
+              },
+            ),
           ),
-        ));
+        );
     } else if (status == MealAnalysisStatus.error) {
       messenger
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(
-          content: Text('AI 分析失敗：${_analysis.error ?? ''}'),
-          duration: const Duration(seconds: 6),
-        ));
+        ..showSnackBar(
+          SnackBar(
+            content: Text('AI 分析失敗：${_analysis.error ?? ''}'),
+            duration: const Duration(seconds: 6),
+          ),
+        );
     }
   }
 
@@ -231,7 +235,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           d.year == now.year && d.month == now.month && d.day == now.day;
       if (!mounted) return;
       setState(() {
-        if (weight != null && weight.unit.toLowerCase() == 'kg' &&
+        if (weight != null &&
+            weight.unit.toLowerCase() == 'kg' &&
             weight.value > 0) {
           _syncedWeight = weight.value;
         }
@@ -280,8 +285,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
-          builder: (_) => const LoginScreen(),
-          settings: const RouteSettings(name: '/login')),
+        builder: (_) => const LoginScreen(),
+        settings: const RouteSettings(name: '/login'),
+      ),
       (route) => false,
     );
   }
@@ -321,7 +327,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_user == null) return;
     try {
       final today = startOfLocalDay(DateTime.now());
-      final meals = todayMeals ??
+      final meals =
+          todayMeals ??
           (!_weekView && _isToday
               ? _meals
               : await MealService.mealsForDay(today));
@@ -331,8 +338,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         syncedWeightKg: _syncedWeight,
         syncedHeightCm: _syncedHeight,
       );
-      final macroTargets =
-          macroTargetsFor(metabolism.target, _user?.profile?.goal);
+      final macroTargets = macroTargetsFor(
+        metabolism.target,
+        _user?.profile?.goal,
+      );
       await HomeWidgetService.updateCalorieProgress(
         consumedCalories: totals.calories.round(),
         targetCalories: metabolism.target,
@@ -350,8 +359,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         yesterdaySummaryText: _yesterdaySummaryText,
         yesterdayRecommendationText: _yesterdayRecommendationText,
         activeCalories: _todayActiveCalories?.round(),
-        activeCaloriesDateIso:
-            _todayActiveCalories == null ? '' : isoDate(today),
+        activeCaloriesDateIso: _todayActiveCalories == null
+            ? ''
+            : isoDate(today),
         dateIso: isoDate(today),
         sessionCookie: ApiClient.instance.sessionCookie,
       );
@@ -370,8 +380,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _yesterdaySummaryLoaded = true;
       _yesterdaySummaryDateIso = isoDate(yesterday);
       _yesterdaySummaryText = _widgetText(summary?.aiSummary ?? '');
-      _yesterdayRecommendationText =
-          _widgetText(summary?.aiRecommendation ?? '');
+      _yesterdayRecommendationText = _widgetText(
+        summary?.aiRecommendation ?? '',
+      );
     } catch (_) {
       _yesterdaySummaryDateIso = isoDate(yesterday);
       _yesterdaySummaryText = '';
@@ -478,7 +489,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onDestinationSelected: (i) => setState(() {
           _tabIndex = i;
           _mountedTabs.add(i);
-          if (i == 2) _savedFoodsManagerReloadKey++;
         }),
         destinations: const [
           NavigationDestination(
@@ -510,8 +520,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(_error!,
-                  style: TextStyle(color: context.palette.danger)),
+              child: Text(
+                _error!,
+                style: TextStyle(color: context.palette.danger),
+              ),
             ),
           _dateSwitcher(),
           const SizedBox(height: 12),
@@ -540,6 +552,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onSaved: _loadMeals,
             initialAdvice: _nextMealAdvice,
             showAdvice: !_weekView && _isToday,
+            savedFoodsRevision: _savedFoodsRevision,
           ),
           const SizedBox(height: 12),
           _mealsSection(),
@@ -576,8 +589,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         const SizedBox(height: 12),
         const AiSettingsCard(),
         const SizedBox(height: 12),
-        SavedFoodsManagerCard(
-          key: ValueKey('saved-foods-manager-$_savedFoodsManagerReloadKey'),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.restaurant_menu_outlined),
+            title: const Text('我的食物管理'),
+            subtitle: const Text('搜尋、整理、封存常用與自建食物'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SavedFoodsScreen(),
+                  settings: const RouteSettings(name: '/saved-foods'),
+                ),
+              );
+              if (mounted) setState(() => _savedFoodsRevision++);
+            },
+          ),
         ),
         if (GoogleAuth.isConfigured) ...[
           const SizedBox(height: 12),
@@ -779,72 +806,72 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              _weekView ? '本週平均攝取' : '當日攝取',
-              style: const TextStyle(color: Colors.white60),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  fmtNum(totals.calories),
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 44,
-                    fontWeight: FontWeight.w900,
-                  ),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _weekView ? '本週平均攝取' : '當日攝取',
+            style: const TextStyle(color: Colors.white60),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                fmtNum(totals.calories),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 44,
+                  fontWeight: FontWeight.w900,
                 ),
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 8, left: 4),
-                  child: Text(
-                    'kcal',
-                    style: TextStyle(
-                      color: Colors.white60,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              '每日目標 $target kcal · ${(progress * 100).round()}%',
-              style: const TextStyle(color: Colors.white38, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: LinearProgressIndicator(
-                value: progress.toDouble(),
-                minHeight: 8,
-                backgroundColor: Colors.white12,
-                valueColor: const AlwaysStoppedAnimation(AppColors.amber),
               ),
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8, left: 4),
+                child: Text(
+                  'kcal',
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          Text(
+            '每日目標 $target kcal · ${(progress * 100).round()}%',
+            style: const TextStyle(color: Colors.white38, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: progress.toDouble(),
+              minHeight: 8,
+              backgroundColor: Colors.white12,
+              valueColor: const AlwaysStoppedAnimation(AppColors.amber),
             ),
-            const SizedBox(height: 16),
-            _macroBar(totals.protein, totals.fat, totals.carbs),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                _macro(
-                  '蛋白質 ${pct(totals.protein)}%',
-                  '${totals.protein.toStringAsFixed(1)}g',
-                ),
-                _macro(
-                  '脂肪 ${pct(totals.fat)}%',
-                  '${totals.fat.toStringAsFixed(1)}g',
-                ),
-                _macro(
-                  '碳水 ${pct(totals.carbs)}%',
-                  '${totals.carbs.toStringAsFixed(1)}g',
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 16),
+          _macroBar(totals.protein, totals.fat, totals.carbs),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _macro(
+                '蛋白質 ${pct(totals.protein)}%',
+                '${totals.protein.toStringAsFixed(1)}g',
+              ),
+              _macro(
+                '脂肪 ${pct(totals.fat)}%',
+                '${totals.fat.toStringAsFixed(1)}g',
+              ),
+              _macro(
+                '碳水 ${pct(totals.carbs)}%',
+                '${totals.carbs.toStringAsFixed(1)}g',
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -869,8 +896,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             Row(
               children: [
-                Text('當日淨熱量',
-                    style: TextStyle(color: context.palette.inkSoft)),
+                Text('當日淨熱量', style: TextStyle(color: context.palette.inkSoft)),
                 const Spacer(),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -1155,7 +1181,10 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
                   '今日總結需等今天結束後才能產生。',
-                  style: TextStyle(color: context.palette.inkSoft, fontSize: 13),
+                  style: TextStyle(
+                    color: context.palette.inkSoft,
+                    fontSize: 13,
+                  ),
                 ),
               ),
             if (_loading)
@@ -1338,8 +1367,11 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
             if (_linked)
               Row(
                 children: [
-                  Icon(Icons.check_circle,
-                      color: context.palette.success, size: 20),
+                  Icon(
+                    Icons.check_circle,
+                    color: context.palette.success,
+                    size: 20,
+                  ),
                   const SizedBox(width: 6),
                   const Expanded(child: Text('已綁定 Google 帳號')),
                   TextButton(

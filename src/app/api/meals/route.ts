@@ -9,6 +9,7 @@ import { apiError, apiRoute, HttpError } from "@/lib/http";
 import { resolveRequestTz } from "@/lib/timezone";
 import { mealSchema, MAX_MEAL_IMAGES } from "@/lib/validators";
 import { uploadImage } from "@/lib/storage";
+import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 
 export const GET = apiRoute(async (request: Request) => {
   const user = await requireUser();
@@ -27,6 +28,7 @@ export const GET = apiRoute(async (request: Request) => {
 });
 
 export async function POST(request: Request) {
+  const uploadedKeys: string[] = [];
   try {
     const user = await requireUser();
     const body = mealSchema.parse(await request.json());
@@ -52,7 +54,9 @@ export async function POST(request: Request) {
     // not the raw data URLs. imageStorageKey mirrors the first for backward compat.
     const imageStorageKeys: string[] = [];
     for (const image of images) {
-      imageStorageKeys.push(await uploadImage(image, user.id));
+      const uploadedKey = await uploadImage(image, user.id);
+      uploadedKeys.push(uploadedKey);
+      imageStorageKeys.push(uploadedKey);
     }
 
     // Attach photos from picked saved foods by reference: point the meal at the
@@ -96,6 +100,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ meal: decryptMeal(meal) });
   } catch (error) {
+    await Promise.all(uploadedKeys.map((key) => deleteImageIfUnreferenced(key).catch(() => undefined)));
     if (error instanceof HttpError) return apiError(error);
     const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Meal save failed", error);

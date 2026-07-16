@@ -7,6 +7,7 @@ import { NextMealAdvice } from "@/components/next-meal-advice";
 
 type ManualItem = {
   id: string;
+  savedFoodId?: string;
   barcode?: string;
   name: string;
   estimatedAmount: string;
@@ -29,6 +30,14 @@ type SavedFood = {
   source?: "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM";
   isFavorite?: boolean;
   hasImage?: boolean;
+};
+
+type SavedFoodConflictMatch = { food: SavedFood; archived?: boolean };
+type SavedFoodConflictChoice = { action: "use" | "update" | "restore" | "saveAsNew"; match?: SavedFoodConflictMatch } | null;
+type SavedFoodConflictPrompt = {
+  exact: boolean;
+  matches: SavedFoodConflictMatch[];
+  resolve: (choice: SavedFoodConflictChoice) => void;
 };
 
 function emptyManualItem(): ManualItem {
@@ -119,6 +128,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   const [showConfirm, setShowConfirm] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [mealType, setMealType] = useState("LUNCH");
+  const [savedFoodConflict, setSavedFoodConflict] = useState<SavedFoodConflictPrompt | null>(null);
 
   useEffect(() => {
     loadSavedFoods();
@@ -193,9 +203,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       const pendingBarcode = barcode.trim();
       if (pendingBarcode && items[0]) {
         items[0].barcode = pendingBarcode;
-        await saveAsSavedFoodInternal(items[0], { silent: true, source: "NUTRITION_LABEL" });
-        await loadSavedFoods();
-        setBarcode("");
+        const saved = await saveAsSavedFoodInternal(items[0], { silent: true, source: "NUTRITION_LABEL" });
+        if (saved) setBarcode("");
       }
       setManualItems((current) => [...current.filter((item) => item.name.trim()), ...items]);
     } catch (error) {
@@ -254,7 +263,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         return;
       }
       setConfirmMealType(mealType);
-      setConfirmItems(itemsFromAnalysis(data.analysis.foods));
+      setConfirmItems(itemsFromAnalysis(data.analysis.foods, mode === "manual" ? manualItems.filter((item) => item.name.trim()) : []));
       setShowConfirm(true);
     } catch (error) {
       setError(error instanceof Error ? `分析失敗：${error.message}` : "分析失敗，請確認服務是否正常運作");
@@ -293,6 +302,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       }
       setPreviews([]);
       setPickedFoodIds([]);
+      const usedFoodIds = [...new Set(confirmItems.map((item) => item.savedFoodId).filter((id): id is string => !!id))];
+      await Promise.allSettled(usedFoodIds.map((id) => markSavedFoodUsed(id)));
       setDescription("");
       setManualItems([emptyManualItem()]);
       setConfirmItems([]);
@@ -325,7 +336,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         setError(data.error ?? "重新 AI 辨識失敗，請稍後再試");
         return;
       }
-      setConfirmItems(itemsFromAnalysis(data.analysis.foods));
+      setConfirmItems(itemsFromAnalysis(data.analysis.foods, confirmItems));
     } catch (error) {
       setError(error instanceof Error ? `重新辨識失敗：${error.message}` : "重新 AI 辨識失敗，請稍後再試");
     } finally {
@@ -357,30 +368,116 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
 
   async function saveAsSavedFoodInternal(item: ManualItem, options: { silent: boolean; source: SavedFood["source"] }) {
     if (!item.name.trim()) {
-      if (!options.silent) setError("請先填寫食物名稱再儲存為常用食物。");
-      return;
+      if (!options.silent) setError("請先填寫食物名稱再存到我的食物。");
+      return false;
     }
-    const response = await fetch("/api/saved-foods", {
+    const editablePayload = {
+      barcode: item.barcode?.trim() || undefined,
+      name: item.name.trim(),
+      estimatedAmount: item.estimatedAmount.trim() || "1 份",
+      calories: Number(item.calories || 0),
+      protein: Number(item.protein || 0),
+      fat: Number(item.fat || 0),
+      carbs: Number(item.carbs || 0),
+      isFavorite: false,
+      // Reuse the current meal photo as the food photo when saving from a photo meal.
+      ...(previews.length ? { imageDataUrl: previews[0] } : {})
+    };
+    const requestCreate = (allowDuplicate = false, clearBarcode = false) => fetch("/api/saved-foods", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        barcode: item.barcode?.trim() || undefined,
-        name: item.name.trim(),
-        estimatedAmount: item.estimatedAmount.trim() || "1 份",
-        calories: Number(item.calories || 0),
-        protein: Number(item.protein || 0),
-        fat: Number(item.fat || 0),
-        carbs: Number(item.carbs || 0),
+        ...editablePayload,
+        barcode: clearBarcode ? undefined : editablePayload.barcode,
         source: options.source,
-        isFavorite: true,
-        // Reuse the current meal photo as the food photo when saving from a photo meal.
-        ...(previews.length ? { imageDataUrl: previews[0] } : {})
+        ...(allowDuplicate ? { allowDuplicate: true } : {})
       })
     });
-    if (response.ok) {
+    let response = await requestCreate();
+    let data = await response.json().catch(() => ({}));
+    let saved: SavedFood | undefined;
+    if (response.status === 409) {
+      const exact = data.exactBarcode?.food ? data.exactBarcode as SavedFoodConflictMatch : null;
+      const duplicates = Array.isArray(data.duplicates)
+        ? (data.duplicates as SavedFoodConflictMatch[]).filter((match) => !!match.food)
+        : [];
+      const matches = exact ? [exact] : duplicates;
+      const choice = await new Promise<SavedFoodConflictChoice>((resolve) => {
+        setSavedFoodConflict({ exact: !!exact, matches, resolve });
+      });
+      if (!choice) return false;
+      if (choice.action === "saveAsNew") {
+        response = await requestCreate(true, !!exact);
+        data = await response.json().catch(() => ({}));
+        if (response.ok) saved = data.food as SavedFood;
+      } else if (choice.match) {
+        const match = choice.match;
+        if (choice.action === "use") saved = match.food;
+        if (choice.action === "update") {
+          response = await fetch(`/api/saved-foods/${match.food.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...editablePayload,
+              barcode: editablePayload.barcode ?? match.food.barcode ?? null
+            })
+          });
+          data = await response.json().catch(() => ({}));
+          if (response.ok) saved = data.food as SavedFood;
+          if (saved && match.archived) {
+            const restored = await fetch(`/api/saved-foods/${saved.id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ archived: false })
+            });
+            const restoredData = await restored.json().catch(() => ({}));
+            response = restored;
+            data = restoredData;
+            if (restored.ok) saved = restoredData.food as SavedFood;
+          }
+        }
+        if (choice.action === "restore") {
+          response = await fetch(`/api/saved-foods/${match.food.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: false })
+          });
+          data = await response.json().catch(() => ({}));
+          if (response.ok) saved = data.food as SavedFood;
+        }
+      }
+    } else if (response.ok) {
+      saved = data.food as SavedFood;
+    }
+    if (saved) {
+      const synced: ManualItem = {
+        ...item,
+        savedFoodId: saved.id,
+        barcode: saved.barcode ?? undefined,
+        name: saved.name,
+        estimatedAmount: saved.estimatedAmount,
+        calories: String(saved.calories),
+        protein: String(saved.protein),
+        fat: String(saved.fat),
+        carbs: String(saved.carbs)
+      };
+      Object.assign(item, synced);
+      setManualItems((items) => items.map((current) => current.id === item.id ? synced : current));
+      if (saved.hasImage) setPickedFoodIds((ids) => ids.includes(saved.id) ? ids : [...ids, saved.id]);
       await loadSavedFoods();
       router.refresh();
+      return true;
+    } else if (!options.silent) {
+      setError(data.error ?? "儲存食物失敗，請稍後再試。");
     }
+    return false;
+  }
+
+  function resolveSavedFoodConflict(choice: SavedFoodConflictChoice) {
+    const prompt = savedFoodConflict;
+    if (!prompt) return;
+    setSavedFoodConflict(null);
+    prompt.resolve(choice);
   }
 
   async function lookupBarcode() {
@@ -393,7 +490,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     const response = await fetch(`/api/saved-foods?barcode=${encodeURIComponent(code)}`);
     const data = await response.json().catch(() => ({}));
     if (response.ok && data.food) {
-      addSavedFood(data.food, { markUsed: false });
+      addSavedFood(data.food);
       setBarcode("");
       return;
     }
@@ -414,11 +511,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     }
   }
 
-  function addSavedFood(food: SavedFood, options: { markUsed: boolean } = { markUsed: true }) {
+  function addSavedFood(food: SavedFood) {
     setManualItems((items) => [
       ...items.filter((item) => item.name.trim()),
       {
         id: crypto.randomUUID(),
+        savedFoodId: food.id,
         name: food.name,
         estimatedAmount: food.estimatedAmount,
         calories: String(food.calories),
@@ -433,7 +531,6 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     if (food.hasImage) {
       setPickedFoodIds((current) => (current.includes(food.id) ? current : [...current, food.id]));
     }
-    if (options.markUsed) void markSavedFoodUsed(food.id);
   }
 
   return (
@@ -544,22 +641,24 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       {mode === "manual" ? (
       <>
       <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
-        <p className="text-sm font-bold">常用食物</p>
-        {savedFoods.length ? (
-          <div className="mt-2 grid gap-2">
-            {savedFoods.map((food) => (
-              <div className="flex items-center justify-between gap-2 rounded-xl bg-stone-50 p-2 text-sm" key={food.id}>
-                <button className="flex flex-1 items-center gap-2 text-left font-semibold text-stone-800" onClick={() => addSavedFood(food)} type="button">
-                  {food.hasImage ? <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" src={`/api/saved-foods/${food.id}/image`} /> : null}
-                  <span>+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</span>
-                </button>
-                <button className="shrink-0 text-red-600" onClick={() => deleteSavedFood(food.id)} type="button">封存</button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-2 text-sm text-stone-500">尚無常用食物，可在下方手動食物列按「存常用」新增。</p>
-        )}
+        <p className="text-sm font-bold">快速加入</p>
+        {savedFoods.length ? (() => {
+          const favorites = savedFoods.filter((food) => food.isFavorite).slice(0, 10);
+          const favoriteIds = new Set(favorites.map((food) => food.id));
+          const recommendations = savedFoods
+            .filter((food) => !food.isFavorite && !favoriteIds.has(food.id))
+            .slice(0, Math.max(0, 10 - favorites.length));
+          const renderFood = (food: SavedFood) => (
+            <button className="flex w-full items-center gap-2 rounded-xl bg-stone-50 p-2 text-left text-sm font-semibold text-stone-800" key={food.id} onClick={() => addSavedFood(food)} type="button">
+              {food.hasImage ? <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" src={`/api/saved-foods/${food.id}/image`} /> : null}
+              <span>+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</span>
+            </button>
+          );
+          return <div className="mt-2 space-y-3">
+            {favorites.length ? <div><p className="mb-1 text-xs font-bold text-amber-700">常用</p><div className="grid gap-2">{favorites.map((food) => renderFood(food))}</div></div> : null}
+            {recommendations.length ? <div><p className="mb-1 text-xs font-bold text-stone-500">推薦</p><div className="grid gap-2">{recommendations.map((food) => renderFood(food))}</div></div> : null}
+          </div>;
+        })() : <p className="mt-2 text-sm text-stone-500">尚無食物，可在下方手動食物列儲存。</p>}
       </div>
       <div className="mt-5 rounded-2xl bg-stone-50 p-4">
         <h3 className="font-bold">手動新增食物</h3>
@@ -590,7 +689,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
               <div className="flex items-center justify-between gap-2">
                 <p className="text-sm font-bold">食物 {index + 1}</p>
                 <div className="flex gap-2">
-                  <button className="text-sm font-semibold text-amber-700" onClick={() => saveAsSavedFood(item)} type="button">存常用</button>
+                  <button className="text-sm font-semibold text-amber-700" onClick={() => saveAsSavedFood(item)} type="button">存到我的食物</button>
                   <button className="text-sm font-semibold text-red-600 disabled:text-stone-300" disabled={manualItems.length === 1} onClick={() => setManualItems((items) => items.filter((value) => value.id !== item.id))} type="button">刪除</button>
                 </div>
               </div>
@@ -634,6 +733,34 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
           ) : null}
         </div>
       ) : null}
+      {savedFoodConflict && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="saved-food-conflict-title">
+              <div className="w-full max-w-lg rounded-3xl bg-white p-5 shadow-2xl">
+                <h2 className="text-xl font-black" id="saved-food-conflict-title">{savedFoodConflict.exact ? "條碼已存在" : "可能已有相同或相似食物"}</h2>
+                <p className="mt-1 text-sm text-stone-500">請選擇要使用、更新、還原，或另存新食物。</p>
+                <div className="mt-4 space-y-2">
+                  {savedFoodConflict.matches.map((match) => (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-stone-50 p-3" key={match.food.id}>
+                      <span className="font-semibold">{match.food.name}{match.archived ? "（已封存）" : ""}</span>
+                      <div className="flex gap-2">
+                        {!match.archived ? <button className="rounded-full bg-white px-3 py-1.5 text-sm font-semibold ring-1 ring-stone-200" onClick={() => resolveSavedFoodConflict({ action: "use", match })} type="button">使用</button> : null}
+                        <button className="rounded-full bg-amber-100 px-3 py-1.5 text-sm font-semibold text-amber-900" onClick={() => resolveSavedFoodConflict({ action: "update", match })} type="button">更新</button>
+                        {match.archived ? <button className="rounded-full bg-emerald-100 px-3 py-1.5 text-sm font-semibold text-emerald-800" onClick={() => resolveSavedFoodConflict({ action: "restore", match })} type="button">還原</button> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex justify-end gap-2">
+                  <button className="rounded-full px-3 py-1.5 text-sm font-semibold text-stone-600" onClick={() => resolveSavedFoodConflict(null)} type="button">取消</button>
+                  <button className="rounded-full bg-amber-700 px-4 py-1.5 text-sm font-semibold text-white" onClick={() => resolveSavedFoodConflict({ action: "saveAsNew" })} type="button">另存</button>
+                </div>
+                {savedFoodConflict.exact ? <p className="mt-2 text-xs text-amber-800">精確條碼已被使用；另存時會移除新食物的條碼。</p> : null}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
       {showConfirm && typeof document !== "undefined"
         ? createPortal(
             <div className="fixed inset-0 z-50 flex flex-col bg-white">
@@ -698,9 +825,13 @@ function itemsForPayload(items: ManualItem[]) {
     }));
 }
 
-function itemsFromAnalysis(foods: Array<{ name: string; estimatedAmount: string; calories: number; protein: number; fat: number; carbs: number; aiRating?: string }>): ManualItem[] {
-  return foods.map((food) => ({
+function itemsFromAnalysis(
+  foods: Array<{ name: string; estimatedAmount: string; calories: number; protein: number; fat: number; carbs: number; aiRating?: string }>,
+  sourceItems: ManualItem[] = []
+): ManualItem[] {
+  return foods.map((food, index) => ({
     id: crypto.randomUUID(),
+    savedFoodId: sourceItems[index]?.savedFoodId,
     name: food.name,
     estimatedAmount: food.estimatedAmount,
     calories: String(food.calories),

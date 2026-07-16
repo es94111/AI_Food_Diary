@@ -118,7 +118,7 @@ export function decryptMealItem<T extends MealItemLike>(item: T): DecryptedMealI
 }
 
 export function encryptSavedFoodWrite(food: {
-  barcode?: string;
+  barcode?: string | null;
   name: string;
   estimatedAmount: string;
   calories: number;

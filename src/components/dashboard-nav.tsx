@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 const TABS: { href: string; label: string }[] = [
   { href: "/dashboard", label: "飲食" },
   { href: "/dashboard/health", label: "健康" },
+  { href: "/dashboard/foods", label: "食物" },
   { href: "/dashboard/settings", label: "設定" }
 ];
 

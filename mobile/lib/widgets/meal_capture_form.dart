@@ -10,6 +10,7 @@ import '../services/api_client.dart';
 import '../services/background_analysis.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
+import '../services/saved_food_list_logic.dart';
 import '../services/saved_food_service.dart';
 import 'markdown_text.dart';
 
@@ -52,8 +53,11 @@ const aiRatings = {
   'MANUAL': '✎ 手動',
 };
 
+enum _SavedFoodConflictAction { use, update, restore, saveAsNew }
+
 /// Mutable, editable food row used by the form and confirm dialog.
 class EditableItem {
+  String? savedFoodId;
   String? barcode;
   String name;
   String estimatedAmount;
@@ -64,6 +68,7 @@ class EditableItem {
   String aiRating;
 
   EditableItem({
+    this.savedFoodId,
     this.barcode,
     this.name = '',
     this.estimatedAmount = '',
@@ -74,7 +79,11 @@ class EditableItem {
     this.aiRating = 'MANUAL',
   });
 
-  factory EditableItem.fromAnalysis(FoodAnalysisItem f) => EditableItem(
+  factory EditableItem.fromAnalysis(
+    FoodAnalysisItem f, {
+    String? savedFoodId,
+  }) => EditableItem(
+    savedFoodId: savedFoodId,
     name: f.name,
     estimatedAmount: f.estimatedAmount,
     calories: fmtNum(f.calories),
@@ -106,6 +115,7 @@ class MealCaptureForm extends StatefulWidget {
     this.controller,
     this.initialAdvice = '',
     this.showAdvice = true,
+    this.savedFoodsRevision = 0,
   });
 
   final Future<void> Function() onSaved;
@@ -114,6 +124,7 @@ class MealCaptureForm extends StatefulWidget {
 
   /// The next-meal advice is for "today"; hide it when browsing other dates.
   final bool showAdvice;
+  final int savedFoodsRevision;
 
   @override
   State<MealCaptureForm> createState() => _MealCaptureFormState();
@@ -208,6 +219,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         widget.initialAdvice.isNotEmpty &&
         _advice.isEmpty) {
       _advice = widget.initialAdvice;
+    }
+    if (oldWidget.savedFoodsRevision != widget.savedFoodsRevision) {
+      _loadSavedFoods();
     }
   }
 
@@ -321,25 +335,20 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       final barcode = _pendingBarcode;
       if (barcode != null && analyzedItems.isNotEmpty) {
         analyzedItems.first.barcode = barcode;
-        final item = analyzedItems.first.toMealItem();
-        await SavedFoodService.create(
-          barcode: barcode,
-          name: item.name,
-          estimatedAmount: item.estimatedAmount,
-          calories: item.calories,
-          protein: item.protein,
-          fat: item.fat,
-          carbs: item.carbs,
+        final saved = await _createSavedFoodWithWarning(
+          analyzedItems.first,
           source: 'NUTRITION_LABEL',
-          isFavorite: true,
         );
-        await _loadSavedFoods();
+        if (saved != null) {
+          _applySavedFood(analyzedItems.first, saved);
+          await _loadSavedFoods();
+        }
       }
       if (!mounted) return;
       setState(() {
         _manualItems.removeWhere((e) => !e.hasName);
         _manualItems.addAll(analyzedItems);
-        _pendingBarcode = null;
+        if (analyzedItems.first.savedFoodId != null) _pendingBarcode = null;
         _labelLoading = false;
       });
       final confirmed = await _showConfirmDialog(analyzedItems);
@@ -384,6 +393,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     // analysed, not re-uploaded).
     final pickedFoodIds = List<String>.of(_pickedFoodIds);
     final manualItems = manual.map((e) => e.toMealItem()).toList();
+    final savedFoodIds = mode == CaptureMode.manual
+        ? manual.map((e) => e.savedFoodId).toList()
+        : <String?>[];
     final precise = _preciseMode;
     setState(() => _error = null);
     // Fire and forget — the controller owns the analysis. Navigating away (or
@@ -394,27 +406,28 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       final eatenAt = DateTime.now().toUtc().toIso8601String();
       final body = switch (mode) {
         CaptureMode.photo => <String, dynamic>{
-            'mealType': mealType,
-            'imageDataUrls': images,
-            'precise': precise,
-            'eatenAt': eatenAt,
-          },
+          'mealType': mealType,
+          'imageDataUrls': images,
+          'precise': precise,
+          'eatenAt': eatenAt,
+        },
         CaptureMode.describe => <String, dynamic>{
-            'mealType': mealType,
-            'description': desc,
-            'eatenAt': eatenAt,
-          },
+          'mealType': mealType,
+          'description': desc,
+          'eatenAt': eatenAt,
+        },
         CaptureMode.manual => <String, dynamic>{
-            'mealType': mealType,
-            'manualItems': manualItems.map((e) => e.toPayload()).toList(),
-            'eatenAt': eatenAt,
-          },
+          'mealType': mealType,
+          'manualItems': manualItems.map((e) => e.toPayload()).toList(),
+          'eatenAt': eatenAt,
+        },
       };
       _analysis.startBackground(
         mealType: mealType,
         mode: mode.name,
         imageDataUrls: images,
         savedFoodImageIds: pickedFoodIds,
+        savedFoodIds: savedFoodIds,
         description: desc,
         body: body,
       );
@@ -424,13 +437,22 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         mode: mode.name,
         imageDataUrls: images,
         savedFoodImageIds: pickedFoodIds,
+        savedFoodIds: savedFoodIds,
         description: desc,
         run: () => switch (mode) {
-          CaptureMode.photo =>
-            MealService.analyzeImage(mealType, images, precise: precise),
-          CaptureMode.describe =>
-            MealService.analyzeDescription(mealType, desc),
-          CaptureMode.manual => MealService.analyzeManual(mealType, manualItems),
+          CaptureMode.photo => MealService.analyzeImage(
+            mealType,
+            images,
+            precise: precise,
+          ),
+          CaptureMode.describe => MealService.analyzeDescription(
+            mealType,
+            desc,
+          ),
+          CaptureMode.manual => MealService.analyzeManual(
+            mealType,
+            manualItems,
+          ),
         },
       );
     }
@@ -444,7 +466,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     _reviewing = true;
     try {
       final confirmed = await _showConfirmDialog(
-        _analysis.result.map(EditableItem.fromAnalysis).toList(),
+        _analysis.result.asMap().entries.map((entry) {
+          final savedFoodId = entry.key < _analysis.savedFoodIds.length
+              ? _analysis.savedFoodIds[entry.key]
+              : null;
+          return EditableItem.fromAnalysis(
+            entry.value,
+            savedFoodId: savedFoodId,
+          );
+        }).toList(),
       );
       if (confirmed == true) {
         _analysis.reset();
@@ -477,8 +507,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text('AI 正在分析這餐，完成後會通知你。可先切到其他分頁。',
-                  style: TextStyle(fontSize: 12, color: p.amberInk)),
+              child: Text(
+                'AI 正在分析這餐，完成後會通知你。可先切到其他分頁。',
+                style: TextStyle(fontSize: 12, color: p.amberInk),
+              ),
             ),
           ],
         ),
@@ -495,8 +527,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         child: Row(
           children: [
             Expanded(
-              child: Text('分析失敗：${_analysis.error ?? ''}',
-                  style: TextStyle(fontSize: 12, color: p.dangerInk)),
+              child: Text(
+                '分析失敗：${_analysis.error ?? ''}',
+                style: TextStyle(fontSize: 12, color: p.dangerInk),
+              ),
             ),
             TextButton(
               onPressed: () => _analysis.reset(),
@@ -518,8 +552,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       child: Row(
         children: [
           Expanded(
-            child: Text('✅ AI 分析完成，點右側確認並儲存。',
-                style: TextStyle(fontSize: 12, color: p.successInk)),
+            child: Text(
+              '✅ AI 分析完成，點右側確認並儲存。',
+              style: TextStyle(fontSize: 12, color: p.successInk),
+            ),
           ),
           FilledButton.tonal(
             onPressed: _reviewing ? null : _openReview,
@@ -553,7 +589,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             mealType,
             editedItems.map((e) => e.toMealItem()).toList(),
           );
-          return analyzed.map(EditableItem.fromAnalysis).toList();
+          return analyzed.asMap().entries.map((entry) {
+            final savedFoodId = entry.key < editedItems.length
+                ? editedItems[entry.key].savedFoodId
+                : null;
+            return EditableItem.fromAnalysis(
+              entry.value,
+              savedFoodId: savedFoodId,
+            );
+          }).toList();
         },
         onSave: (confirmedItems) async {
           final saveItems = confirmedItems.map((e) => e.toMealItem()).toList();
@@ -565,6 +609,19 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             savedFoodImageIds: pickedFoodIds.isNotEmpty ? pickedFoodIds : null,
             description: mode == 'describe' && desc.isNotEmpty ? desc : null,
             items: saveItems,
+          );
+          final usedFoodIds = confirmedItems
+              .map((item) => item.savedFoodId)
+              .whereType<String>()
+              .toSet();
+          await Future.wait(
+            usedFoodIds.map((id) async {
+              try {
+                await SavedFoodService.markUsed(id);
+              } catch (_) {
+                // The meal is already saved; usage ranking is best-effort only.
+              }
+            }),
           );
         },
       ),
@@ -593,33 +650,154 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   Future<void> _saveAsSavedFood(EditableItem item) async {
     if (!item.hasName) {
-      setState(() => _error = '請先填寫食物名稱再儲存為常用食物。');
+      setState(() => _error = '請先填寫食物名稱再存到我的食物。');
       return;
     }
-    final mi = item.toMealItem();
-    await SavedFoodService.create(
-      barcode: item.barcode,
-      name: mi.name,
-      estimatedAmount: item.estimatedAmount.trim().isEmpty
-          ? '1 份'
-          : item.estimatedAmount.trim(),
-      calories: mi.calories,
-      protein: mi.protein,
-      fat: mi.fat,
-      carbs: mi.carbs,
+    final saved = await _createSavedFoodWithWarning(
+      item,
       source: 'MEAL_ITEM',
-      isFavorite: true,
-      // Reuse the current meal photo as the food photo when saving from a photo meal.
       imageDataUrl: _imageDataUrls.isNotEmpty ? _imageDataUrls.first : null,
     );
+    if (saved == null) return;
+    _applySavedFood(item, saved);
     await _loadSavedFoods();
   }
 
-  void _addSavedFood(SavedFood food, {bool markUsed = true}) {
+  void _applySavedFood(EditableItem item, SavedFood saved) {
+    item
+      ..savedFoodId = saved.id
+      ..barcode = saved.barcode
+      ..name = saved.name
+      ..estimatedAmount = saved.estimatedAmount
+      ..calories = fmtNum(saved.calories)
+      ..protein = fmtNum(saved.protein)
+      ..fat = fmtNum(saved.fat)
+      ..carbs = fmtNum(saved.carbs);
+  }
+
+  Future<SavedFood?> _createSavedFoodWithWarning(
+    EditableItem item, {
+    required String source,
+    String? imageDataUrl,
+  }) async {
+    final mealItem = item.toMealItem();
+    Future<SavedFood> create(
+      bool allowDuplicate, {
+      bool clearBarcode = false,
+    }) => SavedFoodService.create(
+      barcode: clearBarcode ? null : item.barcode,
+      name: mealItem.name,
+      estimatedAmount: item.estimatedAmount.trim().isEmpty
+          ? '1 份'
+          : item.estimatedAmount.trim(),
+      calories: mealItem.calories,
+      protein: mealItem.protein,
+      fat: mealItem.fat,
+      carbs: mealItem.carbs,
+      source: source,
+      isFavorite: false,
+      imageDataUrl: imageDataUrl,
+      allowDuplicate: allowDuplicate,
+    );
+
+    try {
+      return await create(false);
+    } on DuplicateFoodException catch (error) {
+      if (!mounted) return null;
+      final match =
+          error.exactBarcode ??
+          (error.duplicates.isEmpty ? null : error.duplicates.first);
+      final archived = match?.archived == true;
+      final exact = error.exactBarcode != null;
+      final action = await showDialog<_SavedFoodConflictAction>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(exact ? '條碼已存在' : '可能已有相同或相似食物'),
+          content: Text(
+            '${match?.food.name ?? ''}\n\n'
+            '${archived ? '這筆食物目前已封存。' : '請選擇要如何處理現有資料。'}'
+            '${exact ? '\n另存時會移除重複條碼。' : ''}',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
+            if (match != null && !archived)
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(context, _SavedFoodConflictAction.use),
+                child: const Text('使用'),
+              ),
+            if (match != null)
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(context, _SavedFoodConflictAction.update),
+                child: const Text('更新'),
+              ),
+            if (match != null && archived)
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(context, _SavedFoodConflictAction.restore),
+                child: const Text('還原'),
+              ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(context, _SavedFoodConflictAction.saveAsNew),
+              child: const Text('另存'),
+            ),
+          ],
+        ),
+      );
+      if (action == null) return null;
+      try {
+        switch (action) {
+          case _SavedFoodConflictAction.use:
+            return match?.food;
+          case _SavedFoodConflictAction.update:
+            if (match == null) return null;
+            final updated = await SavedFoodService.update(
+              match.food.id,
+              barcode: (item.barcode?.trim().isEmpty ?? true)
+                  ? match.food.barcode
+                  : item.barcode,
+              name: mealItem.name,
+              estimatedAmount: item.estimatedAmount.trim().isEmpty
+                  ? '1 份'
+                  : item.estimatedAmount.trim(),
+              calories: mealItem.calories,
+              protein: mealItem.protein,
+              fat: mealItem.fat,
+              carbs: mealItem.carbs,
+              isFavorite: match.food.isFavorite,
+              imageDataUrl: imageDataUrl,
+            );
+            return match.archived
+                ? await SavedFoodService.restore(updated.id)
+                : updated;
+          case _SavedFoodConflictAction.restore:
+            return match == null
+                ? null
+                : await SavedFoodService.restore(match.food.id);
+          case _SavedFoodConflictAction.saveAsNew:
+            return await create(true, clearBarcode: exact);
+        }
+      } catch (retryError) {
+        if (mounted) setState(() => _error = retryError.toString());
+        return null;
+      }
+    } catch (error) {
+      if (mounted) setState(() => _error = error.toString());
+      return null;
+    }
+  }
+
+  void _addSavedFood(SavedFood food) {
     setState(() {
       _manualItems.removeWhere((e) => !e.hasName);
       _manualItems.add(
         EditableItem(
+          savedFoodId: food.id,
           barcode: food.barcode,
           name: food.name,
           estimatedAmount: food.estimatedAmount,
@@ -637,21 +815,12 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         _pickedFoodIds.length + _imageDataUrls.length < _maxImages) {
       setState(() => _pickedFoodIds.add(food.id));
     }
-    if (markUsed) {
-      SavedFoodService.markUsed(food.id).then((updated) {
-        if (!mounted) return;
-        setState(() {
-          final index = _savedFoods.indexWhere((f) => f.id == updated.id);
-          if (index != -1) _savedFoods[index] = updated;
-        });
-      }).catchError((_) {});
-    }
   }
 
   Future<void> _handleProductBarcode(String code) async {
     final food = await SavedFoodService.findByBarcode(code);
     if (food != null) {
-      _addSavedFood(food, markUsed: false);
+      _addSavedFood(food);
       return;
     }
     setState(() {
@@ -786,7 +955,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               const SizedBox(height: 10),
               Text(_error!, style: TextStyle(color: p.danger)),
             ],
-            if (_analysis.isRunning || _analysis.isDone || _analysis.isError) ...[
+            if (_analysis.isRunning ||
+                _analysis.isDone ||
+                _analysis.isError) ...[
               const SizedBox(height: 12),
               _analysisBanner(),
             ],
@@ -897,10 +1068,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 8),
         title: Text(
           '精準模式',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: p.amberInkSoft,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold, color: p.amberInkSoft),
         ),
         subtitle: Text(
           '多次辨識取中位數，熱量更穩定（分析較慢、用量約 3 倍）。',
@@ -1041,6 +1209,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   Widget _savedFoodsSection() {
     final p = context.palette;
+    final quickAdd = quickAddSavedFoods(_savedFoods);
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
@@ -1052,41 +1221,19 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('常用食物', style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('快速加入', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          if (_savedFoods.isEmpty)
+          if (quickAdd.favorites.isEmpty && quickAdd.recommendations.isEmpty)
             Text(
-              '尚無常用食物，可在下方食物列按「存常用」新增。',
+              '尚無可快速加入的食物，可在下方食物列存到我的食物。',
               style: TextStyle(fontSize: 12, color: p.inkSoft),
             )
-          else
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: _savedFoods
-                  .map(
-                    (f) => InputChip(
-                      avatar: f.hasImage
-                          ? CircleAvatar(
-                              backgroundImage: NetworkImage(
-                                SavedFoodService.imageUrl(f.id),
-                                headers: ApiClient.instance.sessionCookie != null
-                                    ? {'Cookie': ApiClient.instance.sessionCookie!}
-                                    : null,
-                              ),
-                            )
-                          : null,
-                      label: Text('${f.name} · ${fmtNum(f.calories)}kcal'),
-                      onPressed: () => _addSavedFood(f),
-                      onDeleted: () async {
-                        await SavedFoodService.delete(f.id);
-                        await _loadSavedFoods();
-                      },
-                      deleteIcon: const Icon(Icons.archive_outlined),
-                    ),
-                  )
-                  .toList(),
-            ),
+          else ...[
+            if (quickAdd.favorites.isNotEmpty)
+              _quickAddGroup('常用', quickAdd.favorites),
+            if (quickAdd.recommendations.isNotEmpty)
+              _quickAddGroup('推薦', quickAdd.recommendations),
+          ],
         ],
       ),
     );
@@ -1183,18 +1330,56 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (onSaveCommon != null)
-              TextButton(onPressed: onSaveCommon, child: const Text('存常用')),
+              TextButton(onPressed: onSaveCommon, child: const Text('存到我的食物')),
             if (onDelete != null)
               TextButton(
                 onPressed: onDelete,
-                child: Text('刪除',
-                    style: TextStyle(color: context.palette.danger)),
+                child: Text(
+                  '刪除',
+                  style: TextStyle(color: context.palette.danger),
+                ),
               ),
           ],
         ),
       ),
     );
   }
+
+  Widget _quickAddGroup(String label, List<SavedFood> foods) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 12, color: context.palette.inkSoft),
+        ),
+        const SizedBox(height: 4),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: foods
+              .map(
+                (food) => ActionChip(
+                  avatar: food.hasImage
+                      ? CircleAvatar(
+                          backgroundImage: NetworkImage(
+                            SavedFoodService.imageUrl(food.id),
+                            headers: ApiClient.instance.sessionCookie == null
+                                ? null
+                                : {'Cookie': ApiClient.instance.sessionCookie!},
+                          ),
+                        )
+                      : null,
+                  label: Text('${food.name} · ${fmtNum(food.calories)}kcal'),
+                  onPressed: () => _addSavedFood(food),
+                ),
+              )
+              .toList(),
+        ),
+      ],
+    ),
+  );
 
   Widget _adviceCard() {
     final p = context.palette;
@@ -1249,8 +1434,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   Map<String, dynamic>? _parseAdvice() {
     var text = _advice.trim();
     if (text.isEmpty) return null;
-    final fence = RegExp(r'^```(?:json)?\s*([\s\S]*?)\s*```$', caseSensitive: false)
-        .firstMatch(text);
+    final fence = RegExp(
+      r'^```(?:json)?\s*([\s\S]*?)\s*```$',
+      caseSensitive: false,
+    ).firstMatch(text);
     if (fence != null) text = fence.group(1)!.trim();
     if (!text.startsWith('{')) return null;
     try {
@@ -1277,7 +1464,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       ),
       child: Text(
         '$label ${value.round()}$unit',
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: p.amberInk),
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: p.amberInk,
+        ),
       ),
     );
   }
@@ -1292,20 +1483,22 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
     final remaining = data['remainingCalories'];
     if (remaining is num) {
-      children.add(Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: p.amberBorder.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(12),
+      children.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: p.amberBorder.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            remaining < 0
+                ? '今日已超標 ${remaining.abs().round()} kcal'
+                : '今日剩餘可攝取 ${remaining.round()} kcal',
+            style: TextStyle(fontWeight: FontWeight.w700, color: p.amberInk),
+          ),
         ),
-        child: Text(
-          remaining < 0
-              ? '今日已超標 ${remaining.abs().round()} kcal'
-              : '今日剩餘可攝取 ${remaining.round()} kcal',
-          style: TextStyle(fontWeight: FontWeight.w700, color: p.amberInk),
-        ),
-      ));
+      );
     }
 
     final meal = data['suggestedMeal'];
@@ -1313,17 +1506,26 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       final mealChildren = <Widget>[];
       final name = meal['name'];
       if (name is String && name.isNotEmpty) {
-        mealChildren.add(Text(name,
-            style: TextStyle(fontWeight: FontWeight.w900, color: p.amberInk)));
+        mealChildren.add(
+          Text(
+            name,
+            style: TextStyle(fontWeight: FontWeight.w900, color: p.amberInk),
+          ),
+        );
       }
       final items = meal['items'];
       if (items is List && items.isNotEmpty) {
         mealChildren.add(const SizedBox(height: 4));
         for (final item in items) {
-          mealChildren.add(Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Text('• $item', style: TextStyle(fontSize: 13, color: p.amberInkSoft)),
-          ));
+          mealChildren.add(
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                '• $item',
+                style: TextStyle(fontSize: 13, color: p.amberInkSoft),
+              ),
+            ),
+          );
         }
       }
       final chips = <Widget>[
@@ -1339,62 +1541,88 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       final reason = meal['reason'];
       if (reason is String && reason.isNotEmpty) {
         mealChildren.add(const SizedBox(height: 8));
-        mealChildren.add(Text(reason, style: TextStyle(fontSize: 13, color: p.amberInkSoft)));
+        mealChildren.add(
+          Text(reason, style: TextStyle(fontSize: 13, color: p.amberInkSoft)),
+        );
       }
       if (mealChildren.isNotEmpty) {
         children.add(const SizedBox(height: 10));
-        children.add(Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: p.surface.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(12),
+        children.add(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: p.surface.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: mealChildren,
+            ),
           ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: mealChildren),
-        ));
+        );
       }
     }
 
     final avoid = data['avoid'];
     if (avoid is List && avoid.isNotEmpty) {
       final avoidChildren = <Widget>[
-        Text('建議避免', style: TextStyle(fontWeight: FontWeight.w700, color: p.amberInk)),
+        Text(
+          '建議避免',
+          style: TextStyle(fontWeight: FontWeight.w700, color: p.amberInk),
+        ),
       ];
       for (final entry in avoid) {
         if (entry is! Map) continue;
         final item = entry['item'];
         if (item is! String || item.isEmpty) continue;
         final reason = entry['reason'];
-        avoidChildren.add(Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: RichText(
-            text: TextSpan(
-              style: TextStyle(fontSize: 13, color: p.amberInkSoft),
-              children: [
-                TextSpan(text: item, style: const TextStyle(fontWeight: FontWeight.w700)),
-                if (reason is String && reason.isNotEmpty) TextSpan(text: '：$reason'),
-              ],
+        avoidChildren.add(
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 13, color: p.amberInkSoft),
+                children: [
+                  TextSpan(
+                    text: item,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (reason is String && reason.isNotEmpty)
+                    TextSpan(text: '：$reason'),
+                ],
+              ),
             ),
           ),
-        ));
+        );
       }
       if (avoidChildren.length > 1) {
         children.add(const SizedBox(height: 10));
-        children.add(Column(crossAxisAlignment: CrossAxisAlignment.start, children: avoidChildren));
+        children.add(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: avoidChildren,
+          ),
+        );
       }
     }
 
     final notes = data['notes'];
     if (notes is String && notes.isNotEmpty) {
       children.add(const SizedBox(height: 10));
-      children.add(Text(notes, style: TextStyle(fontSize: 11, color: p.amberAccent)));
+      children.add(
+        Text(notes, style: TextStyle(fontSize: 11, color: p.amberAccent)),
+      );
     }
 
     if (children.isEmpty) {
       return MarkdownText(_advice, style: TextStyle(color: p.amberInkSoft));
     }
 
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: children);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: children,
+    );
   }
 }
 
@@ -1604,117 +1832,117 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
       builder: (ctx, scrollController) {
         final p = ctx.palette;
         return Padding(
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-        ),
-        child: ListView(
-          controller: scrollController,
-          children: [
-            const Text(
-              '確認 AI 分析品項',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '請確認食物是否正確，可先修正、刪除或新增後再儲存。',
-              style: TextStyle(fontSize: 12, color: p.inkSoft),
-            ),
-            if (widget.imageDataUrls.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: widget.imageDataUrls
-                    .map(
-                      (url) => ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: Image.memory(
-                          base64Decode(url.split(',').last),
-                          height: 96,
-                          width: 96,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    )
-                    .toList(),
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: ListView(
+            controller: scrollController,
+            children: [
+              const Text(
+                '確認 AI 分析品項',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
-            ],
-            const SizedBox(height: 12),
-            ..._items.asMap().entries.map(
-              (entry) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: ItemEditor(
-                  // Keyed by item identity so the text fields rebuild with the
-                  // fresh values after a re-estimate swaps in new objects.
-                  key: ObjectKey(entry.value),
-                  item: entry.value,
-                  index: entry.key,
-                  onChanged: () => setState(() {}),
-                  trailing: _items.length == 1
-                      ? null
-                      : TextButton(
-                          onPressed: () =>
-                              setState(() => _items.removeAt(entry.key)),
-                          child: Text(
-                            '刪除',
-                            style: TextStyle(color: p.danger),
+              const SizedBox(height: 4),
+              Text(
+                '請確認食物是否正確，可先修正、刪除或新增後再儲存。',
+                style: TextStyle(fontSize: 12, color: p.inkSoft),
+              ),
+              if (widget.imageDataUrls.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: widget.imageDataUrls
+                      .map(
+                        (url) => ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Image.memory(
+                            base64Decode(url.split(',').last),
+                            height: 96,
+                            width: 96,
+                            fit: BoxFit.cover,
                           ),
                         ),
+                      )
+                      .toList(),
+                ),
+              ],
+              const SizedBox(height: 12),
+              ..._items.asMap().entries.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ItemEditor(
+                    // Keyed by item identity so the text fields rebuild with the
+                    // fresh values after a re-estimate swaps in new objects.
+                    key: ObjectKey(entry.value),
+                    item: entry.value,
+                    index: entry.key,
+                    onChanged: () => setState(() {}),
+                    trailing: _items.length == 1
+                        ? null
+                        : TextButton(
+                            onPressed: () =>
+                                setState(() => _items.removeAt(entry.key)),
+                            child: Text(
+                              '刪除',
+                              style: TextStyle(color: p.danger),
+                            ),
+                          ),
+                  ),
                 ),
               ),
-            ),
-            OutlinedButton.icon(
-              onPressed: () => setState(() => _items.add(EditableItem())),
-              icon: const Icon(Icons.add),
-              label: const Text('新增食物品項'),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 10),
-              Text(_error!, style: TextStyle(color: p.danger)),
+              OutlinedButton.icon(
+                onPressed: () => setState(() => _items.add(EditableItem())),
+                icon: const Icon(Icons.add),
+                label: const Text('新增食物品項'),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                Text(_error!, style: TextStyle(color: p.danger)),
+              ],
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _saving || _reanalyzing ? null : _reestimate,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                icon: _reanalyzing
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh),
+                label: Text(_reanalyzing ? '重新辨識中...' : '依修改重新 AI 辨識'),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。',
+                style: TextStyle(fontSize: 11, color: p.inkFaint),
+              ),
+              const SizedBox(height: 8),
+              FilledButton(
+                onPressed: _saving || _reanalyzing ? null : _save,
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                child: _saving
+                    ? SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: p.onBrand,
+                        ),
+                      )
+                    : const Text('確認並儲存餐點'),
+              ),
+              const SizedBox(height: 8),
             ],
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _saving || _reanalyzing ? null : _reestimate,
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              icon: _reanalyzing
-                  ? const SizedBox(
-                      height: 16,
-                      width: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh),
-              label: Text(_reanalyzing ? '重新辨識中...' : '依修改重新 AI 辨識'),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '修改食物名稱或份量後，可讓 AI 依修正內容重新估算熱量與營養素。',
-              style: TextStyle(fontSize: 11, color: p.inkFaint),
-            ),
-            const SizedBox(height: 8),
-            FilledButton(
-              onPressed: _saving || _reanalyzing ? null : _save,
-              style: FilledButton.styleFrom(
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ),
-              child: _saving
-                  ? SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: p.onBrand,
-                      ),
-                    )
-                  : const Text('確認並儲存餐點'),
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      );
+          ),
+        );
       },
     );
   }
