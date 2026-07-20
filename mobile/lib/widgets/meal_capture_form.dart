@@ -246,7 +246,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   }
 
   Future<void> _loadSavedFoods() async {
-    final foods = await SavedFoodService.list();
+    List<SavedFood> foods;
+    try {
+      foods = await SavedFoodService.list();
+    } catch (_) {
+      // Quick-add suggestions are non-critical (e.g. an expired session); keep
+      // whatever list is already showing instead of crashing the form.
+      return;
+    }
     if (mounted) setState(() => _savedFoods = foods);
   }
 
@@ -288,11 +295,17 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   Future<void> _chooseMealImages(ImageSource source) async {
     setState(() => _error = null);
-    final urls = await _pickImageDataUrls(
-      source,
-      _maxImages - _imageDataUrls.length,
-    );
-    if (urls.isNotEmpty) setState(() => _imageDataUrls.addAll(urls));
+    try {
+      final urls = await _pickImageDataUrls(
+        source,
+        _maxImages - _imageDataUrls.length,
+      );
+      if (urls.isNotEmpty) setState(() => _imageDataUrls.addAll(urls));
+    } catch (e) {
+      // e.g. PlatformException(camera_access_denied, ...) when the user denies
+      // camera/gallery permission — surface it instead of crashing the form.
+      if (mounted) setState(() => _error = '無法選擇圖片：$e');
+    }
   }
 
   Future<void> _openCameraAndAnalyze() async {
@@ -629,6 +642,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   }
 
   Future<void> _afterSave() async {
+    // The background analysis can finish (and the user confirm the review
+    // sheet) after they've navigated away from this screen, so this must not
+    // assume the form is still mounted.
+    if (!mounted) return;
     setState(() {
       _imageDataUrls.clear();
       _pickedFoodIds.clear();
