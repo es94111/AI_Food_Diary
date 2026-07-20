@@ -296,6 +296,25 @@ class UpdateService {
       try {
         final dir = await _backgroundDir();
         final path = '${dir.path}/$_fileName';
+        if (!await File(path).exists()) {
+          // Seen on some devices (typically while backgrounded): DownloadManager
+          // reports the task complete but the file isn't actually there, so
+          // opening it would just fail with a confusing "file does not exist"
+          // error. Treat it like a failed download so the existing retry /
+          // foreground-fallback path gets a chance to actually produce a file.
+          if (await _recoverBackgroundFailure(pr)) return;
+          lastError = '無法開啟安裝程式：檔案不存在';
+          status.value = DownloadStatus.failed;
+          await _reportFailure(
+            'Background APK install failed to open: file does not exist after completion',
+            downloaderContext: _downloaderContext(
+              status: st,
+              rawProgress: pr,
+              recovery: 'unavailable',
+            ),
+          );
+          return;
+        }
         final result = await OpenFilex.open(path);
         if (result.type != ResultType.done) {
           lastError = '無法開啟安裝程式：${result.message}';
