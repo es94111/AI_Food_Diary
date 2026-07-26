@@ -44,6 +44,10 @@ function emptyManualItem(): ManualItem {
   return { id: crypto.randomUUID(), name: "", estimatedAmount: "", calories: "", protein: "", fat: "", carbs: "", aiRating: "MANUAL" };
 }
 
+function normalizeSearch(value: string) {
+  return value.normalize("NFKC").toLocaleLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+}
+
 // 取得 [date] 在指定時區（IANA 名稱）的當地時與分；無時區或失敗時退回瀏覽器本地時間。
 function localHourMinute(date: Date, timeZone?: string): { hour: number; minute: number } {
   if (timeZone) {
@@ -120,6 +124,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
   const [barcode, setBarcode] = useState("");
   const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
+  const [foodSearch, setFoodSearch] = useState("");
   // Saved foods picked into this meal that carry a photo. Their image is attached
   // to the meal by reference on save (same object key, no re-upload/copy).
   const [pickedFoodIds, setPickedFoodIds] = useState<string[]>([]);
@@ -306,6 +311,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       await Promise.allSettled(usedFoodIds.map((id) => markSavedFoodUsed(id)));
       setDescription("");
       setManualItems([emptyManualItem()]);
+      setFoodSearch("");
       setConfirmItems([]);
       setShowConfirm(false);
       await loadNextMealAdvice();
@@ -643,20 +649,35 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-stone-200">
         <p className="text-sm font-bold">快速加入</p>
         {savedFoods.length ? (() => {
-          const favorites = savedFoods.filter((food) => food.isFavorite).slice(0, 10);
-          const favoriteIds = new Set(favorites.map((food) => food.id));
-          const recommendations = savedFoods
-            .filter((food) => !food.isFavorite && !favoriteIds.has(food.id))
-            .slice(0, Math.max(0, 10 - favorites.length));
           const renderFood = (food: SavedFood) => (
             <button className="flex w-full items-center gap-2 rounded-xl bg-stone-50 p-2 text-left text-sm font-semibold text-stone-800" key={food.id} onClick={() => addSavedFood(food)} type="button">
               {food.hasImage ? <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" src={`/api/saved-foods/${food.id}/image`} /> : null}
               <span>+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</span>
             </button>
           );
+          const query = normalizeSearch(foodSearch);
+          const body = (() => {
+            if (query) {
+              const matches = savedFoods
+                .filter((food) => normalizeSearch(food.name).includes(query) || normalizeSearch(food.barcode ?? "").includes(query))
+                .slice(0, 20);
+              return matches.length
+                ? <div className="grid gap-2">{matches.map((food) => renderFood(food))}</div>
+                : <p className="text-sm text-stone-500">找不到符合「{foodSearch}」的食物</p>;
+            }
+            const favorites = savedFoods.filter((food) => food.isFavorite).slice(0, 10);
+            const favoriteIds = new Set(favorites.map((food) => food.id));
+            const recommendations = savedFoods
+              .filter((food) => !food.isFavorite && !favoriteIds.has(food.id))
+              .slice(0, Math.max(0, 10 - favorites.length));
+            return <>
+              {favorites.length ? <div><p className="mb-1 text-xs font-bold text-amber-700">常用</p><div className="grid gap-2">{favorites.map((food) => renderFood(food))}</div></div> : null}
+              {recommendations.length ? <div><p className="mb-1 text-xs font-bold text-stone-500">推薦</p><div className="grid gap-2">{recommendations.map((food) => renderFood(food))}</div></div> : null}
+            </>;
+          })();
           return <div className="mt-2 space-y-3">
-            {favorites.length ? <div><p className="mb-1 text-xs font-bold text-amber-700">常用</p><div className="grid gap-2">{favorites.map((food) => renderFood(food))}</div></div> : null}
-            {recommendations.length ? <div><p className="mb-1 text-xs font-bold text-stone-500">推薦</p><div className="grid gap-2">{recommendations.map((food) => renderFood(food))}</div></div> : null}
+            <input aria-label="搜尋食物" className="w-full rounded-xl border border-stone-200 px-3 py-2 text-sm" onChange={(event) => setFoodSearch(event.target.value)} placeholder="搜尋食物名稱或條碼，快速加入" value={foodSearch} />
+            {body}
           </div>;
         })() : <p className="mt-2 text-sm text-stone-500">尚無食物，可在下方手動食物列儲存。</p>}
       </div>

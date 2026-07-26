@@ -184,6 +184,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   // the meal by reference on save instead of being copied.
   final List<String> _pickedFoodIds = [];
   final _descriptionCtrl = TextEditingController();
+  final _foodSearchCtrl = TextEditingController();
   final List<EditableItem> _manualItems = [EditableItem()];
   List<SavedFood> _savedFoods = [];
   bool _labelLoading = false;
@@ -230,6 +231,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     widget.controller?._detach(this);
     _analysis.removeListener(_onAnalysisChanged);
     _descriptionCtrl.dispose();
+    _foodSearchCtrl.dispose();
     super.dispose();
   }
 
@@ -650,6 +652,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       _imageDataUrls.clear();
       _pickedFoodIds.clear();
       _descriptionCtrl.clear();
+      _foodSearchCtrl.clear();
       _manualItems
         ..clear()
         ..add(EditableItem());
@@ -1226,6 +1229,16 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 
   Widget _savedFoodsSection() {
     final p = context.palette;
+    final search = _foodSearchCtrl.text;
+    final hasSearch = search.trim().isNotEmpty;
+    final searchResults = hasSearch
+        ? visibleSavedFoods(
+            foods: _savedFoods,
+            tab: SavedFoodTab.all,
+            sort: SavedFoodSort.recommended,
+            search: search,
+          ).take(20).toList()
+        : const <SavedFood>[];
     final quickAdd = quickAddSavedFoods(_savedFoods);
     return Container(
       width: double.infinity,
@@ -1240,7 +1253,28 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         children: [
           const Text('快速加入', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          if (quickAdd.favorites.isEmpty && quickAdd.recommendations.isEmpty)
+          if (_savedFoods.isNotEmpty) ...[
+            TextField(
+              controller: _foodSearchCtrl,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                hintText: '搜尋食物名稱或條碼，快速加入',
+                isDense: true,
+                border: const OutlineInputBorder(),
+                filled: true,
+                fillColor: p.surface,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (hasSearch && searchResults.isEmpty)
+            Text(
+              '找不到符合「$search」的食物',
+              style: TextStyle(fontSize: 12, color: p.inkSoft),
+            )
+          else if (hasSearch)
+            _quickAddGroup('符合結果', searchResults)
+          else if (quickAdd.favorites.isEmpty && quickAdd.recommendations.isEmpty)
             Text(
               '尚無可快速加入的食物，可在下方食物列存到我的食物。',
               style: TextStyle(fontSize: 12, color: p.inkSoft),
