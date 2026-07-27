@@ -1,10 +1,12 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/image_cache_service.dart';
 import '../services/saved_food_service.dart';
 import '../theme/app_theme.dart';
 
@@ -405,13 +407,14 @@ class _SavedFoodEditorState extends State<SavedFoodEditor> {
             fit: BoxFit.cover,
           )
         : hasExisting
-        ? Image.network(
-            SavedFoodService.imageUrl(editing.id),
-            headers: _authHeaders(),
+        ? CachedNetworkImage(
+            imageUrl: SavedFoodService.imageUrl(editing.id),
+            httpHeaders: _authHeaders(),
+            cacheManager: FoodImageCacheManager.instance,
             width: 56,
             height: 56,
             fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => _noPhotoBox(),
+            errorWidget: (_, _, _) => _noPhotoBox(),
           )
         : _noPhotoBox();
     return Padding(

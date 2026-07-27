@@ -1,13 +1,14 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/models.dart';
 import '../theme/app_theme.dart';
-import '../services/api_client.dart';
 import '../services/background_analysis.dart';
+import '../services/image_cache_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_list_logic.dart';
@@ -1414,11 +1415,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                 (food) => ActionChip(
                   avatar: food.hasImage
                       ? CircleAvatar(
-                          backgroundImage: NetworkImage(
+                          backgroundImage: CachedNetworkImageProvider(
                             SavedFoodService.imageUrl(food.id),
-                            headers: ApiClient.instance.sessionCookie == null
-                                ? null
-                                : {'Cookie': ApiClient.instance.sessionCookie!},
+                            headers: ImageCacheService.authHeaders(),
+                            cacheManager: FoodImageCacheManager.instance,
                           ),
                         )
                       : null,

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/image_cache_service.dart';
 import '../services/saved_food_list_logic.dart';
 import '../services/saved_food_service.dart';
 import '../theme/app_theme.dart';
@@ -432,13 +434,14 @@ class _SavedFoodsManagerState extends State<SavedFoodsManager> {
                   if (food.hasImage) ...[
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        SavedFoodService.imageUrl(food.id),
-                        headers: _authHeaders(),
+                      child: CachedNetworkImage(
+                        imageUrl: SavedFoodService.imageUrl(food.id),
+                        httpHeaders: _authHeaders(),
+                        cacheManager: FoodImageCacheManager.instance,
                         width: 48,
                         height: 48,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                        errorWidget: (_, _, _) => const SizedBox.shrink(),
                       ),
                     ),
                     const SizedBox(width: 10),
