@@ -58,13 +58,14 @@ export function DailySummaryPopup() {
         if (cancelled || dismissedRef.current) return;
         setGenerating(false);
       }
+      if (!result) return; // nothing to show — leave today unset so we retry later
       // Mark handled for today so we don't re-fetch/re-generate on every visit.
       try {
         localStorage.setItem(STORAGE_KEY, today);
       } catch {
         // ignore persistence failure
       }
-      if (result) setSummary(result);
+      setSummary(result);
     })();
 
     return () => {

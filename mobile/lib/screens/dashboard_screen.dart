@@ -200,9 +200,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  // On the first open of each local day, show yesterday's summary only when the
-  // worker has already pre-computed it. Startup never falls back to a live AI
-  // generation; the summary card still lets the user request that explicitly.
+  // On the first open of each local day, show yesterday's summary. Normally the
+  // worker has already pre-computed it, so the peek is instant and no AI runs.
+  // If it hasn't yet (first day after enabling, worker missed its window, etc.)
+  // we generate it once on demand with a spinner so the user still sees it.
   Future<void> _maybeShowYesterdaySummary() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -211,15 +212,55 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (prefs.getString('last_summary_popup_date') == todayKey) return;
       final yesterday = DateTime(now.year, now.month, now.day - 1);
 
-      final summary = _yesterdaySummaryLoaded
+      var summary = _yesterdaySummaryLoaded
           ? _yesterdaySummary
           : await MealService.dailySummary(yesterday); // peek, no AI
-      if (summary == null) return;
+      if (summary == null && mounted) {
+        // Not pre-computed yet → generate once on demand (spends AI this once).
+        summary = await _generateYesterdaySummary(yesterday);
+      }
+      if (summary == null) return; // nothing to show — leave today unset so we retry later
       await prefs.setString('last_summary_popup_date', todayKey);
       if (!mounted) return;
       await showDailySummaryPopup(context, summary);
     } catch (_) {
       // Non-critical: never block the dashboard if the popup check fails.
+    }
+  }
+
+  // Generates yesterday's summary on demand behind a blocking spinner. Returns
+  // null if it couldn't be produced (no meals / no AI key / error).
+  Future<DailySummary?> _generateYesterdaySummary(DateTime day) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                SizedBox(width: 14),
+                Text('正在整理昨日總結…'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    try {
+      final summary = await MealService.dailySummary(day, generate: true);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      return summary;
+    } catch (_) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      return null;
     }
   }
 
