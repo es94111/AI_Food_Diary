@@ -89,8 +89,12 @@ class UpdateCard extends StatefulWidget {
       await Sentry.captureException(e, stackTrace: st,
           withScope: (scope) => scope.setTag('feature', 'app_update'));
       if (context.mounted) _showError(context, '無法開啟系統設定：$e');
+      return false;
     }
-    return false;
+
+    // The user may have granted the permission in settings; re-check so they
+    // don't have to tap the update button a second time.
+    return await UpdateService.canRequestPackageInstalls();
   }
 
   static void _showError(BuildContext context, String message) {

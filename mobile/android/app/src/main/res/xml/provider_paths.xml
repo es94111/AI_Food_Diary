@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Paths flutter_downloader's DownloadedFileProvider may expose to the system
-  installer. The in-app update writes the APK to getExternalStorageDirectory()
-  (path_provider) == Context.getExternalFilesDir(null), covered by
-  external-files-path below; external-path is kept as a wider fallback.
+  Paths exposed to the system package installer for in-app APK updates.
+  The update service writes the APK to an app-private directory that works
+  under scoped storage (Android 10+); all candidate locations are listed here
+  so flutter_downloader's DownloadedFileProvider can expose whichever one is
+  actually used.
 -->
 <paths>
     <external-files-path name="external_app_files" path="." />
+    <external-cache-path name="external_app_cache" path="." />
+    <files-path name="internal_app_files" path="." />
+    <cache-path name="internal_app_cache" path="." />
     <external-path name="external_files" path="." />
 </paths>

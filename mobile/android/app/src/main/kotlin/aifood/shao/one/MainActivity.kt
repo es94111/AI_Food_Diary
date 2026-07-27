@@ -5,10 +5,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.FileProvider
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 
 // FlutterFragmentActivity (a ComponentActivity) is required so the `health`
 // plugin can register its ActivityResultLauncher and launch the Health Connect
@@ -31,6 +33,21 @@ class MainActivity : FlutterFragmentActivity() {
                             result.success(true)
                         } catch (e: ActivityNotFoundException) {
                             result.error("settings_unavailable", e.message, null)
+                        }
+                    }
+                    "openApk" -> {
+                        val path = call.argument<String>("path") ?: ""
+                        try {
+                            openApk(File(path))
+                            result.success(true)
+                        } catch (e: SecurityException) {
+                            result.error("open_apk_security", e.message, null)
+                        } catch (e: ActivityNotFoundException) {
+                            result.error("open_apk_no_activity", e.message, null)
+                        } catch (e: IllegalArgumentException) {
+                            result.error("open_apk_provider", e.message, null)
+                        } catch (e: Exception) {
+                            result.error("open_apk_failed", e.message, null)
                         }
                     }
                     else -> result.notImplemented()
@@ -107,6 +124,33 @@ class MainActivity : FlutterFragmentActivity() {
 
         if (!startSettingsIntent(Intent(Settings.ACTION_SECURITY_SETTINGS))) {
             throw ActivityNotFoundException("No Android settings activity can manage install permissions")
+        }
+    }
+
+    /// Opens the downloaded APK with the system package installer. Uses the
+    /// flutter_downloader FileProvider so the same authority already declared
+    /// in AndroidManifest.xml can expose app-private files on Android 7+.
+    private fun openApk(file: File) {
+        if (!file.exists()) {
+            throw IllegalArgumentException("APK file does not exist: ${file.path}")
+        }
+        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            FileProvider.getUriForFile(
+                this,
+                "$packageName.flutter_downloader.provider",
+                file
+            )
+        } else {
+            Uri.fromFile(file)
+        }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        try {
+            startActivity(intent)
+        } catch (e: ActivityNotFoundException) {
+            throw ActivityNotFoundException("No package installer can handle this APK")
         }
     }
 
