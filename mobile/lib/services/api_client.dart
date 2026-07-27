@@ -6,6 +6,7 @@ import 'package:sentry_dio/sentry_dio.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import 'cache_service.dart';
+import 'image_cache_service.dart';
 
 /// Central HTTP client that mirrors the web app's cookie-session auth.
 ///
@@ -126,6 +127,10 @@ class ApiClient {
     // Cached responses belong to the signed-out account; drop them so the
     // next sign-in never briefly shows stale data from a previous user.
     await CacheService.clearAll();
+    // Same for cached images — the on-disk image cache is keyed only by URL,
+    // so without clearing it the next account could load a previous user's
+    // authenticated photos straight from disk.
+    await ImageCacheService.clearAll();
   }
 
   /// GET, optionally backed by a local cache (keyed on [path] + [query]).

@@ -3,6 +3,7 @@ import 'package:sentry_flutter/sentry_flutter.dart';
 import '../models/models.dart';
 import '../utils/metabolism.dart';
 import 'api_client.dart';
+import 'image_cache_service.dart';
 
 class MealService {
   static final _api = ApiClient.instance;
@@ -182,6 +183,10 @@ class MealService {
     }
   }
 
+  /// Upper bound on photos per meal (matches the backend's upload limit), used
+  /// only to bound image-cache eviction after a removal — safe to over-evict.
+  static const maxImages = 5;
+
   /// Retroactively attaches photos to an existing meal (e.g. one logged via the
   /// describe/manual flow without a photo), or adds more to its current set.
   static Future<void> addImages(String id, List<String> imageDataUrls) async {
@@ -194,12 +199,21 @@ class MealService {
     }
   }
 
-  /// Removes a single photo from a meal by its (0-based) index.
+  /// Removes a single photo from a meal by its (0-based) index. Removing an
+  /// image shifts every later photo's index down by one, so their cached URLs
+  /// (`.../image?i=N`) would otherwise serve the wrong photo from disk — evict
+  /// the affected indices so the next render re-downloads the correct ones.
   static Future<void> removeImage(String id, int index) async {
     final res = await _api.delete('/api/meals/$id/image?i=$index');
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '移除照片失敗'));
     }
+    await Future.wait(
+      List.generate(
+        maxImages,
+        (i) => ImageCacheService.evict(_mealImageUrl(id, i)),
+      ),
+    );
   }
 
   // ---- AI summary & recommendation ----
@@ -250,5 +264,8 @@ class MealService {
   /// authenticated image endpoint, not directly from the object-storage key.
   /// [index] selects which image of the batch (0-based).
   static String mealImageUrl(Meal meal, [int index = 0]) =>
-      '${ApiClient.baseUrl}/api/meals/${meal.id}/image?i=$index';
+      _mealImageUrl(meal.id, index);
+
+  static String _mealImageUrl(String id, int index) =>
+      '${ApiClient.baseUrl}/api/meals/$id/image?i=$index';
 }

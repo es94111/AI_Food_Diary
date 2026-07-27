@@ -1,11 +1,13 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/image_cache_service.dart';
 import '../services/meal_service.dart';
 import '../theme/app_theme.dart';
 import 'meal_capture_form.dart';
@@ -199,13 +201,14 @@ class _MealCardState extends State<_MealCard> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                MealService.mealImageUrl(meal, i),
-                headers: headers,
+              child: CachedNetworkImage(
+                imageUrl: MealService.mealImageUrl(meal, i),
+                httpHeaders: headers,
+                cacheManager: FoodImageCacheManager.instance,
                 height: 160,
                 width: width ?? double.infinity,
                 fit: BoxFit.cover,
-                errorBuilder: (_, _, _) => Container(
+                errorWidget: (_, _, _) => Container(
                   height: 120,
                   width: width ?? double.infinity,
                   alignment: Alignment.center,

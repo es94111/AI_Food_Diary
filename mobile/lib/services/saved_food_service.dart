@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../models/models.dart';
 import 'api_client.dart';
+import 'image_cache_service.dart';
 
 class SavedFoodMatch {
   const SavedFoodMatch({
@@ -225,6 +226,11 @@ class SavedFoodService {
       ),
     );
     if (!ApiClient.ok(res)) _throwResponse(res, '更新食物失敗');
+    // Evict the cached thumbnail so a replaced/removed photo isn't served
+    // from disk on the next list render.
+    if ((imageDataUrl != null && imageDataUrl.isNotEmpty) || removeImage) {
+      await ImageCacheService.evict(imageUrl(id));
+    }
     return _foodFrom(res);
   }
 
