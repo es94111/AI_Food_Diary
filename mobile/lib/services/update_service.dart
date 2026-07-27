@@ -315,20 +315,9 @@ class UpdateService {
           );
           return;
         }
-        final result = await OpenFilex.open(path);
-        if (result.type != ResultType.done) {
-          lastError = '無法開啟安裝程式：${result.message}';
-          status.value = DownloadStatus.failed;
-          await _reportFailure(
-            'Background APK install failed to open: ${result.message}',
-            downloaderContext: _downloaderContext(
-              status: st,
-              rawProgress: pr,
-              recovery: 'none',
-            ),
-          );
-          return;
-        }
+        await openApk(path);
+        // The native install intent is fire-and-forget; success means the
+        // system installer was launched, not that the user completed install.
       } catch (e, st) {
         lastError = '無法開啟安裝程式：$e';
         status.value = DownloadStatus.failed;
@@ -423,10 +412,39 @@ class UpdateService {
     }
   }
 
-  /// App-specific external dir (no storage permission needed) that the plugin's
-  /// bundled FileProvider can expose to the installer; temp dir as a fallback.
-  static Future<Directory> _backgroundDir() async =>
-      (await getExternalStorageDirectory()) ?? await getTemporaryDirectory();
+  /// Returns an app-private directory that the system DownloadManager can write
+  /// to under scoped storage (Android 10+) and that our FileProvider can expose.
+  /// Tries the app-specific external files dir first, then external cache, then
+  /// the temporary directory as a last resort.
+  static Future<Directory> _backgroundDir() async {
+    try {
+      // ignore: deprecated_member_use
+      final dirs = await getExternalStorageDirectories();
+      if (dirs != null && dirs.isNotEmpty) return dirs.first;
+    } catch (_) {}
+    try {
+      final dirs = await getExternalCacheDirectories();
+      if (dirs != null && dirs.isNotEmpty) return dirs.first;
+    } catch (_) {}
+    return getTemporaryDirectory();
+  }
+
+  /// Opens the downloaded APK with the system package installer. On Android this
+  /// uses the flutter_downloader FileProvider so app-private files get a content://
+  /// URI on API 24+; on other platforms it falls back to open_filex.
+  static Future<void> openApk(String path) async {
+    if (!backgroundSupported) {
+      final result = await OpenFilex.open(path);
+      if (result.type != ResultType.done) {
+        throw StateError('無法開啟安裝程式：${result.message}');
+      }
+      return;
+    }
+    final result = await _channel.invokeMethod<bool>('openApk', {'path': path});
+    if (result != true) {
+      throw StateError('無法開啟安裝程式');
+    }
+  }
 
   // ---- Non-Android foreground fallback ----
 
@@ -449,16 +467,7 @@ class UpdateService {
         },
       );
       progress.value = 1;
-      final result = await OpenFilex.open(path);
-      if (result.type != ResultType.done) {
-        lastError = '無法開啟安裝程式：${result.message}';
-        status.value = DownloadStatus.failed;
-        await _reportFailure(
-          'Foreground APK install failed to open: ${result.message}',
-          downloaderContext: downloaderContext,
-        );
-        return;
-      }
+      await openApk(path);
       status.value = DownloadStatus.complete;
     } catch (e, st) {
       lastError = '$e';
