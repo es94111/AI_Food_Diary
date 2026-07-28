@@ -19,3 +19,58 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.jks
           keytool -list -v -keystore release.jks -alias "$ANDROID_KEY_ALIAS" -storepass "$ANDROID_KEYSTORE_PASSWORD" | grep -E "SHA256:|SHA1:|Owner:"
           rm -f release.jks
+
+  # One-off: build the real app, signed with the existing release key, so it
+  # can be uploaded to Play Console for app-ownership verification. Not for
+  # distribution — no S3 upload step.
+  build-ownership-verification-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: mobile
+        run: flutter pub get
+
+      - name: Add Play ownership-verification registration file
+        working-directory: mobile/android/app/src/main
+        run: |
+          mkdir -p assets
+          printf '%s' "CXFHQD5PYWSIOAAAAAAAAAAAAA" > assets/adi-registration.properties
+
+      - name: Configure release signing
+        working-directory: mobile/android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.jks
+          cat > key.properties <<EOF
+          storeFile=release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build release APK
+        working-directory: mobile
+        run: flutter build apk --release
+
+      - name: Print signed APK certificate fingerprint
+        run: keytool -printcert -jarfile mobile/build/app/outputs/flutter-apk/app-release.apk | grep -E "SHA256:|SHA1:|Owner:"
+
+      - name: Upload verification APK
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: play-ownership-verification-apk
+          path: mobile/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 3
