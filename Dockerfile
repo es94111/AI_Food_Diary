@@ -1,5 +1,8 @@
 FROM node:24-alpine AS deps
 WORKDIR /app
+# Upgrade the bundled npm so Trivy doesn't flag already-fixed CVEs in npm's own
+# dependencies (tar, brace-expansion, undici, etc.).
+RUN npm install -g npm@12.0.1
 # Use the committed lockfile so the image installs the exact audited versions
 # (reproducible builds; keeps OSV/Dependabot pins effective). npm ci needs both.
 COPY package.json package-lock.json .npmrc ./
