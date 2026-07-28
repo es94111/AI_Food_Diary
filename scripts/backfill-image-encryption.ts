@@ -47,7 +47,7 @@ async function main() {
   let missing = 0;
   for (const key of keys) {
     const result = await encryptExistingImage(key).catch((err) => {
-      console.error(`  failed: ${key}`, err);
+      console.error("  failed: %s %O", key, err);
       return "missing" as const;
     });
     if (result === "encrypted") encrypted += 1;

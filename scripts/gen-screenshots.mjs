@@ -4,7 +4,7 @@
  */
 import { chromium } from "playwright";
 import { writeFileSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, basename } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -518,7 +518,9 @@ async function shot(html, filename, width, height) {
   await page.setContent(html, { waitUntil: "networkidle" });
   // Wait a bit for Tailwind CDN to apply
   await page.waitForTimeout(1500);
-  const outPath = join(OUT, filename);
+  // Prevent path traversal: only allow a plain basename in the output directory.
+  const safeFilename = basename(filename);
+  const outPath = `${OUT}/${safeFilename}`;
   await page.screenshot({ path: outPath, fullPage: false });
   console.log(`✅  ${filename}`);
   await page.close();

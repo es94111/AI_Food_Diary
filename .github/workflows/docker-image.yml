@@ -12,22 +12,23 @@ on:
         type: string
 
 env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_IMAGE }}
   # The docker/* actions still bundle Node 20; force the Node 24 runtime so the
   # deprecation warning goes away (per GitHub's guidance).
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  # Secrets can't be referenced directly in step `if:`; expose presence as a
-  # boolean string here (secrets context IS allowed in env) and gate on it.
-  HAS_SENTRY_AUTH: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
 
 jobs:
   docker:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      IMAGE_NAME: ${{ secrets.DOCKERHUB_IMAGE }}
+      # Secrets can't be referenced directly in step `if:`; expose presence as a
+      # boolean string here (secrets context IS allowed in env) and gate on it.
+      HAS_SENTRY_AUTH: ${{ secrets.SENTRY_AUTH_TOKEN != '' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # Full history so Sentry can associate commits with the release.
           fetch-depth: 0
@@ -49,16 +50,16 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       - name: Login to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
           context: .
           file: ./Dockerfile
@@ -84,7 +85,7 @@ jobs:
       # absent so forks/PRs without the token still pass.
       - name: Create Sentry release
         if: ${{ env.HAS_SENTRY_AUTH == 'true' }}
-        uses: getsentry/action-release@v3
+        uses: getsentry/action-release@ff07929a6537bac57790c3451cf4d364aca38528 # v3
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: shao-wq
