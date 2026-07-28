@@ -27,6 +27,9 @@ RUN npx prisma generate
 RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
     npm run build
+# TypeScript compiler binaries are only needed during build; remove them from
+# the production image so their bundled Go stdlib isn't flagged by Trivy.
+RUN rm -rf node_modules/@typescript
 
 FROM node-base AS runner
 WORKDIR /app
