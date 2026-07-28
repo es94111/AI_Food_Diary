@@ -1,14 +1,17 @@
-FROM node:24-alpine AS deps
-WORKDIR /app
-# Upgrade the bundled npm so Trivy doesn't flag already-fixed CVEs in npm's own
-# dependencies (tar, brace-expansion, undici, etc.).
+# Base stage: patch the bundled npm so every derived stage (deps/builder/runner)
+# uses a version whose own dependencies don't trigger Trivy. node:24-alpine ships
+# npm 11 with vulnerable tar/brace-expansion/undici; npm 12 bundles fixed ones.
+FROM node:24-alpine AS node-base
 RUN npm install -g npm@12.0.1
+
+FROM node-base AS deps
+WORKDIR /app
 # Use the committed lockfile so the image installs the exact audited versions
 # (reproducible builds; keeps OSV/Dependabot pins effective). npm ci needs both.
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
-FROM node:24-alpine AS builder
+FROM node-base AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 # Sentry release + source-map upload happen during `next build` (withSentryConfig).
@@ -25,7 +28,7 @@ RUN --mount=type=secret,id=sentry_auth_token \
     SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
     npm run build
 
-FROM node:24-alpine AS runner
+FROM node-base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
