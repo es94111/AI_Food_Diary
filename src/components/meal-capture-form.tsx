@@ -226,6 +226,21 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     const mealType = String(formData.get("mealType") ?? "LUNCH");
     setError("");
 
+    if (mode === "manual") {
+      // Manual items (typed by hand, or picked from previously saved foods) already
+      // carry the user's own numbers — skip the AI rating call and go straight to
+      // confirm instead of re-analyzing data the user already entered once.
+      const items = manualItemsToConfirm(manualItems);
+      if (items.length === 0) {
+        setError("請至少填寫一項食物名稱。");
+        return;
+      }
+      setConfirmMealType(mealType);
+      setConfirmItems(items);
+      setShowConfirm(true);
+      return;
+    }
+
     // Each capture mode hits its own analyze endpoint; the active mode alone
     // decides what gets sent, so leftover input from another tab never leaks in.
     let endpoint: string;
@@ -237,7 +252,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       }
       endpoint = "/api/meals/analyze";
       payload = { mealType, imageDataUrls: previews, precise: preciseMode };
-    } else if (mode === "describe") {
+    } else {
       const mealDescription = description.trim();
       if (!mealDescription) {
         setError("請先用文字描述你吃了什麼。");
@@ -245,14 +260,6 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       }
       endpoint = "/api/meals/analyze-description";
       payload = { mealType, description: mealDescription };
-    } else {
-      const items = itemsForPayload(manualItems);
-      if (items.length === 0) {
-        setError("請至少填寫一項食物名稱。");
-        return;
-      }
-      endpoint = "/api/meals/analyze-manual";
-      payload = { mealType, manualItems: items };
     }
 
     setLoading(true);
@@ -268,7 +275,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         return;
       }
       setConfirmMealType(mealType);
-      setConfirmItems(itemsFromAnalysis(data.analysis.foods, mode === "manual" ? manualItems.filter((item) => item.name.trim()) : []));
+      setConfirmItems(itemsFromAnalysis(data.analysis.foods));
       setShowConfirm(true);
     } catch (error) {
       setError(error instanceof Error ? `分析失敗：${error.message}` : "分析失敗，請確認服務是否正常運作");
@@ -731,9 +738,11 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       ) : null}
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
       <button className="mt-5 w-full cursor-pointer rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={loading} type="submit">
-        {loading ? "分析中..." : "AI 分析並確認"}
+        {loading ? "分析中..." : mode === "manual" ? "確認並繼續" : "AI 分析並確認"}
       </button>
-      <p className="mt-3 text-xs text-stone-500">AI 分析為估算值，請依實際份量修正。</p>
+      <p className="mt-3 text-xs text-stone-500">
+        {mode === "manual" ? "手動輸入的資料會直接帶入，不會再經過 AI 分析。" : "AI 分析為估算值，請依實際份量修正。"}
+      </p>
       {adviceLoading ? <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">正在產生下一餐建議...</p> : null}
       {nextMealAdvice ? (
         <div className="mt-4 rounded-2xl bg-amber-50 p-4">
@@ -843,6 +852,23 @@ function itemsForPayload(items: ManualItem[]) {
       fat: Number(item.fat || 0),
       carbs: Number(item.carbs || 0),
       aiRating: item.aiRating
+    }));
+}
+
+// Manual mode skips AI rating entirely: whatever the user typed (or picked from
+// a previously saved food) goes straight to the confirm screen unchanged.
+function manualItemsToConfirm(items: ManualItem[]): ManualItem[] {
+  return items
+    .filter((item) => item.name.trim())
+    .map((item) => ({
+      ...item,
+      name: item.name.trim(),
+      estimatedAmount: item.estimatedAmount.trim() || "手動輸入",
+      calories: item.calories || "0",
+      protein: item.protein || "0",
+      fat: item.fat || "0",
+      carbs: item.carbs || "0",
+      aiRating: item.aiRating || "MANUAL"
     }));
 }
 
