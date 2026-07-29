@@ -66,12 +66,7 @@ jobs:
         run: flutter build apk --release
 
       - name: Print signed APK certificate fingerprint
-        continue-on-error: true
-        run: |
-          APK=mobile/build/app/outputs/flutter-apk/app-release.apk
-          APKSIGNER=$(find "$ANDROID_HOME" -name apksigner -type f 2>/dev/null | sort -V | tail -1)
-          echo "apksigner: $APKSIGNER"
-          "$APKSIGNER" verify --print-certs "$APK"
+        run: keytool -printcert -jarfile mobile/build/app/outputs/flutter-apk/app-release.apk | grep -E "SHA256:|SHA1:|Owner:"
 
       - name: Upload verification APK
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
