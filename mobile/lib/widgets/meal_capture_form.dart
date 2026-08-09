@@ -13,6 +13,7 @@ import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_list_logic.dart';
 import '../services/saved_food_service.dart';
+import 'data_url_image.dart';
 import 'markdown_text.dart';
 
 const mealTypes = {
@@ -1200,11 +1201,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.memory(
-                base64Decode(entry.value.split(',').last),
+              child: DataUrlImage(
+                dataUrl: entry.value,
                 height: 96,
                 width: 96,
-                fit: BoxFit.cover,
               ),
             ),
             Positioned(
@@ -1909,11 +1909,10 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                       .map(
                         (url) => ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: Image.memory(
-                            base64Decode(url.split(',').last),
+                          child: DataUrlImage(
+                            dataUrl: url,
                             height: 96,
                             width: 96,
-                            fit: BoxFit.cover,
                           ),
                         ),
                       )

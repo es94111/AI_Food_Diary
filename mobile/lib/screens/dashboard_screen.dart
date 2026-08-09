@@ -58,6 +58,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final Set<int> _mountedTabs = {0};
   bool _loading = true;
   String? _error;
+  int _mealLoadGeneration = 0;
 
   static const _tabTitles = ['飲食', '健康', '設定'];
 
@@ -305,17 +306,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadMeals() async {
+    final generation = ++_mealLoadGeneration;
+    final weekView = _weekView;
+    final selectedDate = _selectedDate;
     try {
-      final meals = _weekView
-          ? await MealService.mealsForWeek(startOfLocalWeek(_selectedDate))
-          : await MealService.mealsForDay(_selectedDate);
+      final meals = weekView
+          ? await MealService.mealsForWeek(startOfLocalWeek(selectedDate))
+          : await MealService.mealsForDay(selectedDate);
+      if (!mounted || generation != _mealLoadGeneration) return;
       meals.sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
-      if (mounted) setState(() => _meals = meals);
-      if (!_weekView && _isToday) {
+      setState(() => _meals = meals);
+      if (!weekView && isoDate(selectedDate) == isoDate(DateTime.now())) {
         await _publishCalorieWidget(meals);
       }
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted && generation == _mealLoadGeneration) {
+        setState(() => _error = e.toString());
+      }
     }
   }
 
@@ -1183,9 +1190,10 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
     });
     try {
       final s = await MealService.dailySummary(widget.date, generate: true);
+      if (!mounted) return;
       setState(() => _summary = s);
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -1304,6 +1312,7 @@ class _AdminPanelState extends State<_AdminPanel> {
     setState(() => _busy = true);
     try {
       final result = await AuthService.setRegistrationOpen(value);
+      if (!mounted) return;
       setState(() => _open = result);
     } catch (_) {
     } finally {

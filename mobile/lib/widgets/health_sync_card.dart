@@ -226,6 +226,7 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
           : true;
       await _load();
       await widget.onSynced();
+      if (!mounted) return;
       setState(() {
         _isError = false;
         final lines = <String>[];
