@@ -39,6 +39,7 @@ class _WaterCardState extends State<WaterCard> {
   int _totalMl = 0;
   bool _busy = false;
   late int _goalMl = widget.goalMl;
+  int _loadGeneration = 0;
 
   @override
   void initState() {
@@ -54,18 +55,20 @@ class _WaterCardState extends State<WaterCard> {
   }
 
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
+    final requestedDate = widget.date;
     // Paint instantly from last session's cache while the real fetch below
     // refreshes it in the background.
-    final cached = await WaterService.cachedForDay(widget.date);
-    if (cached != null && mounted) {
+    final cached = await WaterService.cachedForDay(requestedDate);
+    if (cached != null && mounted && generation == _loadGeneration) {
       setState(() {
         _logs = cached.logs;
         _totalMl = cached.totalMl;
       });
     }
     try {
-      final result = await WaterService.forDay(widget.date);
-      if (!mounted) return;
+      final result = await WaterService.forDay(requestedDate);
+      if (!mounted || generation != _loadGeneration) return;
       setState(() {
         _logs = result.logs;
         _totalMl = result.totalMl;

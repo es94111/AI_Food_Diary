@@ -69,6 +69,7 @@ class _ProfileFormSheetState extends State<ProfileFormSheet> {
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
     );
+    if (!mounted) return;
     if (picked != null) {
       setState(() => _birthCtrl.text = isoDate(picked));
     }
@@ -91,7 +92,7 @@ class _ProfileFormSheetState extends State<ProfileFormSheet> {
       );
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
-      setState(() => _message = e.toString());
+      if (mounted) setState(() => _message = e.toString());
     } finally {
       if (mounted) setState(() => _saving = false);
     }

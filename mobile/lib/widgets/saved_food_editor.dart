@@ -9,6 +9,7 @@ import '../services/api_client.dart';
 import '../services/image_cache_service.dart';
 import '../services/saved_food_service.dart';
 import '../theme/app_theme.dart';
+import 'data_url_image.dart';
 
 const savedFoodSourceLabels = {
   'MANUAL': '手動新增',
@@ -400,11 +401,10 @@ class _SavedFoodEditorState extends State<SavedFoodEditor> {
     final editing = widget.editing;
     final hasExisting = editing != null && editing.hasImage && !_removeImage;
     final preview = _imageDataUrl != null
-        ? Image.memory(
-            base64Decode(_imageDataUrl!.split(',').last),
+        ? DataUrlImage(
+            dataUrl: _imageDataUrl!,
             width: 56,
             height: 56,
-            fit: BoxFit.cover,
           )
         : hasExisting
         ? CachedNetworkImage(
