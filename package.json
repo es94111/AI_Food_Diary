@@ -31,7 +31,7 @@
     "@sentry/nextjs": "^10.69.0",
     "@sentry/profiling-node": "^10.69.0",
     "argon2": "^0.45.1",
-    "bullmq": "^5.81.2",
+    "bullmq": "^6.0.6",
     "dotenv": "^17.4.2",
     "ioredis": "^6.0.0",
     "jose": "^6.2.7",

@@ -22,7 +22,7 @@ export const aiQueue = new Queue("ai-food-diary", { connection });
 
 // Pre-compute each user's previous-day AI summary shortly after their local
 // midnight, so the app/web can show it instantly on first open without ever
-// running AI at open time. Runs hourly (see the repeatable job below) and acts
+// running AI at open time. Runs hourly (see the job scheduler below) and acts
 // only on users whose local time is in the 1 AM hour — that processes each user
 // exactly once per day, after "yesterday" is fully complete, and stays correct
 // across all timezones without a single global trigger time.
@@ -74,12 +74,19 @@ new Worker(
   { connection }
 );
 
-// Register the hourly trigger. BullMQ dedupes repeatable jobs by name + pattern,
-// so re-adding on every worker restart is idempotent (no duplicate schedules).
-await aiQueue.add(
+// Register the hourly trigger. BullMQ v6 removed the legacy repeatable-job API
+// (the `repeat` option on Queue#add) in favour of job schedulers, which are keyed
+// by their scheduler id — so upserting on every worker restart is idempotent
+// (no duplicate schedules), same as before. The scheduled job keeps the name
+// above so the worker's dispatch on `job.name` is unchanged.
+await aiQueue.upsertJobScheduler(
   PRECOMPUTE_SUMMARIES_JOB,
-  {},
-  { repeat: { pattern: "5 * * * *" }, removeOnComplete: true, removeOnFail: 50 }
+  { pattern: "5 * * * *" },
+  {
+    name: PRECOMPUTE_SUMMARIES_JOB,
+    data: {},
+    opts: { removeOnComplete: true, removeOnFail: 50 }
+  }
 );
 
 console.log("AI Food Diary worker is running");
