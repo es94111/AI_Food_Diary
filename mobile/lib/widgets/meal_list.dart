@@ -32,7 +32,15 @@ class MealList extends StatelessWidget {
       );
     }
     return Column(
-      children: meals.map((m) => _MealCard(meal: m, onChanged: onChanged)).toList(),
+      children: meals
+          .map(
+            (m) => RepaintBoundary(
+              // 每張餐卡各自獨立重繪：照片載入完成觸發的 repaint 只影響自己，
+              // 不會連帶重繪整份餐點列表（照片很多時滑動更順）。
+              child: _MealCard(meal: m, onChanged: onChanged),
+            ),
+          )
+          .toList(),
     );
   }
 }
@@ -197,7 +205,14 @@ class _MealCardState extends State<_MealCard> {
   /// Renders the meal's photo(s) with a per-image remove button: a single
   /// full-width image, or a horizontally scrollable strip when there are more.
   Widget _mealImages(Map<String, String> headers, int count) {
-    Widget tile(int i, double? width) => Stack(
+    Widget tile(int i, double? width) {
+      // 只解碼「顯示大小 × 裝置像素密度」的解析度，不要解整張原圖。照片是
+      // 相機原圖（可能 12MP 以上），縮圖只顯示 160px 高，解整張原圖是照片
+      // 很多時上下滑動卡頓的主因。
+      final cacheWidth = ((width ?? MediaQuery.sizeOf(context).width) *
+              MediaQuery.devicePixelRatioOf(context))
+          .round();
+      return Stack(
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
@@ -207,6 +222,9 @@ class _MealCardState extends State<_MealCard> {
                 cacheManager: FoodImageCacheManager.instance,
                 height: 160,
                 width: width ?? double.infinity,
+                // memCacheWidth 會透過 ResizeImage 讓引擎以這個寬度解碼，
+                // 大幅減少解整張原圖（12MP 以上）的耗時與記憶體。
+                memCacheWidth: cacheWidth,
                 fit: BoxFit.cover,
                 errorWidget: (_, _, _) => Container(
                   height: 120,
@@ -236,6 +254,7 @@ class _MealCardState extends State<_MealCard> {
             ),
           ],
         );
+    }
     if (count <= 1) return tile(0, null);
     return SizedBox(
       height: 160,

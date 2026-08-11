@@ -595,12 +595,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
           const SizedBox(height: 12),
-          MealCaptureForm(
-            controller: _captureController,
-            onSaved: _loadMeals,
-            initialAdvice: _nextMealAdvice,
-            showAdvice: !_weekView && _isToday,
-            savedFoodsRevision: _savedFoodsRevision,
+          // 表單獨立重繪：AI 分析狀態變化或輸入時的重繪不會連帶重繪下方的
+          // 餐點照片列表，照片很多時滑動更順。
+          RepaintBoundary(
+            child: MealCaptureForm(
+              controller: _captureController,
+              onSaved: _loadMeals,
+              initialAdvice: _nextMealAdvice,
+              showAdvice: !_weekView && _isToday,
+              savedFoodsRevision: _savedFoodsRevision,
+            ),
           ),
           const SizedBox(height: 12),
           _mealsSection(),
