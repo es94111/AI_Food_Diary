@@ -1377,7 +1377,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         item: item,
         index: index,
         showRating: false,
-        onChanged: () => setState(() {}),
+        // 不要在每次打字時重建整個表單：欄位本身會維護自己的文字狀態，
+        // item 也是在原地被修改，送出時直接讀取即可。每次都 setState 會連
+        // 帶重建「快速加入」的圖片 chips 與建議卡，導致手動新增時嚴重卡頓。
+        onChanged: () {},
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1929,7 +1932,9 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                     key: ObjectKey(entry.value),
                     item: entry.value,
                     index: entry.key,
-                    onChanged: () => setState(() {}),
+                    // 同手動輸入區：不要每次打字都重建整個確認頁，欄位狀態
+                    // 由 TextFormField 自己維護，item 原地修改即可。
+                    onChanged: () {},
                     trailing: _items.length == 1
                         ? null
                         : TextButton(
