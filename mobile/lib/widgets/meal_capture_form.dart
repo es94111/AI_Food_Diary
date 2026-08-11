@@ -969,9 +969,11 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             ],
             if (_mode == CaptureMode.describe) _describeSection(),
             if (_mode == CaptureMode.manual) ...[
-              _savedFoodsSection(),
+              // 快速加入的圖片 chips 載入完成時只重繪這一區，不會連帶重繪
+              // 整個表單（表單很長時，整份重繪是滑動卡頓的主因之一）。
+              RepaintBoundary(child: _savedFoodsSection()),
               const SizedBox(height: 12),
-              _manualSection(),
+              RepaintBoundary(child: _manualSection()),
             ],
             if (_error != null) ...[
               const SizedBox(height: 10),
@@ -1023,7 +1025,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                   style: TextStyle(color: p.amberAccent),
                 ),
               ),
-            if (widget.showAdvice && _advice.isNotEmpty) _adviceCard(),
+            if (widget.showAdvice && _advice.isNotEmpty)
+              // 建議卡獨立重繪：Markdown 解析與重排不會連帶重繪整個表單。
+              RepaintBoundary(child: _adviceCard()),
           ],
         ),
       ),
@@ -1400,40 +1404,52 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     );
   }
 
-  Widget _quickAddGroup(String label, List<SavedFood> foods) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: TextStyle(fontSize: 12, color: context.palette.inkSoft),
-        ),
-        const SizedBox(height: 4),
-        Wrap(
-          spacing: 6,
-          runSpacing: 6,
-          children: foods
-              .map(
-                (food) => ActionChip(
-                  avatar: food.hasImage
-                      ? CircleAvatar(
-                          backgroundImage: CachedNetworkImageProvider(
-                            SavedFoodService.imageUrl(food.id),
-                            headers: ImageCacheService.authHeaders(),
-                            cacheManager: FoodImageCacheManager.instance,
-                          ),
-                        )
-                      : null,
-                  label: Text('${food.name} · ${fmtNum(food.calories)}kcal'),
-                  onPressed: () => _addSavedFood(food),
-                ),
-              )
-              .toList(),
-        ),
-      ],
-    ),
-  );
+  Widget _quickAddGroup(String label, List<SavedFood> foods) {
+    final p = context.palette;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12, color: p.inkSoft)),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: foods
+                .map(
+                  (food) => ActionChip(
+                    // 只解碼「顯示大小 × 裝置像素密度」的解析度。常用食物的照
+                    // 片是拍照原圖（可能 1600px 以上），縮圖只顯示約 40px，解
+                    // 整張原圖是手動輸入畫面滑動卡頓的主因之一（與餐點照片
+                    // 同樣的修法）。
+                    avatar: food.hasImage
+                        ? CircleAvatar(
+                            backgroundImage: ResizeImage(
+                              CachedNetworkImageProvider(
+                                SavedFoodService.imageUrl(food.id),
+                                headers: ImageCacheService.authHeaders(),
+                                cacheManager: FoodImageCacheManager.instance,
+                              ),
+                              width: (40 *
+                                      MediaQuery.devicePixelRatioOf(context))
+                                  .round(),
+                              height: (40 *
+                                      MediaQuery.devicePixelRatioOf(context))
+                                  .round(),
+                            ),
+                          )
+                        : null,
+                    label: Text('${food.name} · ${fmtNum(food.calories)}kcal'),
+                    onPressed: () => _addSavedFood(food),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _adviceCard() {
     final p = context.palette;
