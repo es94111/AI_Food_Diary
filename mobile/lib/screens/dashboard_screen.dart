@@ -575,7 +575,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           _dateSwitcher(),
           const SizedBox(height: 12),
-          _calorieCard(totals, target),
+          // 熱量卡有模糊陰影（blurRadius 20），每次滑動重繪都很貴；獨立重繪
+          // 讓陰影只算一次，滑動時直接搬移快取圖層。
+          RepaintBoundary(child: _calorieCard(totals, target)),
           if (!_weekView && _isToday && _todayTotalCalories != null) ...[
             const SizedBox(height: 12),
             _netCalorieCard(totals.calories.round(), _todayTotalCalories!),
