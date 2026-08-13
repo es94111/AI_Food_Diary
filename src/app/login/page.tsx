@@ -1,13 +1,16 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { resolveTurnstileSiteKey } from "@/lib/turnstile";
 import { AuthForm } from "@/components/auth-form";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
-  const turnstileSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
+  const hdrs = await headers();
+  const turnstileSiteKey = resolveTurnstileSiteKey(hdrs.get("x-qa-bypass-token"));
   const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   return (

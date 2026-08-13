@@ -1,0 +1,55 @@
+appId: aifood.shao.one
+name: "Add a meal via manual entry, then delete it (keeps the test account clean)"
+tags:
+  - smoke
+env:
+  MEAL_NAME: "Maestro 測試餐點"
+---
+- launchApp:
+    clearState: true
+- runFlow: login.yaml
+
+# The capture form sits below the date switcher / calorie card / water card,
+# so scroll to it before switching to manual mode.
+- scrollUntilVisible:
+    element: "⌨️ 手動"
+    direction: DOWN
+- tapOn: "⌨️ 手動"
+
+- tapOn: "食物名稱"
+- inputText: ${MEAL_NAME}
+- tapOn: "熱量 kcal"
+- inputText: "120"
+- hideKeyboard
+
+- scrollUntilVisible:
+    element: "AI 分析並確認"
+    direction: DOWN
+- tapOn: "AI 分析並確認"
+
+# Manual mode still round-trips through the backend, so give it real time.
+- extendedWaitUntil:
+    visible: "查看結果"
+    timeout: 60000
+- tapOn: "查看結果"
+
+- scrollUntilVisible:
+    element: "確認並儲存餐點"
+    direction: DOWN
+- tapOn: "確認並儲存餐點"
+
+- extendedWaitUntil:
+    visible: ".*${MEAL_NAME}.*"
+    timeout: 20000
+- scrollUntilVisible:
+    element: ".*${MEAL_NAME}.*"
+    direction: DOWN
+
+# Clean up so the test account's diary doesn't accumulate junk on every run.
+- tapOn:
+    text: "刪除"
+    below: ".*${MEAL_NAME}.*"
+- tapOn: "刪除"
+- assertNotVisible: ".*${MEAL_NAME}.*"
+
+- runFlow: logout.yaml

@@ -1,0 +1,18 @@
+appId: aifood.shao.one
+name: "Smoke — login, dashboard tab navigation, logout"
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+- runFlow: login.yaml
+- assertVisible: "飲食"
+- assertVisible: "健康"
+- assertVisible: "設定"
+- tapOn: "健康"
+- assertVisible: "AI Food Diary · 健康"
+- tapOn: "設定"
+- assertVisible: "AI Food Diary · 設定"
+- tapOn: "飲食"
+- assertVisible: "AI Food Diary · 飲食"
+- runFlow: logout.yaml

@@ -3,7 +3,7 @@ import { createSession, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { apiRoute } from "@/lib/http";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import { getClientIp, verifyTurnstile } from "@/lib/turnstile";
+import { getClientIp, isQaBypassEmailAllowed, isQaBypassRequest, verifyTurnstile } from "@/lib/turnstile";
 import { loginSchema } from "@/lib/validators";
 
 export const POST = apiRoute(async (request: Request) => {
@@ -25,7 +25,8 @@ export const POST = apiRoute(async (request: Request) => {
   });
   if (emailLimited) return emailLimited;
 
-  const turnstileValid = await verifyTurnstile(body["cf-turnstile-response"], remoteIp);
+  const qaBypass = isQaBypassRequest(request) && isQaBypassEmailAllowed(email);
+  const turnstileValid = await verifyTurnstile(body["cf-turnstile-response"], remoteIp, qaBypass);
   if (!turnstileValid) {
     return NextResponse.json({ error: "請先完成人機驗證" }, { status: 400 });
   }
