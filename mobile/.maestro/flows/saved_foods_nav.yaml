@@ -1,0 +1,17 @@
+appId: aifood.shao.one
+name: "Saved foods manager — navigate in and back"
+tags:
+  - smoke
+---
+- launchApp:
+    clearState: true
+- runFlow: login.yaml
+- tapOn: "設定"
+- scrollUntilVisible:
+    element: "我的食物管理"
+    direction: DOWN
+- tapOn: "我的食物管理"
+- assertVisible: "我的食物管理"
+- back
+- assertVisible: "我的食物管理"
+- runFlow: logout.yaml

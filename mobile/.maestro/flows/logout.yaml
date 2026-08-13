@@ -1,0 +1,12 @@
+# Reusable logout subflow — run via `runFlow: logout.yaml` from a parent flow
+# that is currently on the dashboard (any tab).
+appId: aifood.shao.one
+---
+- tapOn: "設定"
+- scrollUntilVisible:
+    element: "登出"
+    direction: DOWN
+- tapOn: "登出"
+- extendedWaitUntil:
+    visible: "電子郵件"
+    timeout: 10000
