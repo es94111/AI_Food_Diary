@@ -20,7 +20,7 @@ if (hasReleaseKeystore) {
 
 android {
     namespace = "aifood.shao.one"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
