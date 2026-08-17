@@ -1,22 +1,29 @@
-# Base stage: patch the bundled npm so every derived stage (deps/builder/runner)
-# uses a version whose own dependencies don't trigger Trivy. node:24-alpine ships
-# npm 11 with vulnerable tar/brace-expansion/undici; npm 12 bundles fixed ones.
-# npm 12.0.1 still bundles brace-expansion 5.0.7 (CVE-2026-14257), so replace
-# only that bundled package until a newer stable npm includes version 5.0.8.
-FROM node:24-alpine AS node-base
-RUN npm install -g npm@12.0.1 \
-    && npm pack --silent --pack-destination /tmp brace-expansion@5.0.8 \
-    && echo "259c83caadc3e005227ca4cf381ec310b7fa5ec07759d3ee3710ada1bd6f1573ec49785d0221c1589fed27c1c073d687f3804afb924564b36424ac771bd93342  /tmp/brace-expansion-5.0.8.tgz" \
-        | sha512sum -c - \
-    && rm -rf /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
-    && mkdir -p /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
-    && tar -xzf /tmp/brace-expansion-5.0.8.tgz \
+# Base stage: pin the current Node 24 Alpine image and patch npm's bundled
+# dependencies so every derived stage (deps/builder/runner) passes Trivy.
+# As of 2026-08-17, Node 24.19.0 ships npm 11.17.0 and npm 12.0.2 still
+# bundles vulnerable brace-expansion/ip-address versions. Keep these targeted
+# replacements until an upstream npm release bundles brace-expansion >= 5.0.9
+# and ip-address >= 10.3.1.
+FROM node:24.19.0-alpine3.24 AS node-base
+RUN set -eux; \
+    npm install -g npm@12.0.2; \
+    npm pack --silent --pack-destination /tmp brace-expansion@5.0.9; \
+    npm pack --silent --pack-destination /tmp ip-address@10.3.1; \
+    rm -rf /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
+           /usr/local/lib/node_modules/npm/node_modules/ip-address; \
+    mkdir -p /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
+             /usr/local/lib/node_modules/npm/node_modules/ip-address; \
+    tar -xzf /tmp/brace-expansion-5.0.9.tgz \
         -C /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
-        --strip-components=1 \
-    && rm /tmp/brace-expansion-5.0.8.tgz \
-    && node -e "const p='/usr/local/lib/node_modules/npm/node_modules/brace-expansion'; const v=require(p + '/package.json').version; const out=require(p).expand('{a,b}'); if (v !== '5.0.8' || out.join(',') !== 'a,b') throw new Error('invalid npm bundled brace-expansion: ' + v)" \
-    && npm --version >/dev/null \
-    && npx --version >/dev/null
+        --strip-components=1; \
+    tar -xzf /tmp/ip-address-10.3.1.tgz \
+        -C /usr/local/lib/node_modules/npm/node_modules/ip-address \
+        --strip-components=1; \
+    rm /tmp/brace-expansion-5.0.9.tgz /tmp/ip-address-10.3.1.tgz; \
+    node -e "const p='/usr/local/lib/node_modules/npm/node_modules/brace-expansion'; const v=require(p + '/package.json').version; const out=require(p).expand('{a,b}'); if (v !== '5.0.9' || out.join(',') !== 'a,b') throw new Error('invalid npm bundled brace-expansion: ' + v)"; \
+    node -e "const p='/usr/local/lib/node_modules/npm/node_modules/ip-address'; const v=require(p + '/package.json').version; if (v !== '10.3.1') throw new Error('invalid npm bundled ip-address: ' + v)"; \
+    test "$(npm --version)" = "12.0.2"; \
+    test "$(npx --version)" = "12.0.2"
 
 FROM node-base AS deps
 WORKDIR /app
@@ -50,7 +57,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 # Patch OS packages (e.g. openssl/libcrypto3/libssl3) that lag behind the
-# node:24-alpine tag, so Trivy doesn't fail on already-fixed CVEs.
+# pinned Alpine base, so Trivy doesn't fail on already-fixed CVEs.
 RUN apk upgrade --no-cache
 # .next is owned by node so `next start` can write its runtime cache; the rest
 # stays read-only (root-owned, world-readable) for the unprivileged user.
