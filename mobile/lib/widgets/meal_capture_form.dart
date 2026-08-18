@@ -1697,7 +1697,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
 }
 
 /// Reusable food row editor used in both the manual section and confirm sheet.
-class ItemEditor extends StatelessWidget {
+///
+/// Callers key this widget with `ObjectKey(item)`, so a new [State] (and thus
+/// fresh controllers) is only created when [item] itself is swapped for a
+/// different object (e.g. picking a saved food). While the same item is being
+/// typed into, the Element — and these controllers — persist across parent
+/// rebuilds instead of re-reading `item`'s fields, so an unrelated rebuild
+/// (image loading, the AI analysis banner, etc.) never stomps the user's
+/// cursor position mid-keystroke.
+class ItemEditor extends StatefulWidget {
   const ItemEditor({
     super.key,
     required this.item,
@@ -1714,6 +1722,66 @@ class ItemEditor extends StatelessWidget {
   final bool showRating;
 
   @override
+  State<ItemEditor> createState() => _ItemEditorState();
+}
+
+class _ItemEditorState extends State<ItemEditor> {
+  late final _nameCtrl = TextEditingController(text: widget.item.name)
+    ..addListener(_onNameChanged);
+  late final _amountCtrl =
+      TextEditingController(text: widget.item.estimatedAmount)
+        ..addListener(_onAmountChanged);
+  late final _calCtrl = TextEditingController(text: widget.item.calories)
+    ..addListener(_onCaloriesChanged);
+  late final _proteinCtrl = TextEditingController(text: widget.item.protein)
+    ..addListener(_onProteinChanged);
+  late final _fatCtrl = TextEditingController(text: widget.item.fat)
+    ..addListener(_onFatChanged);
+  late final _carbsCtrl = TextEditingController(text: widget.item.carbs)
+    ..addListener(_onCarbsChanged);
+
+  void _onNameChanged() {
+    widget.item.name = _nameCtrl.text;
+    widget.onChanged();
+  }
+
+  void _onAmountChanged() {
+    widget.item.estimatedAmount = _amountCtrl.text;
+    widget.onChanged();
+  }
+
+  void _onCaloriesChanged() {
+    widget.item.calories = _calCtrl.text;
+    widget.onChanged();
+  }
+
+  void _onProteinChanged() {
+    widget.item.protein = _proteinCtrl.text;
+    widget.onChanged();
+  }
+
+  void _onFatChanged() {
+    widget.item.fat = _fatCtrl.text;
+    widget.onChanged();
+  }
+
+  void _onCarbsChanged() {
+    widget.item.carbs = _carbsCtrl.text;
+    widget.onChanged();
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _amountCtrl.dispose();
+    _calCtrl.dispose();
+    _proteinCtrl.dispose();
+    _fatCtrl.dispose();
+    _carbsCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final p = context.palette;
     return Container(
@@ -1728,25 +1796,19 @@ class ItemEditor extends StatelessWidget {
           Row(
             children: [
               Text(
-                '食物 ${index + 1}',
+                '食物 ${widget.index + 1}',
                 style: const TextStyle(fontWeight: FontWeight.bold),
               ),
               const Spacer(),
-              ?trailing,
+              ?widget.trailing,
             ],
           ),
-          _field('食物名稱', item.name, (v) {
-            item.name = v;
-            onChanged();
-          }),
-          _field('份量，例如：150g', item.estimatedAmount, (v) {
-            item.estimatedAmount = v;
-            onChanged();
-          }),
-          if (showRating)
+          _field('食物名稱', _nameCtrl),
+          _field('份量，例如：150g', _amountCtrl),
+          if (widget.showRating)
             DropdownButtonFormField<String>(
-              initialValue: aiRatings.containsKey(item.aiRating)
-                  ? item.aiRating
+              initialValue: aiRatings.containsKey(widget.item.aiRating)
+                  ? widget.item.aiRating
                   : 'MANUAL',
               isDense: true,
               decoration: const InputDecoration(isDense: true),
@@ -1756,42 +1818,22 @@ class ItemEditor extends StatelessWidget {
                   )
                   .toList(),
               onChanged: (v) {
-                item.aiRating = v ?? 'MANUAL';
-                onChanged();
+                widget.item.aiRating = v ?? 'MANUAL';
+                widget.onChanged();
               },
             ),
           Row(
             children: [
-              Expanded(
-                child: _numField('熱量 kcal', item.calories, (v) {
-                  item.calories = v;
-                  onChanged();
-                }),
-              ),
+              Expanded(child: _numField('熱量 kcal', _calCtrl)),
               const SizedBox(width: 8),
-              Expanded(
-                child: _numField('蛋白質 g', item.protein, (v) {
-                  item.protein = v;
-                  onChanged();
-                }),
-              ),
+              Expanded(child: _numField('蛋白質 g', _proteinCtrl)),
             ],
           ),
           Row(
             children: [
-              Expanded(
-                child: _numField('脂肪 g', item.fat, (v) {
-                  item.fat = v;
-                  onChanged();
-                }),
-              ),
+              Expanded(child: _numField('脂肪 g', _fatCtrl)),
               const SizedBox(width: 8),
-              Expanded(
-                child: _numField('碳水 g', item.carbs, (v) {
-                  item.carbs = v;
-                  onChanged();
-                }),
-              ),
+              Expanded(child: _numField('碳水 g', _carbsCtrl)),
             ],
           ),
         ],
@@ -1799,25 +1841,23 @@ class ItemEditor extends StatelessWidget {
     );
   }
 
-  Widget _field(String hint, String value, ValueChanged<String> onChanged) {
+  Widget _field(String hint, TextEditingController controller) {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: TextFormField(
-        initialValue: value,
+        controller: controller,
         decoration: InputDecoration(hintText: hint, isDense: true),
-        onChanged: onChanged,
       ),
     );
   }
 
-  Widget _numField(String hint, String value, ValueChanged<String> onChanged) {
+  Widget _numField(String hint, TextEditingController controller) {
     return Padding(
       padding: const EdgeInsets.only(top: 6),
       child: TextFormField(
-        initialValue: value,
+        controller: controller,
         keyboardType: const TextInputType.numberWithOptions(decimal: true),
         decoration: InputDecoration(hintText: hint, isDense: true),
-        onChanged: onChanged,
       ),
     );
   }

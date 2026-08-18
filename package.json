@@ -1,6 +1,6 @@
 {
   "name": "ai-food-diary",
-  "version": "0.68.2",
+  "version": "0.68.3",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -24,8 +24,8 @@
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1111.0",
-    "@aws-sdk/s3-request-presigner": "^3.1111.0",
+    "@aws-sdk/client-s3": "^3.1112.0",
+    "@aws-sdk/s3-request-presigner": "^3.1112.0",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
     "@sentry/nextjs": "^10.70.0",
@@ -36,7 +36,7 @@
     "ioredis": "^6.0.0",
     "jose": "^6.2.9",
     "next": "^16.3.1",
-    "openai": "^7.4.0",
+    "openai": "^7.5.0",
     "prisma": "^7.9.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
