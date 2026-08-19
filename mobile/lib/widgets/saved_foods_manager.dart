@@ -435,11 +435,19 @@ class _SavedFoodsManagerState extends State<SavedFoodsManager> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: CachedNetworkImage(
-                        imageUrl: SavedFoodService.imageUrl(food.id),
+                        // 只下載伺服器端縮圖，不要抓整張原圖（照片可能
+                        // 1600px 以上，列表縮圖只顯示 48px）。
+                        imageUrl: SavedFoodService.imageUrl(
+                          food.id,
+                          width: SavedFoodService.thumbWidth,
+                        ),
                         httpHeaders: _authHeaders(),
                         cacheManager: FoodImageCacheManager.instance,
                         width: 48,
                         height: 48,
+                        memCacheWidth: (48 *
+                                MediaQuery.devicePixelRatioOf(context))
+                            .round(),
                         fit: BoxFit.cover,
                         errorWidget: (_, _, _) => const SizedBox.shrink(),
                       ),

@@ -408,11 +408,18 @@ class _SavedFoodEditorState extends State<SavedFoodEditor> {
           )
         : hasExisting
         ? CachedNetworkImage(
-            imageUrl: SavedFoodService.imageUrl(editing.id),
+            // 只下載伺服器端縮圖，不要抓整張原圖（照片可能 1600px 以上，
+            // 編輯器的預覽縮圖只顯示 56px）。
+            imageUrl: SavedFoodService.imageUrl(
+              editing.id,
+              width: SavedFoodService.thumbWidth,
+            ),
             httpHeaders: _authHeaders(),
             cacheManager: FoodImageCacheManager.instance,
             width: 56,
             height: 56,
+            memCacheWidth: (56 * MediaQuery.devicePixelRatioOf(context))
+                .round(),
             fit: BoxFit.cover,
             errorWidget: (_, _, _) => _noPhotoBox(),
           )

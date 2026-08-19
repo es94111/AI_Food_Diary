@@ -658,7 +658,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         {savedFoods.length ? (() => {
           const renderFood = (food: SavedFood) => (
             <button className="flex w-full items-center gap-2 rounded-xl bg-stone-50 p-2 text-left text-sm font-semibold text-stone-800" key={food.id} onClick={() => addSavedFood(food)} type="button">
-              {food.hasImage ? <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" src={`/api/saved-foods/${food.id}/image`} /> : null}
+              {food.hasImage ? <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" decoding="async" loading="lazy" src={`/api/saved-foods/${food.id}/image?w=256`} /> : null}
               <span>+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</span>
             </button>
           );

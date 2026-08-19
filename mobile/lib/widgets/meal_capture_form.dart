@@ -1426,8 +1426,15 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                     avatar: food.hasImage
                         ? CircleAvatar(
                             backgroundImage: ResizeImage(
+                              // 只下載伺服器端的縮圖（256px），不要抓整張原
+                              // 圖。照片是拍照原圖（可能 1600px 以上），縮圖
+                              // 只顯示約 40px，抓整張原圖是手動輸入畫面圖片
+                              // 載入慢、滑動卡頓的主因之一。
                               CachedNetworkImageProvider(
-                                SavedFoodService.imageUrl(food.id),
+                                SavedFoodService.imageUrl(
+                                  food.id,
+                                  width: SavedFoodService.thumbWidth,
+                                ),
                                 headers: ImageCacheService.authHeaders(),
                                 cacheManager: FoodImageCacheManager.instance,
                               ),

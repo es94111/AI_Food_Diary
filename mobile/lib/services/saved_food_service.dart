@@ -158,9 +158,20 @@ class SavedFoodService {
     return SavedFood.fromJson(Map<String, dynamic>.from(food));
   }
 
-  /// Authenticated endpoint for a saved food's photo.
-  static String imageUrl(String id) =>
-      '${ApiClient.baseUrl}/api/saved-foods/$id/image';
+  /// Server-side thumbnail width for small saved-food displays (quick-add
+  /// chips, list tiles, editor previews). Fixed so the URL is deterministic
+  /// and eviction is a single extra URL.
+  static const int thumbWidth = 256;
+
+  /// Authenticated endpoint for a saved food's photo. Pass [width] to request
+  /// a server-resized thumbnail instead of the full original photo — the
+  /// originals can be 1600px+ and dominate the download cost of the manual
+  /// meal-entry quick-add chips.
+  static String imageUrl(String id, {int? width}) {
+    final base = '${ApiClient.baseUrl}/api/saved-foods/$id/image';
+    if (width == null || width <= 0) return base;
+    return '$base?w=$width';
+  }
 
   static Future<SavedFood> create({
     String? barcode,
@@ -226,10 +237,11 @@ class SavedFoodService {
       ),
     );
     if (!ApiClient.ok(res)) _throwResponse(res, '更新食物失敗');
-    // Evict the cached thumbnail so a replaced/removed photo isn't served
-    // from disk on the next list render.
+    // Evict the cached image (full-size and thumbnail variants) so a
+    // replaced/removed photo isn't served from disk on the next list render.
     if ((imageDataUrl != null && imageDataUrl.isNotEmpty) || removeImage) {
       await ImageCacheService.evict(imageUrl(id));
+      await ImageCacheService.evict(imageUrl(id, width: thumbWidth));
     }
     return _foodFrom(res);
   }
