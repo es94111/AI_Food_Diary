@@ -148,6 +148,9 @@ model SavedFood {
   estimatedAmount String?
   encName         Json?
   encEstimatedAmount Json?
+  // Brand name, field-level encrypted (no legacy plaintext column — this is a
+  // new field with no pre-existing unencrypted rows to stay compatible with).
+  encBrand        Json?
   calories        Decimal  @default(0) @db.Decimal(8, 2)
   protein         Decimal  @default(0) @db.Decimal(8, 2)
   fat             Decimal  @default(0) @db.Decimal(8, 2)

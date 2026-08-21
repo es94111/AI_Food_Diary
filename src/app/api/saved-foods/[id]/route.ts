@@ -19,6 +19,7 @@ export const PATCH = apiRoute(async (request: Request, context: { params: Promis
   const merged = {
     barcode: body.barcode === undefined ? canonicalBarcode(current.barcode) ?? undefined : canonicalBarcode(body.barcode) ?? undefined,
     name: body.name ?? current.name,
+    brand: body.brand ?? current.brand,
     estimatedAmount: body.estimatedAmount ?? current.estimatedAmount,
     calories: body.calories ?? current.calories,
     protein: body.protein ?? current.protein,
@@ -39,6 +40,7 @@ export const PATCH = apiRoute(async (request: Request, context: { params: Promis
         return {
           id: String(food.id),
           name: String(food.name ?? ""),
+          brand: typeof food.brand === "string" ? food.brand : null,
           estimatedAmount: String(food.estimatedAmount ?? ""),
           barcode: typeof food.barcode === "string" ? food.barcode : null,
           calories: Number(food.calories ?? 0),

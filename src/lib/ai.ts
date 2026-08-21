@@ -26,6 +26,22 @@ const foodAnalysisSchema = z.object({
 
 export type FoodAnalysis = z.infer<typeof foodAnalysisSchema>;
 
+const brandSearchCandidateSchema = z.object({
+  name: z.string(),
+  packageInfo: z.string().nullable(),
+  calories: z.number().nullable(),
+  protein: z.number().nullable(),
+  fat: z.number().nullable(),
+  carbs: z.number().nullable()
+});
+
+const brandSearchAnalysisSchema = z.object({
+  candidates: z.array(brandSearchCandidateSchema)
+});
+
+export type BrandSearchCandidate = z.infer<typeof brandSearchCandidateSchema>;
+export type BrandSearchAnalysis = z.infer<typeof brandSearchAnalysisSchema>;
+
 // Step-wise estimation: ask the model to fix the portion in grams first, then
 // apply a per-100g nutrient density, instead of guessing total calories in one
 // leap. Decomposing "weight × density" both improves accuracy and makes the
@@ -45,6 +61,9 @@ const defaultFoodReestimatePrompt =
 
 const defaultNutritionLabelAnalysisPrompt =
   '你是營養標示辨識助手。請讀取圖片中的營養標示。每一張不同商品的營養標示都要各自建立一個 foods 項目（例如提供三張標示就回傳三個項目）；若同一張標示分多張照片拍攝，則合併成一個項目。若看得到品名請填入 name，否則 name 填「營養標示食品」。estimatedAmount 必須填標示上的每份份量或每包裝份量，例如「每份 30g」或「每包 240ml」。calories 使用 kcal，protein/fat/carbs 使用公克。若標示只有每 100g/100ml，estimatedAmount 就填「每 100g」或「每 100ml」。請為此食品給 aiRating：GOOD 代表較推薦，OK 代表普通，LIMIT 代表建議少吃。只輸出 JSON，不要 Markdown。必須使用這個格式：{"foods":[{"name":"食物名稱","estimatedAmount":"每份份量","calories":0,"protein":0,"fat":0,"carbs":0,"aiRating":"OK"}],"total":{"calories":0,"protein":0,"fat":0,"carbs":0},"confidence":0.8,"notes":"說明辨識到的份量基準與任何假設"}。所有營養數字必須是 number。';
+
+const defaultBrandSearchAnalysisPrompt =
+  '你是食品營養標示判讀助手。以下是根據使用者提供的廠牌與品項名稱，從網路搜尋取得的公開資料（標題與摘要）。請只依據這些搜尋結果判斷實際商品，整理出最多 5 筆與使用者輸入最相符的候選（例如不同包裝規格或口味），依相符程度排序。每筆候選需包含 name（完整商品名稱）、packageInfo（包裝規格或口味描述，例如「每瓶 245ml」，找不到就填 null）、calories（kcal）、protein（公克）、fat（公克）、carbs（公克）。任何欄位若搜尋結果中沒有明確數據，一律填 null，絕對不可以自行推測或捏造數字。若搜尋結果中完全找不到與此廠牌／品項相符的商品，請回傳空陣列。只輸出 JSON，不要 Markdown。必須使用這個格式：{"candidates":[{"name":"商品名稱","packageInfo":"包裝規格","calories":0,"protein":0,"fat":0,"carbs":0}]}。使用者輸入的廠牌：{{brand}}，品項名稱：{{itemName}}。搜尋結果：\n{{searchResults}}';
 
 const defaultNextMealAdvicePrompt =
   '請用繁體中文提供下一餐建議。使用者目標: {{goal}}。每日熱量目標: {{calorieTarget}} kcal。目前今日攝取: {{todayCalories}} kcal, 蛋白質 {{todayProtein}}g, 脂肪 {{todayFat}}g, 碳水 {{todayCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，避免醫療診斷。只輸出 JSON，不要 Markdown，必須使用這個格式：{"remainingCalories":0,"suggestedMeal":{"name":"餐點名稱","items":["品項與份量"],"calories":0,"protein":0,"fat":0,"carbs":0,"reason":"建議原因"},"avoid":[{"item":"應避免的食物","reason":"原因"}],"notes":"提醒或免責說明"}。remainingCalories 為每日熱量目標減去今日已攝取（可為負）。suggestedMeal 的 calories/protein/fat/carbs 為該建議餐點的估算值，protein/fat/carbs 使用公克、calories 使用 kcal，全部為 number。items 至少列出 2 項、avoid 至少列出 1 項。';
@@ -124,7 +143,11 @@ function isGemini(config: AiConfig) {
 // notably `seed`, and it is picky about the image_url `detail` hint. Strip those
 // for Gemini so the identical request works across OpenAI, Gemini and generic
 // compatible endpoints. Other providers are passed through untouched.
-function createCompletion(config: AiConfig, params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming) {
+function createCompletion(
+  config: AiConfig,
+  params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+  requestOptions?: { signal?: AbortSignal }
+) {
   let finalParams = params;
   if (isGemini(config)) {
     const { seed: _seed, messages, ...rest } = params;
@@ -149,7 +172,7 @@ function createCompletion(config: AiConfig, params: OpenAI.Chat.Completions.Chat
       }) as OpenAI.Chat.Completions.ChatCompletionMessageParam[]
     };
   }
-  return client(config).chat.completions.create(finalParams);
+  return client(config).chat.completions.create(finalParams, requestOptions);
 }
 
 // Only trim trailing slashes — the base URL must already include the correct
@@ -297,6 +320,32 @@ function normalizeFoodAnalysis(parsed: unknown): FoodAnalysis {
     confidence: Math.min(numberValue(pickValue(source, ["confidence", "信心", "可信度"])) || 0.7, 1),
     notes: textValue(pickValue(source, ["notes", "note", "說明", "備註"]), "AI 自動分析。")
   });
+}
+
+function nullableNumberValue(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+// Tolerant of alternate key names the same way normalizeFoodAnalysis is, but
+// unlike it, missing nutrition fields stay `null` rather than defaulting to 0 —
+// FR-008 requires unknown values stay visibly unknown instead of being guessed.
+function normalizeBrandSearchAnalysis(parsed: unknown): BrandSearchAnalysis {
+  const source = typeof parsed === "object" && parsed ? (parsed as Record<string, unknown>) : {};
+  const rawCandidates = pickValue(source, ["candidates", "items", "products", "候選"]);
+  const candidates = (Array.isArray(rawCandidates) ? rawCandidates : []).map((rawCandidate) => {
+    const candidate = typeof rawCandidate === "object" && rawCandidate ? (rawCandidate as Record<string, unknown>) : {};
+    return {
+      name: textValue(pickValue(candidate, ["name", "productName", "品名", "名稱"]), "未知品項"),
+      packageInfo: textValue(pickValue(candidate, ["packageInfo", "package", "份量", "規格"]), "") || null,
+      calories: nullableNumberValue(pickValue(candidate, ["calories", "kcal", "熱量"])),
+      protein: nullableNumberValue(pickValue(candidate, ["protein", "protein_g", "蛋白質"])),
+      fat: nullableNumberValue(pickValue(candidate, ["fat", "fat_g", "脂肪"])),
+      carbs: nullableNumberValue(pickValue(candidate, ["carbs", "carbohydrates", "carb_g", "碳水", "碳水化合物"]))
+    };
+  });
+  return brandSearchAnalysisSchema.parse({ candidates });
 }
 
 function promptFromEnv(name: string, fallback: string) {
@@ -455,6 +504,43 @@ export async function analyzeManualFoodItems(config: AiConfig, items: FoodAnalys
     }));
 
   return parseMealAnalysisText(completionText(response));
+}
+
+// Judges a set of web-search results against the user's brand + item-name input
+// and returns up to 5 candidate nutrition labels. Deliberately a separate step
+// from the web search itself (research.md §2) so the AI call stays on the same
+// provider-agnostic chat-completions pipeline as every other analysis here —
+// no provider-specific "browse the web" tool is required. `signal` lets the
+// route (T013) enforce one combined timeout across both the search and this call.
+export async function analyzeBrandSearchCandidates(
+  config: AiConfig,
+  input: { brand: string; itemName: string; searchResultsText: string },
+  options: { signal?: AbortSignal } = {}
+): Promise<BrandSearchAnalysis> {
+  const prompt = renderPrompt(promptFromEnv("AI_BRAND_SEARCH_ANALYSIS_PROMPT", defaultBrandSearchAnalysisPrompt), {
+    brand: input.brand,
+    itemName: input.itemName,
+    searchResults: input.searchResultsText || "（無搜尋結果）"
+  });
+
+  const response = await withAgent("brand-search-analysis", config.textModel, () =>
+    createCompletion(
+      config,
+      {
+        model: config.textModel,
+        ...completionOptions({ json: true }),
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      },
+      { signal: options.signal }
+    ));
+
+  const analysis = normalizeBrandSearchAnalysis(parseJsonResponse(completionText(response)));
+  return { candidates: analysis.candidates.slice(0, 5) };
 }
 
 // Re-estimates nutrition for user-corrected items: unlike analyzeManualFoodItems

@@ -194,6 +194,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   bool _adviceLoading = false;
   String? _error;
   String? _pendingBarcode;
+  final _brandCtrl = TextEditingController();
+  final _brandItemNameCtrl = TextEditingController();
+  bool _brandSearchLoading = false;
+  String? _brandSearchError;
+  // null = not searched yet; [] = searched, no candidates (FR-007).
+  List<BrandSearchCandidate>? _brandCandidates;
+  EditableItem? _brandDraft;
+  bool _brandSaving = false;
   late String _advice = widget.initialAdvice;
   bool _adviceExpanded = true;
 
@@ -234,6 +242,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     _analysis.removeListener(_onAnalysisChanged);
     _descriptionCtrl.dispose();
     _foodSearchCtrl.dispose();
+    _brandCtrl.dispose();
+    _brandItemNameCtrl.dispose();
     super.dispose();
   }
 
@@ -697,10 +707,98 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       ..carbs = fmtNum(saved.carbs);
   }
 
+  bool get _brandDraftIncomplete {
+    final draft = _brandDraft;
+    if (draft == null) return true;
+    return draft.calories.trim().isEmpty ||
+        draft.protein.trim().isEmpty ||
+        draft.fat.trim().isEmpty ||
+        draft.carbs.trim().isEmpty;
+  }
+
+  void _resetBrandSearch() {
+    setState(() {
+      _brandCtrl.clear();
+      _brandItemNameCtrl.clear();
+      _brandSearchLoading = false;
+      _brandSearchError = null;
+      _brandCandidates = null;
+      _brandDraft = null;
+    });
+  }
+
+  void _selectBrandCandidate(BrandSearchCandidate candidate) {
+    setState(() {
+      _brandDraft = EditableItem(
+        name: candidate.name,
+        estimatedAmount: candidate.packageInfo ?? '',
+        calories: candidate.calories == null ? '' : fmtNum(candidate.calories!),
+        protein: candidate.protein == null ? '' : fmtNum(candidate.protein!),
+        fat: candidate.fat == null ? '' : fmtNum(candidate.fat!),
+        carbs: candidate.carbs == null ? '' : fmtNum(candidate.carbs!),
+      );
+    });
+  }
+
+  Future<void> _runBrandSearch() async {
+    final brand = _brandCtrl.text.trim();
+    final itemName = _brandItemNameCtrl.text.trim();
+    if (brand.isEmpty || itemName.isEmpty) {
+      setState(() => _brandSearchError = brand.isEmpty ? '請先填寫廠牌。' : '請先填寫品項名稱。');
+      return;
+    }
+    setState(() {
+      _brandSearchError = null;
+      _brandSearchLoading = true;
+      _brandCandidates = null;
+      _brandDraft = null;
+    });
+    try {
+      final candidates = await MealService.analyzeBrandSearch(brand, itemName);
+      if (!mounted) return;
+      setState(() => _brandCandidates = candidates);
+      if (candidates.length == 1) _selectBrandCandidate(candidates.first);
+    } catch (e) {
+      if (mounted) setState(() => _brandSearchError = e.toString());
+    } finally {
+      if (mounted) setState(() => _brandSearchLoading = false);
+    }
+  }
+
+  Future<void> _saveBrandSearchFood() async {
+    final draft = _brandDraft;
+    if (draft == null || _brandDraftIncomplete) return;
+    if (!draft.hasName) {
+      setState(() => _brandSearchError = '請填寫食物名稱。');
+      return;
+    }
+    setState(() {
+      _brandSaving = true;
+      _brandSearchError = null;
+      // Add to the meal being recorded now (like a nutrition-label scan does);
+      // _applySavedFood below syncs it once the "我的食物" write completes.
+      _manualItems.removeWhere((e) => !e.hasName);
+      _manualItems.add(draft);
+    });
+    final saved = await _createSavedFoodWithWarning(
+      draft,
+      source: 'BRAND_SEARCH',
+      brand: _brandCtrl.text.trim(),
+    );
+    if (saved != null) {
+      _applySavedFood(draft, saved);
+      await _loadSavedFoods();
+    }
+    if (!mounted) return;
+    setState(() => _brandSaving = false);
+    if (saved != null) _resetBrandSearch();
+  }
+
   Future<SavedFood?> _createSavedFoodWithWarning(
     EditableItem item, {
     required String source,
     String? imageDataUrl,
+    String? brand,
   }) async {
     final mealItem = item.toMealItem();
     Future<SavedFood> create(
@@ -709,6 +807,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     }) => SavedFoodService.create(
       barcode: clearBarcode ? null : item.barcode,
       name: mealItem.name,
+      brand: brand,
       estimatedAmount: item.estimatedAmount.trim().isEmpty
           ? '1 份'
           : item.estimatedAmount.trim(),
@@ -784,6 +883,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                   ? match.food.barcode
                   : item.barcode,
               name: mealItem.name,
+              brand: brand,
               estimatedAmount: item.estimatedAmount.trim().isEmpty
                   ? '1 份'
                   : item.estimatedAmount.trim(),
@@ -1345,6 +1445,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               : const Icon(Icons.document_scanner),
           label: Text(_labelLoading ? '辨識中...' : '上傳營養標示'),
         ),
+        _brandSearchSection(),
         const SizedBox(height: 8),
         ..._manualItems.asMap().entries.map(
           (entry) => _manualItemEditor(
@@ -1363,6 +1464,179 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           label: const Text('新增另一項食物'),
         ),
       ],
+    );
+  }
+
+  Widget _brandSearchSection() {
+    final p = context.palette;
+    final canSearch =
+        _brandCtrl.text.trim().isNotEmpty &&
+        _brandItemNameCtrl.text.trim().isNotEmpty;
+    final candidates = _brandCandidates;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: p.surfaceAlt,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('品牌搜尋', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(
+            '分別輸入廠牌與品項名稱，AI 會搜尋公開營養標示並整理成候選供你確認。',
+            style: TextStyle(fontSize: 12, color: p.inkSoft),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _brandCtrl,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              hintText: '廠牌，例如：光泉',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _brandItemNameCtrl,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              hintText: '品項名稱，例如：保久乳',
+              isDense: true,
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: (!_brandSearchLoading && canSearch)
+                  ? _runBrandSearch
+                  : null,
+              child: Text(_brandSearchLoading ? '搜尋中...' : '搜尋營養標示'),
+            ),
+          ),
+          if (_brandSearchError != null) ...[
+            const SizedBox(height: 8),
+            Text(_brandSearchError!, style: TextStyle(color: p.danger)),
+          ],
+          if (candidates != null && candidates.isEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: p.surface,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('查無符合的營養標示資料，可改用下列方式新增：'),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      OutlinedButton(
+                        onPressed: _resetBrandSearch,
+                        child: const Text('改用手動輸入'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () {
+                          _resetBrandSearch();
+                          setState(() => _mode = CaptureMode.photo);
+                        },
+                        child: const Text('改用拍照上傳'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (candidates != null && candidates.length > 1 && _brandDraft == null) ...[
+            const SizedBox(height: 10),
+            Text(
+              '找到 ${candidates.length} 筆候選，請選擇正確的商品：',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: p.amberAccent,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ...candidates.map(
+              (candidate) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: InkWell(
+                  onTap: () => _selectBrandCandidate(candidate),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: p.surface,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          candidate.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          candidate.packageInfo ?? '包裝規格未知',
+                          style: TextStyle(fontSize: 12, color: p.inkSoft),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (_brandDraft != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'AI 估算值，請確認或修改後送出',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: p.amberAccent,
+              ),
+            ),
+            const SizedBox(height: 6),
+            ItemEditor(
+              key: ObjectKey(_brandDraft),
+              item: _brandDraft!,
+              index: 0,
+              showRating: false,
+              onChanged: () => setState(() {}),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                if (candidates != null && candidates.length > 1)
+                  TextButton(
+                    onPressed: () => setState(() => _brandDraft = null),
+                    child: const Text('重新選擇'),
+                  ),
+                const Spacer(),
+                FilledButton(
+                  onPressed: (!_brandSaving && !_brandDraftIncomplete)
+                      ? _saveBrandSearchFood
+                      : null,
+                  child: Text(_brandSaving ? '儲存中...' : '確認並存入我的食物'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 

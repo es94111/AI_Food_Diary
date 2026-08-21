@@ -94,6 +94,42 @@ class MealService {
     }, '營養標示分析失敗，請稍後再試');
   }
 
+  /// Brand + item-name search for a product's public nutrition label, judged
+  /// by AI into up to 5 candidates (FR-004). Does not persist — the caller
+  /// saves a selected/edited candidate via SavedFoodService.create().
+  static Future<List<BrandSearchCandidate>> analyzeBrandSearch(
+      String brand, String itemName) async {
+    final transaction =
+        Sentry.startTransaction('meal.analyze', 'ai.run', bindToScope: true);
+    transaction.setData('endpoint', '/api/foods/brand-search');
+    try {
+      final res = await _api.post('/api/foods/brand-search', data: {
+        'brand': brand,
+        'itemName': itemName,
+      });
+      if (!ApiClient.ok(res)) {
+        transaction.status = SpanStatus.internalError();
+        Sentry.logger.error('Brand search failed', attributes: {
+          'status': SentryAttribute.int(res.statusCode ?? 0),
+        });
+        throw ApiException(
+            ApiClient.errorMessage(res, '品牌搜尋失敗，請稍後再試'),
+            statusCode: res.statusCode);
+      }
+      final candidates = res.data['candidates'] as List? ?? [];
+      transaction.status = SpanStatus.ok();
+      return candidates
+          .map((e) => BrandSearchCandidate.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (e) {
+      transaction.throwable = e;
+      transaction.status ??= SpanStatus.internalError();
+      rethrow;
+    } finally {
+      await transaction.finish();
+    }
+  }
+
   static Future<List<FoodAnalysisItem>> _analyze(
       String path, Map<String, dynamic> body, String fallback) async {
     // Root trace for an AI analysis on the app side. bindToScope makes it the

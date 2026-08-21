@@ -87,3 +87,15 @@ export function enforceAiRateLimit(userId: string): Promise<NextResponse | null>
     message: "AI 分析請求過於頻繁，請稍後再試。"
   });
 }
+
+// Separate, narrower budget for the brand-search web-search step. Unlike the
+// per-user AI key above, the web-search API key is operator-level and shared
+// across every user (see research.md §5), so it needs its own limit to keep a
+// single account from burning through the whole operator's monthly quota.
+export function enforceBrandSearchRateLimit(userId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`brand-search:${userId}`, {
+    limit: 10,
+    windowSec: 600,
+    message: "品牌搜尋請求過於頻繁，請稍後再試。"
+  });
+}

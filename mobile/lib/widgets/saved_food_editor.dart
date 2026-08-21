@@ -16,6 +16,7 @@ const savedFoodSourceLabels = {
   'NUTRITION_LABEL': '營養標示',
   'BARCODE': '條碼綁定',
   'MEAL_ITEM': '從餐點保存',
+  'BRAND_SEARCH': '品牌搜尋',
 };
 
 enum _ConflictAction { use, update, restore, saveAsNew }

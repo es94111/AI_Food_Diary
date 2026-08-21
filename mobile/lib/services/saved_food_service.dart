@@ -176,6 +176,7 @@ class SavedFoodService {
   static Future<SavedFood> create({
     String? barcode,
     required String name,
+    String? brand,
     required String estimatedAmount,
     required double calories,
     required double protein,
@@ -192,6 +193,7 @@ class SavedFoodService {
         if (barcode != null && barcode.trim().isNotEmpty)
           'barcode': barcode.trim(),
         'name': name,
+        if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
         'estimatedAmount': estimatedAmount,
         'calories': calories,
         'protein': protein,
@@ -212,6 +214,7 @@ class SavedFoodService {
     String id, {
     String? barcode,
     required String name,
+    String? brand,
     required String estimatedAmount,
     required double calories,
     required double protein,
@@ -226,6 +229,7 @@ class SavedFoodService {
       data: savedFoodUpdatePayload(
         barcode: barcode,
         name: name,
+        brand: brand,
         estimatedAmount: estimatedAmount,
         calories: calories,
         protein: protein,
@@ -287,6 +291,7 @@ class SavedFoodService {
 Map<String, dynamic> savedFoodUpdatePayload({
   required String? barcode,
   required String name,
+  String? brand,
   required String estimatedAmount,
   required double calories,
   required double protein,
@@ -299,6 +304,9 @@ Map<String, dynamic> savedFoodUpdatePayload({
   // Null is intentional: omitting the field means "keep the old barcode".
   'barcode': barcode == null || barcode.trim().isEmpty ? null : barcode.trim(),
   'name': name,
+  // Omitted (not sent) when blank, matching the backend's PATCH semantics of
+  // "omission keeps the field unchanged" (there is no explicit brand-clear).
+  if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
   'estimatedAmount': estimatedAmount,
   'calories': calories,
   'protein': protein,

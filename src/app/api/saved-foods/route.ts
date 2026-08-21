@@ -69,6 +69,7 @@ export const POST = apiRoute(async (request: Request) => {
     return {
       id: String(food.id),
       name: food.name,
+      brand: food.brand,
       estimatedAmount: food.estimatedAmount,
       barcode: food.barcode,
       calories: food.calories,
@@ -88,6 +89,7 @@ export const POST = apiRoute(async (request: Request) => {
   const input = {
     id: "new",
     name: normalizedBody.name,
+    brand: normalizedBody.brand,
     estimatedAmount: normalizedBody.estimatedAmount,
     barcode: normalizedBody.barcode,
     calories: normalizedBody.calories,
@@ -123,6 +125,7 @@ export const POST = apiRoute(async (request: Request) => {
           food: {
             id: String(food.id),
             name: food.name,
+            brand: food.brand,
             estimatedAmount: food.estimatedAmount,
             barcode: food.barcode,
             calories: food.calories,

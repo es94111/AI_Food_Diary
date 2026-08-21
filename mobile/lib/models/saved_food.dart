@@ -4,11 +4,13 @@ class SavedFood {
   final String id;
   final String? barcode;
   final String name;
+  final String? brand;
   final String estimatedAmount;
   final double calories;
   final double protein;
   final double fat;
   final double carbs;
+  // 'MANUAL' | 'NUTRITION_LABEL' | 'BARCODE' | 'MEAL_ITEM' | 'BRAND_SEARCH'
   final String source;
   final bool isFavorite;
   final int useCount;
@@ -22,6 +24,7 @@ class SavedFood {
     required this.id,
     this.barcode,
     required this.name,
+    this.brand,
     required this.estimatedAmount,
     required this.calories,
     required this.protein,
@@ -41,6 +44,7 @@ class SavedFood {
     id: json['id'] as String,
     barcode: json['barcode'] as String?,
     name: (json['name'] as String?) ?? '',
+    brand: json['brand'] as String?,
     estimatedAmount: (json['estimatedAmount'] as String?) ?? '',
     calories: _toDouble(json['calories']),
     protein: _toDouble(json['protein']),

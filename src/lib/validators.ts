@@ -91,11 +91,12 @@ export const savedFoodSchema = z.object({
   barcode: z.string().trim().min(4).max(80).optional(),
   name: z.string().min(1).max(120),
   estimatedAmount: z.string().min(1).max(120),
+  brand: z.string().trim().min(1).max(80).optional(),
   calories: z.coerce.number().min(0).max(10000),
   protein: z.coerce.number().min(0).max(1000),
   fat: z.coerce.number().min(0).max(1000),
   carbs: z.coerce.number().min(0).max(1000),
-  source: z.enum(["MANUAL", "NUTRITION_LABEL", "BARCODE", "MEAL_ITEM"]).optional(),
+  source: z.enum(["MANUAL", "NUTRITION_LABEL", "BARCODE", "MEAL_ITEM", "BRAND_SEARCH"]).optional(),
   isFavorite: z.coerce.boolean().optional(),
   // Optional food photo as a data URL (uploaded to object storage by the route).
   imageDataUrl: z.string().startsWith("data:image/").optional(),
@@ -113,6 +114,13 @@ export const savedFoodPatchSchema = savedFoodSchema.partial().extend({
   // `null` explicitly clears an existing barcode; omission keeps it unchanged.
   barcode: z.string().trim().min(4).max(80).nullable().optional(),
   archived: z.coerce.boolean().optional()
+});
+
+// POST /api/foods/brand-search request body. Both fields are required — a
+// brand-only or item-only query is rejected before any search runs (FR-001).
+export const brandSearchSchema = z.object({
+  brand: z.string().trim().min(1).max(80),
+  itemName: z.string().trim().min(1).max(120)
 });
 
 export const savedFoodBatchArchiveSchema = z.object({

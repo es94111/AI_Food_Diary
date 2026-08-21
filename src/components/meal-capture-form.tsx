@@ -27,9 +27,27 @@ type SavedFood = {
   protein: number;
   fat: number;
   carbs: number;
-  source?: "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM";
+  source?: "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM" | "BRAND_SEARCH";
   isFavorite?: boolean;
   hasImage?: boolean;
+};
+
+type BrandSearchCandidate = {
+  name: string;
+  packageInfo: string | null;
+  calories: number | null;
+  protein: number | null;
+  fat: number | null;
+  carbs: number | null;
+};
+
+type BrandSearchDraft = {
+  name: string;
+  estimatedAmount: string;
+  calories: string;
+  protein: string;
+  fat: string;
+  carbs: string;
 };
 
 type SavedFoodConflictMatch = { food: SavedFood; archived?: boolean };
@@ -134,6 +152,15 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   const [reanalyzing, setReanalyzing] = useState(false);
   const [mealType, setMealType] = useState("LUNCH");
   const [savedFoodConflict, setSavedFoodConflict] = useState<SavedFoodConflictPrompt | null>(null);
+  const [brandInput, setBrandInput] = useState("");
+  const [brandItemNameInput, setBrandItemNameInput] = useState("");
+  const [brandSearchLoading, setBrandSearchLoading] = useState(false);
+  const [brandSearchError, setBrandSearchError] = useState("");
+  // null = not searched yet; [] = searched, no candidates (FR-007).
+  const [brandCandidates, setBrandCandidates] = useState<BrandSearchCandidate[] | null>(null);
+  const [brandDraft, setBrandDraft] = useState<BrandSearchDraft | null>(null);
+  const [brandSaving, setBrandSaving] = useState(false);
+  const brandDraftIncomplete = !brandDraft || [brandDraft.calories, brandDraft.protein, brandDraft.fat, brandDraft.carbs].some((value) => value.trim() === "");
 
   useEffect(() => {
     loadSavedFoods();
@@ -379,7 +406,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     return saveAsSavedFoodInternal(item, { silent: false, source: "MEAL_ITEM" });
   }
 
-  async function saveAsSavedFoodInternal(item: ManualItem, options: { silent: boolean; source: SavedFood["source"] }) {
+  async function saveAsSavedFoodInternal(item: ManualItem, options: { silent: boolean; source: SavedFood["source"]; brand?: string }) {
     if (!item.name.trim()) {
       if (!options.silent) setError("請先填寫食物名稱再存到我的食物。");
       return false;
@@ -387,6 +414,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     const editablePayload = {
       barcode: item.barcode?.trim() || undefined,
       name: item.name.trim(),
+      brand: options.brand?.trim() || undefined,
       estimatedAmount: item.estimatedAmount.trim() || "1 份",
       calories: Number(item.calories || 0),
       protein: Number(item.protein || 0),
@@ -491,6 +519,86 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     if (!prompt) return;
     setSavedFoodConflict(null);
     prompt.resolve(choice);
+  }
+
+  function resetBrandSearch() {
+    setBrandInput("");
+    setBrandItemNameInput("");
+    setBrandSearchLoading(false);
+    setBrandSearchError("");
+    setBrandCandidates(null);
+    setBrandDraft(null);
+  }
+
+  function selectBrandCandidate(candidate: BrandSearchCandidate) {
+    setBrandDraft({
+      name: candidate.name,
+      estimatedAmount: candidate.packageInfo ?? "",
+      calories: candidate.calories === null ? "" : String(candidate.calories),
+      protein: candidate.protein === null ? "" : String(candidate.protein),
+      fat: candidate.fat === null ? "" : String(candidate.fat),
+      carbs: candidate.carbs === null ? "" : String(candidate.carbs)
+    });
+  }
+
+  async function runBrandSearch() {
+    const brand = brandInput.trim();
+    const itemName = brandItemNameInput.trim();
+    if (!brand || !itemName) {
+      setBrandSearchError(!brand ? "請先填寫廠牌。" : "請先填寫品項名稱。");
+      return;
+    }
+    setBrandSearchError("");
+    setBrandSearchLoading(true);
+    setBrandCandidates(null);
+    setBrandDraft(null);
+    try {
+      const response = await fetch("/api/foods/brand-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brand, itemName })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setBrandSearchError(data.error ?? "品牌搜尋失敗，請稍後再試。");
+        return;
+      }
+      const candidates = Array.isArray(data.candidates) ? (data.candidates as BrandSearchCandidate[]) : [];
+      setBrandCandidates(candidates);
+      if (candidates.length === 1) selectBrandCandidate(candidates[0]);
+    } catch (error) {
+      setBrandSearchError(error instanceof Error ? `品牌搜尋失敗：${error.message}` : "品牌搜尋失敗，請稍後再試。");
+    } finally {
+      setBrandSearchLoading(false);
+    }
+  }
+
+  async function saveBrandSearchFood() {
+    if (!brandDraft || brandDraftIncomplete) return;
+    const name = brandDraft.name.trim();
+    if (!name) {
+      setBrandSearchError("請填寫食物名稱。");
+      return;
+    }
+    const item: ManualItem = {
+      id: crypto.randomUUID(),
+      name,
+      estimatedAmount: brandDraft.estimatedAmount.trim() || "1 份",
+      calories: brandDraft.calories,
+      protein: brandDraft.protein,
+      fat: brandDraft.fat,
+      carbs: brandDraft.carbs,
+      aiRating: "MANUAL"
+    };
+    setBrandSaving(true);
+    setBrandSearchError("");
+    // Add to the meal being recorded now (like a nutrition-label scan does);
+    // saveAsSavedFoodInternal below syncs it with the persisted savedFoodId once
+    // the "我的食物" write completes.
+    setManualItems((current) => [...current.filter((existing) => existing.name.trim()), item]);
+    const saved = await saveAsSavedFoodInternal(item, { silent: false, source: "BRAND_SEARCH", brand: brandInput.trim() });
+    setBrandSaving(false);
+    if (saved) resetBrandSearch();
   }
 
   async function lookupBarcode() {
@@ -710,6 +818,57 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
             </button>
           </div>
           <input ref={nutritionLabelInputRef} accept="image/*" capture="environment" multiple className="sr-only" type="file" onChange={(event) => analyzeNutritionLabel(event.target.files)} />
+        </div>
+        <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 p-3">
+          <p className="text-sm font-bold text-amber-950">品牌搜尋</p>
+          <p className="mt-1 text-xs text-amber-700">分別輸入廠牌與品項名稱，AI 會搜尋公開營養標示並整理成候選供你確認。</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setBrandInput(event.target.value)} placeholder="廠牌，例如：光泉" value={brandInput} />
+            <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setBrandItemNameInput(event.target.value)} placeholder="品項名稱，例如：保久乳" value={brandItemNameInput} />
+          </div>
+          <button className="mt-2 w-full cursor-pointer rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-700 disabled:opacity-60" disabled={brandSearchLoading || !brandInput.trim() || !brandItemNameInput.trim()} onClick={runBrandSearch} type="button">
+            {brandSearchLoading ? "搜尋中..." : "搜尋營養標示"}
+          </button>
+          {brandSearchError ? <p className="mt-2 text-sm text-red-600">{brandSearchError}</p> : null}
+          {brandCandidates && brandCandidates.length === 0 ? (
+            <div className="mt-3 rounded-xl bg-white p-3 text-sm text-stone-600">
+              <p>查無符合的營養標示資料，可改用下列方式新增：</p>
+              <div className="mt-2 flex gap-2">
+                <button className="rounded-full bg-stone-100 px-3 py-1.5 text-sm font-semibold" onClick={resetBrandSearch} type="button">改用手動輸入</button>
+                <button className="rounded-full bg-stone-100 px-3 py-1.5 text-sm font-semibold" onClick={() => { resetBrandSearch(); setMode("photo"); }} type="button">改用拍照上傳</button>
+              </div>
+            </div>
+          ) : null}
+          {brandCandidates && brandCandidates.length > 1 && !brandDraft ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs font-semibold text-amber-800">找到 {brandCandidates.length} 筆候選，請選擇正確的商品：</p>
+              {brandCandidates.map((candidate, index) => (
+                <button className="flex w-full flex-col items-start rounded-xl bg-white p-3 text-left text-sm" key={`${candidate.name}-${index}`} onClick={() => selectBrandCandidate(candidate)} type="button">
+                  <span className="font-semibold text-stone-900">{candidate.name}</span>
+                  <span className="text-xs text-stone-500">{candidate.packageInfo ?? "包裝規格未知"}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {brandDraft ? (
+            <div className="mt-3 rounded-xl bg-white p-3">
+              <p className="text-xs font-semibold text-amber-700">AI 估算值，請確認或修改後送出</p>
+              <input className="mt-2 w-full rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setBrandDraft((v) => v && { ...v, name: event.target.value })} placeholder="食物名稱" value={brandDraft.name} />
+              <input className="mt-2 w-full rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setBrandDraft((v) => v && { ...v, estimatedAmount: event.target.value })} placeholder="包裝規格／份量" value={brandDraft.estimatedAmount} />
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" onChange={(event) => setBrandDraft((v) => v && { ...v, calories: event.target.value })} placeholder="熱量 kcal（未知）" step="any" type="number" value={brandDraft.calories} />
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" onChange={(event) => setBrandDraft((v) => v && { ...v, protein: event.target.value })} placeholder="蛋白質 g（未知）" step="any" type="number" value={brandDraft.protein} />
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" onChange={(event) => setBrandDraft((v) => v && { ...v, fat: event.target.value })} placeholder="脂肪 g（未知）" step="any" type="number" value={brandDraft.fat} />
+                <input className="rounded-xl border border-stone-200 px-3 py-2" inputMode="decimal" onChange={(event) => setBrandDraft((v) => v && { ...v, carbs: event.target.value })} placeholder="碳水 g（未知）" step="any" type="number" value={brandDraft.carbs} />
+              </div>
+              <div className="mt-2 flex gap-2">
+                {brandCandidates && brandCandidates.length > 1 ? <button className="rounded-full bg-stone-100 px-3 py-1.5 text-sm font-semibold" onClick={() => setBrandDraft(null)} type="button">重新選擇</button> : null}
+                <button className="flex-1 rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60" disabled={brandSaving || brandDraftIncomplete} onClick={saveBrandSearchFood} type="button">
+                  {brandSaving ? "儲存中..." : "確認並存入我的食物"}
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
         <div className="mt-3 space-y-3">
           {manualItems.map((item, index) => (

@@ -3,6 +3,7 @@ export type SavedFoodMatchCandidate = {
   name: string;
   estimatedAmount: string;
   barcode?: string | null;
+  brand?: string | null;
   calories: number;
   protein: number;
   fat: number;
@@ -13,7 +14,7 @@ export type SavedFoodMatchCandidate = {
 
 export type SavedFoodMatch = {
   food: SavedFoodMatchCandidate;
-  reason: "barcode" | "name" | "similar";
+  reason: "barcode" | "name" | "similar" | "brand";
   score: number;
   archived: boolean;
 };
@@ -35,6 +36,21 @@ function closeEnough(left: number, right: number, ratio: number): boolean {
   if (left === 0 && right === 0) return true;
   const baseline = Math.max(Math.abs(left), Math.abs(right), 1);
   return Math.abs(left - right) / baseline <= ratio;
+}
+
+// FR-012: same brand + name equal/substring is treated as a likely duplicate on
+// its own, independent of the nutrition-similarity score below — values from a
+// web search or AI re-estimate can legitimately drift a bit for the same real
+// product, so requiring nutrition to also match would let true duplicates slip
+// through unflagged.
+function brandMatches(input: SavedFoodMatchCandidate, candidate: SavedFoodMatchCandidate): boolean {
+  const inputBrand = typeof input.brand === "string" ? normalizeFoodText(input.brand) : "";
+  const candidateBrand = typeof candidate.brand === "string" ? normalizeFoodText(candidate.brand) : "";
+  if (!inputBrand || !candidateBrand || inputBrand !== candidateBrand) return false;
+  const inputName = normalizeFoodText(input.name);
+  const candidateName = normalizeFoodText(candidate.name);
+  if (!inputName || !candidateName) return false;
+  return candidateName === inputName || candidateName.includes(inputName) || inputName.includes(candidateName);
 }
 
 function nutritionSimilarity(input: SavedFoodMatchCandidate, candidate: SavedFoodMatchCandidate): number {
@@ -68,6 +84,9 @@ export function findSavedFoodMatches(
   const matches = foods
     .filter((food) => food.id !== exactBarcodeFood?.id)
     .map((food): SavedFoodMatch | null => {
+      if (brandMatches(input, food)) {
+        return { food, reason: "brand" as const, score: 1, archived: !!food.archivedAt };
+      }
       const candidateName = normalizeFoodText(food.name);
       if (!inputName || !candidateName) return null;
       let score = nutritionSimilarity(input, food);

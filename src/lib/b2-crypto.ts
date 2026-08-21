@@ -1,5 +1,6 @@
+import { Prisma } from "@/generated/prisma/client";
 import { encryptJson } from "./encryption";
-import { decryptField } from "./field-crypto";
+import { decryptField, encryptField } from "./field-crypto";
 
 type MealItemLike = {
   name?: string | null;
@@ -12,7 +13,9 @@ type MealItemLike = {
   carbs?: unknown;
 };
 
-type SavedFoodLike = MealItemLike;
+// Brand has no legacy plaintext column (it's a new field, see encryptSavedFoodWrite
+// below), so it's only ever read through encBrand — not part of MealItemLike.
+type SavedFoodLike = MealItemLike & { encBrand?: unknown };
 
 type DailySummaryLike = {
   aiSummary?: string | null;
@@ -121,6 +124,7 @@ export function encryptSavedFoodWrite(food: {
   barcode?: string | null;
   name: string;
   estimatedAmount: string;
+  brand?: string | null;
   calories: number;
   protein: number;
   fat: number;
@@ -134,6 +138,9 @@ export function encryptSavedFoodWrite(food: {
     estimatedAmount: null,
     encName: encryptJson(food.name),
     encEstimatedAmount: encryptJson(food.estimatedAmount),
+    // Json columns need the Prisma.JsonNull sentinel to write an explicit SQL
+    // NULL — a plain `null` here would mean "leave the column unchanged".
+    encBrand: encryptField(food.brand ?? null) ?? Prisma.JsonNull,
     calories: food.calories,
     protein: food.protein,
     fat: food.fat,
@@ -144,11 +151,11 @@ export function encryptSavedFoodWrite(food: {
 }
 
 export function decryptSavedFood<T extends SavedFoodLike & { imageStorageKey?: string | null }>(food: T) {
-  const decrypted = decryptMealItem(food) as DecryptedMealItem<T> & { imageStorageKey?: string | null };
+  const decrypted = decryptMealItem(food) as DecryptedMealItem<T> & { imageStorageKey?: string | null; encBrand?: unknown };
   // Expose only whether a photo exists (clients fetch it via the image route);
   // never send the raw storage key.
-  const { imageStorageKey, ...rest } = decrypted;
-  return { ...rest, hasImage: !!imageStorageKey };
+  const { imageStorageKey, encBrand, ...rest } = decrypted;
+  return { ...rest, hasImage: !!imageStorageKey, brand: decryptField<string | null>(encBrand, null) };
 }
 
 export function encryptDailySummaryWrite(summary: {

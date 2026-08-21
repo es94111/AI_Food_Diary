@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-export type SavedFoodSource = "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM";
+export type SavedFoodSource = "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM" | "BRAND_SEARCH";
 
 type SavedFood = {
   id: string;
   barcode?: string | null;
   name: string;
+  brand?: string | null;
   estimatedAmount: string;
   calories: number;
   protein: number;
@@ -45,6 +46,7 @@ type ConflictState = { exact: ConflictMatch | null; matches: ConflictMatch[] };
 const emptyDraft: FoodDraft = {
   barcode: "",
   name: "",
+  brand: "",
   estimatedAmount: "1 份",
   calories: 0,
   protein: 0,
@@ -58,7 +60,8 @@ const sourceLabels: Record<SavedFoodSource, string> = {
   MANUAL: "手動新增",
   NUTRITION_LABEL: "營養標示",
   BARCODE: "條碼綁定",
-  MEAL_ITEM: "從餐點保存"
+  MEAL_ITEM: "從餐點保存",
+  BRAND_SEARCH: "品牌搜尋"
 };
 
 const tabs: { id: FoodTab; label: string }[] = [
@@ -214,6 +217,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
     return {
       barcode: barcode ?? (clearEmptyBarcode ? null : undefined),
       name: (override.name ?? food.name).trim(),
+      brand: (override.brand ?? food.brand)?.trim() || undefined,
       estimatedAmount: (override.estimatedAmount ?? food.estimatedAmount).trim() || "1 份",
       calories: Number(override.calories ?? food.calories ?? 0),
       protein: Number(override.protein ?? food.protein ?? 0),
@@ -419,6 +423,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
         </button>
         {editorOpen ? <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setDraft((v) => ({ ...v, name: event.target.value }))} placeholder="食物名稱" value={draft.name} />
+          <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setDraft((v) => ({ ...v, brand: event.target.value }))} placeholder="廠牌（選填）" value={draft.brand ?? ""} />
           <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setDraft((v) => ({ ...v, barcode: event.target.value }))} placeholder="產品條碼（選填）" value={draft.barcode ?? ""} />
           <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => setDraft((v) => ({ ...v, estimatedAmount: event.target.value }))} placeholder="份量，例如 1 份 / 100g" value={draft.estimatedAmount} />
           <div className="rounded-xl border border-stone-200 bg-stone-100 px-3 py-2 text-sm text-stone-600">
@@ -480,7 +485,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
               {activeTab !== "archived" ? <input aria-label={`選取 ${food.name}`} checked={selectedIds.has(food.id)} className="h-4 w-4 accent-amber-700" onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(food.id); else next.delete(food.id); return next; })} type="checkbox" /> : null}
               {food.hasImage ? <img alt={food.name} className="h-14 w-14 flex-none rounded-xl object-cover" decoding="async" loading="lazy" src={`/api/saved-foods/${food.id}/image?w=256`} /> : null}
               <div>
-                <p className="font-bold text-stone-900">{food.isFavorite ? "★ " : ""}{food.name} <span className="font-normal text-stone-500">· {food.estimatedAmount}</span></p>
+                <p className="font-bold text-stone-900">{food.isFavorite ? "★ " : ""}{food.brand ? `${food.brand} ` : ""}{food.name} <span className="font-normal text-stone-500">· {food.estimatedAmount}</span></p>
                 <p className="mt-1 text-sm text-stone-500">{food.calories} kcal · 蛋白質 {food.protein}g · 脂肪 {food.fat}g · 碳水 {food.carbs}g{food.barcode ? ` · 條碼 ${food.barcode}` : ""}</p>
                 <p className="mt-1 text-xs text-stone-400">{sourceLabels[food.source ?? "MANUAL"]} · 使用 {food.useCount ?? 0} 次{food.lastUsedAt ? ` · 上次 ${new Date(food.lastUsedAt).toLocaleDateString("zh-TW", { timeZone: "Asia/Taipei" })}` : ""}</p>
               </div>

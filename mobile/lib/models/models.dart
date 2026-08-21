@@ -229,6 +229,38 @@ class FoodAnalysisItem {
   );
 }
 
+/// One candidate nutrition label from POST /api/foods/brand-search. Unlike
+/// [FoodAnalysisItem], nutrition fields can be null — FR-008 requires the AI
+/// leave a value unknown rather than fabricate it when the search results
+/// don't contain it.
+class BrandSearchCandidate {
+  final String name;
+  final String? packageInfo;
+  final double? calories;
+  final double? protein;
+  final double? fat;
+  final double? carbs;
+
+  BrandSearchCandidate({
+    required this.name,
+    this.packageInfo,
+    this.calories,
+    this.protein,
+    this.fat,
+    this.carbs,
+  });
+
+  factory BrandSearchCandidate.fromJson(Map<String, dynamic> j) =>
+      BrandSearchCandidate(
+        name: (j['name'] as String?) ?? '',
+        packageInfo: j['packageInfo'] as String?,
+        calories: j['calories'] == null ? null : _toDouble(j['calories']),
+        protein: j['protein'] == null ? null : _toDouble(j['protein']),
+        fat: j['fat'] == null ? null : _toDouble(j['fat']),
+        carbs: j['carbs'] == null ? null : _toDouble(j['carbs']),
+      );
+}
+
 class DailySummary {
   final String aiSummary;
   final String aiRecommendation;
