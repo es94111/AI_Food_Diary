@@ -21,6 +21,7 @@ function formatSearchResultsText(results: Array<{ title: string; content: string
 export async function POST(request: Request) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), BRAND_SEARCH_TOTAL_TIMEOUT_MS);
+  let byoKey = true;
   try {
     const user = await requireUser();
     const searchLimited = await enforceBrandSearchRateLimit(user.id);
@@ -30,6 +31,7 @@ export async function POST(request: Request) {
 
     const body = brandSearchSchema.parse(await request.json());
     const config = resolveUserAiConfig(user);
+    byoKey = config.source === "user";
 
     const results = await webSearch(`${body.brand} ${body.itemName} 營養標示`, { signal: controller.signal });
     const { candidates } = await analyzeBrandSearchCandidates(
@@ -56,7 +58,8 @@ export async function POST(request: Request) {
     return aiErrorResponse(error, {
       logLabel: "Brand search analysis failed",
       fallbackMessage: "品牌搜尋失敗，請稍後再試。",
-      emptyContentMessage: "AI 服務沒有回傳分析內容，請確認文字模型是否可用。"
+      emptyContentMessage: "AI 服務沒有回傳分析內容，請確認文字模型是否可用。",
+      byoKey
     });
   } finally {
     clearTimeout(timeoutId);

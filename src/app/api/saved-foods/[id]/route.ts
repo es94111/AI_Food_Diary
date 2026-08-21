@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
 import { apiRoute } from "@/lib/http";
+import { enforceSavedFoodWriteRateLimit } from "@/lib/rate-limit";
 import { savedFoodPatchSchema } from "@/lib/validators";
 import { resolveSavedFoodImage } from "../route";
 import { canonicalBarcode, findSavedFoodMatches } from "@/lib/saved-food-matching";
@@ -10,6 +11,9 @@ import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 
 export const PATCH = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
+  // PATCH may upload a new 6 MB photo; share the saved-food write budget.
+  const limited = await enforceSavedFoodWriteRateLimit(user.id);
+  if (limited) return limited;
   const { id } = await context.params;
   const body = savedFoodPatchSchema.parse(await request.json());
   const existing = await prisma.savedFood.findFirst({ where: { id, userId: user.id } });

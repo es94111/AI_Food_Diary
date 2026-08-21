@@ -1,15 +1,20 @@
 import { z } from "zod";
 
+// Cap password length: argon2 has no practical input limit, so an unbounded
+// string turns every login/register into a CPU amplification vector. 128 is
+// far above any real passphrase (zod rejects before any hashing happens).
+const passwordSchema = z.string().min(8).max(128);
+
 export const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: passwordSchema,
   name: z.string().min(1).max(80).optional(),
   "cf-turnstile-response": z.string().optional()
 });
 
 export const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(1),
+  password: z.string().min(1).max(128),
   "cf-turnstile-response": z.string().optional()
 });
 
@@ -28,8 +33,36 @@ export const profileSchema = z.object({
 
 export const waterLogSchema = z.object({
   amountMl: z.coerce.number().int().min(1).max(5000),
-  drankAt: z.string().datetime().optional()
+  drankAt: boundedDatetime().optional()
 });
+
+// Timestamps must stay in a sane window: `z.string().datetime()` alone accepts
+// year 9999, letting records land on days no query will ever hit (and skewing
+// stats). Diary backfill is legitimate, so allow the past 2 years and a small
+// future window for clock skew.
+function boundedDatetime() {
+  return z.string().datetime().refine((value) => {
+    const time = Date.parse(value);
+    const now = Date.now();
+    return time >= now - 2 * 365 * 24 * 60 * 60 * 1000 && time <= now + 2 * 24 * 60 * 60 * 1000;
+  }, "時間戳超出合理範圍");
+}
+
+// A 6 MB binary image is ~8 MB as base64. The upload path enforces 6 MB after
+// decoding (storage.ts), but the AI-analyse paths feed the data URL straight to
+// the provider — cap the encoded length here so a multi-hundred-MB body is
+// rejected before JSON parsing hammers memory/CPU.
+export const MAX_IMAGE_DATA_URL_LENGTH = 8_400_000;
+
+function imageDataUrlSchema() {
+  return z
+    .string()
+    .startsWith("data:image/")
+    .refine((value) => value.length <= MAX_IMAGE_DATA_URL_LENGTH, "圖片超過 6 MB 上限");
+}
+
+// Reusable for route-local schemas (e.g. nutrition-label upload).
+export { imageDataUrlSchema };
 
 // Photo uploads may include several images of the same meal (different dishes or
 // angles). The whole batch is analysed together. `imageDataUrl` (singular) is kept
@@ -38,15 +71,18 @@ export const MAX_MEAL_IMAGES = 5;
 
 export const mealSchema = z.object({
   mealType: z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]),
-  imageDataUrl: z.string().startsWith("data:image/").optional(),
-  imageDataUrls: z.array(z.string().startsWith("data:image/")).min(1).max(MAX_MEAL_IMAGES).optional(),
+  imageDataUrl: imageDataUrlSchema().optional(),
+  imageDataUrls: z.array(imageDataUrlSchema()).min(1).max(MAX_MEAL_IMAGES).optional(),
   description: z.string().min(2).max(1200).optional(),
   // Photo flow only: run AI several times and keep the median (self-consistency).
   precise: z.boolean().optional(),
   // Saved foods whose stored photo should be attached to this meal by reference
   // (the meal points at the same object key instead of re-uploading a copy).
   savedFoodImageIds: z.array(z.string().min(1)).max(MAX_MEAL_IMAGES).optional(),
-  eatenAt: z.string().datetime().optional(),
+  eatenAt: boundedDatetime().optional(),
+  // Bounded: each item is fanned out into a MealItem row (and into AI prompts
+  // on the manual/reestimate paths), so an unbounded array is a row-count and
+  // token-cost amplification vector.
   manualItems: z
     .array(
       z.object({
@@ -59,6 +95,7 @@ export const mealSchema = z.object({
         aiRating: z.enum(["GOOD", "OK", "LIMIT", "MANUAL"]).optional()
       })
     )
+    .max(50)
     .optional()
 });
 
@@ -78,13 +115,14 @@ export const mealUpdateSchema = z.object({
       })
     )
     .min(1)
+    .max(50)
 });
 
 // Retroactively append photos to an existing meal (e.g. a meal logged via the
 // describe/manual flow without a photo). The route enforces MAX_MEAL_IMAGES
 // against the meal's current image count.
 export const mealImageAppendSchema = z.object({
-  imageDataUrls: z.array(z.string().startsWith("data:image/")).min(1).max(MAX_MEAL_IMAGES)
+  imageDataUrls: z.array(imageDataUrlSchema()).min(1).max(MAX_MEAL_IMAGES)
 });
 
 export const savedFoodSchema = z.object({
@@ -99,7 +137,7 @@ export const savedFoodSchema = z.object({
   source: z.enum(["MANUAL", "NUTRITION_LABEL", "BARCODE", "MEAL_ITEM", "BRAND_SEARCH"]).optional(),
   isFavorite: z.coerce.boolean().optional(),
   // Optional food photo as a data URL (uploaded to object storage by the route).
-  imageDataUrl: z.string().startsWith("data:image/").optional(),
+  imageDataUrl: imageDataUrlSchema().optional(),
   // Set to clear an existing photo (on edit).
   removeImage: z.coerce.boolean().optional()
 });

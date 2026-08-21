@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { apiRoute } from "@/lib/http";
 import { getDecryptedImage, isStorageKey } from "@/lib/storage";
 import { parseThumbWidth, resizeImageBytes } from "@/lib/image-thumb";
 
-export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+// Legacy rows may hold a raw data-URL key. Only serve actual image types —
+// serving an arbitrary stored content-type (e.g. text/html) would be stored XSS.
+const SERVABLE_CONTENT_TYPE = /^image\/(?:jpeg|png|webp|gif|avif)$/i;
+
+export const GET = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
   const width = parseThumbWidth(new URL(request.url).searchParams.get("w"));
@@ -18,6 +23,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!isStorageKey(food.imageStorageKey)) {
     const match = food.imageStorageKey.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) return NextResponse.json({ error: "圖片格式不支援" }, { status: 400 });
+    if (!SERVABLE_CONTENT_TYPE.test(match[1])) {
+      return NextResponse.json({ error: "圖片格式不支援" }, { status: 400 });
+    }
     const body = Buffer.from(match[2], "base64");
     if (width != null) {
       const thumb = await resizeImageBytes(body, match[1], width);
@@ -48,4 +56,4 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       "Cache-Control": "private, max-age=60"
     }
   });
-}
+});

@@ -13,3 +13,9 @@ export const prisma =
 if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
+
+// Structural check instead of `instanceof Prisma.PrismaClientKnownRequestError`
+// so callers don't depend on the generated client's error class identity.
+export function isPrismaErrorCode(error: unknown, code: string): boolean {
+  return typeof error === "object" && error !== null && "code" in error && error.code === code;
+}

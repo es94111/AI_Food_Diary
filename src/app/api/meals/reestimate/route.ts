@@ -7,6 +7,7 @@ import { enforceAiRateLimit } from "@/lib/rate-limit";
 import { mealSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
+  let byoKey = true;
   try {
     const user = await requireUser();
     const limited = await enforceAiRateLimit(user.id);
@@ -17,8 +18,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "請先修正至少一項食物再重新辨識。" }, { status: 400 });
     }
 
+    const config = resolveUserAiConfig(user);
+    byoKey = config.source === "user";
     const analysis = await reestimateFoodItems(
-      resolveUserAiConfig(user),
+      config,
       manualItems.map((item) => ({ name: item.name, estimatedAmount: item.estimatedAmount }))
     );
     return NextResponse.json({ analysis });
@@ -26,7 +29,8 @@ export async function POST(request: Request) {
     return aiErrorResponse(error, {
       logLabel: "Food re-estimate failed",
       fallbackMessage: "重新 AI 辨識失敗，請稍後再試。",
-      emptyContentMessage: "AI 服務沒有回傳分析內容，請確認文字模型是否可用。"
+      emptyContentMessage: "AI 服務沒有回傳分析內容，請確認文字模型是否可用。",
+      byoKey
     });
   }
 }

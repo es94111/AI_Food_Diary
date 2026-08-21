@@ -2,13 +2,20 @@ import "server-only";
 import { timingSafeEqual } from "node:crypto";
 
 // Best-effort client IP for rate-limiting and Turnstile. Cloudflare sets
-// cf-connecting-ip; otherwise we take the first hop of x-forwarded-for.
+// cf-connecting-ip (always the real client). Otherwise we take the LAST hop of
+// x-forwarded-for: proxies APPEND to XFF, so the rightmost entry is the one
+// added by our own infrastructure, while the leftmost is client-controlled and
+// trivially spoofable. Taking the first entry let an attacker rotate a fresh
+// rate-limit bucket per request just by sending random XFF values. Deployments
+// without any proxy have no XFF at all → "unknown" shares one safe bucket.
 export function getClientIp(request: Request): string | null {
-  return (
-    request.headers.get("cf-connecting-ip") ??
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    null
-  );
+  if (request.headers.get("cf-connecting-ip")) {
+    return request.headers.get("cf-connecting-ip");
+  }
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (!forwarded) return null;
+  const hops = forwarded.split(",").map((h) => h.trim()).filter(Boolean);
+  return hops.length ? hops[hops.length - 1] : null;
 }
 
 // Cloudflare's publicly documented "always passes" Turnstile test keypair
@@ -44,12 +51,13 @@ export function isQaBypassRequest(request: Request): boolean {
 
 // Extra blast-radius limit: even with a valid bypass token, only allow the
 // pre-approved test account(s) to skip Turnstile, so a leaked token can't be
-// used to credential-stuff arbitrary accounts. Unset TURNSTILE_QA_BYPASS_EMAILS
-// (comma-separated) to allow any email — set it in production once a test
-// account is designated.
+// used to credential-stuff arbitrary accounts. SECURE DEFAULT: when
+// TURNSTILE_QA_BYPASS_EMAILS is unset the bypass is denied for everyone — set
+// it (comma-separated emails of designated test accounts) on environments that
+// actually run Maestro tests.
 export function isQaBypassEmailAllowed(email: string): boolean {
   const allowlist = process.env.TURNSTILE_QA_BYPASS_EMAILS;
-  if (!allowlist) return true;
+  if (!allowlist) return false;
   const normalized = email.trim().toLowerCase();
   return allowlist
     .split(",")

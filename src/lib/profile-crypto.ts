@@ -22,13 +22,24 @@ type DecryptedBody = {
   weightKg: number | null;
 };
 
-const ENC_KEYS = ["encGender", "encBirthDate", "encHeightCm", "encWeightKg"] as const;
+// Ciphertext columns that must never reach an API response. enc* are stripped
+// after decryption; the encrypted* columns have no plaintext counterpart in the
+// response contract at all (the AI key is only ever surfaced as `hasKey`).
+const ENC_KEYS = [
+  "encGender",
+  "encBirthDate",
+  "encHeightCm",
+  "encWeightKg",
+  "encryptedAiApiKey",
+  "encryptedPreferences",
+  "encryptedAllergies"
+] as const;
 
 // Returns a profile with the sensitive body fields decrypted into plaintext and
-// the enc* columns stripped, so callers (and API responses) never see ciphertext.
-// Non-sensitive columns pass through unchanged. birthDate is normalised to a
-// string to match the API/UI contract. Generic + internal cast so any Prisma
-// profile row is accepted without structural assignability errors.
+// all ciphertext columns stripped, so callers (and API responses) never see
+// ciphertext. Non-sensitive columns pass through unchanged. birthDate is
+// normalised to a string to match the API/UI contract. Generic + internal cast
+// so any Prisma profile row is accepted without structural assignability errors.
 export function decryptProfile<T extends object>(
   profile: T | null | undefined
 ): (Omit<T, (typeof ENC_KEYS)[number]> & DecryptedBody) | null {

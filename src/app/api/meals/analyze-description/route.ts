@@ -7,6 +7,7 @@ import { enforceAiRateLimit } from "@/lib/rate-limit";
 import { mealSchema } from "@/lib/validators";
 
 export async function POST(request: Request) {
+  let byoKey = true;
   try {
     const user = await requireUser();
     const limited = await enforceAiRateLimit(user.id);
@@ -15,13 +16,16 @@ export async function POST(request: Request) {
     const description = body.description?.trim();
     if (!description) return NextResponse.json({ error: "請先描述你吃了什麼再進行 AI 分析。" }, { status: 400 });
 
-    const analysis = await analyzeMealDescription(resolveUserAiConfig(user), description);
+    const config = resolveUserAiConfig(user);
+    byoKey = config.source === "user";
+    const analysis = await analyzeMealDescription(config, description);
     return NextResponse.json({ analysis });
   } catch (error) {
     return aiErrorResponse(error, {
       logLabel: "Meal description analysis failed",
       fallbackMessage: "餐點文字分析失敗，請稍後再試。",
-      emptyContentMessage: "AI 服務沒有回傳分析內容，請確認文字模型是否可用。"
+      emptyContentMessage: "AI 服務沒有回傳分析內容，請確認文字模型是否可用。",
+      byoKey
     });
   }
 }

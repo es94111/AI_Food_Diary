@@ -24,6 +24,15 @@ export function forbidden(publicMessage = "權限不足。") {
   return new HttpError(403, "Forbidden", publicMessage);
 }
 
+// True when the request is a CROSS-SITE top-level navigation (someone followed
+// a link/redirect from another site). SameSite=Lax cookies ride along on such
+// navigations, so a GET that performs an expensive action would otherwise be
+// triggerable by an attacker's page. Native app clients (no Sec-Fetch-Site
+// header) and same-origin fetches are unaffected.
+export function isCrossSiteNavigation(request: Request): boolean {
+  return request.headers.get("sec-fetch-site") === "cross-site";
+}
+
 // Translates a thrown error into a JSON response. Known errors map to their
 // status; everything else becomes a 500 without leaking internals.
 export function apiError(error: unknown): NextResponse {

@@ -36,6 +36,9 @@ function decryptApiKey(encrypted: unknown): string {
 
 // Resolve the effective AI config for a user. Throws AiNotConfiguredError when
 // the user has not set up a key (admins fall back to the operator's env key).
+// `source` records whose key is in play: upstream provider errors may embed
+// relay/accounting internals, so operator-key errors must be sanitised before
+// being shown to a user (see aiErrorResponse's byoKey option).
 export function resolveUserAiConfig(user: UserLike): AiConfig {
   const profile = user.profile ?? null;
   const providerId = profile?.aiProvider;
@@ -47,7 +50,7 @@ export function resolveUserAiConfig(user: UserLike): AiConfig {
     const visionModel = profile?.aiVisionModel?.trim() || provider.defaultVisionModel;
     const textModel = profile?.aiTextModel?.trim() || provider.defaultTextModel;
     if (baseUrl && visionModel && textModel) {
-      return { apiKey, baseUrl, visionModel, textModel };
+      return { apiKey, baseUrl, visionModel, textModel, source: "user" };
     }
   }
 
@@ -58,7 +61,8 @@ export function resolveUserAiConfig(user: UserLike): AiConfig {
       apiKey: process.env.OPENAI_API_KEY,
       baseUrl: process.env.OPENAI_BASE_URL || process.env.OPENAI_API_BASE_URL || "https://api.openai.com/v1",
       visionModel: process.env.OPENAI_VISION_MODEL || "gpt-4.1-mini",
-      textModel: process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini"
+      textModel: process.env.OPENAI_TEXT_MODEL || "gpt-4.1-mini",
+      source: "operator"
     };
   }
 

@@ -26,30 +26,39 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app_password
-      POSTGRES_DB: food_diary
+      # Credentials come from .env (see .env.example). Defaults keep local dev
+      # working; CHANGE THEM for any deployment that isn't loopback-only.
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_password}
+      POSTGRES_DB: ${POSTGRES_DB:-food_diary}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # Bind to loopback only: publishing on 0.0.0.0 exposes an unauthenticated-
+    # surface DB (and a weak default password) to the host's network.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
 
   redis:
     image: redis:7-alpine
+    # Require a password — an unauthenticated Redis lets anyone read/write the
+    # rate-limit counters (or flush them) and is a known RCE pivot in some
+    # versions. REDIS_PASSWORD comes from .env; REDIS_URL in .env must match:
+    #   redis://:<REDIS_PASSWORD>@redis:6379
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-change_me_redis_password}"]
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
 
   minio:
     image: minio/minio:RELEASE.2025-04-22T22-12-26Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: change_me_minio_password
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me_minio_password}
     volumes:
       - minio_data:/data
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
 
 volumes:
   postgres_data:

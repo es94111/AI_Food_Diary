@@ -30,8 +30,18 @@ function upstreamDetail(error: APIError): string {
 
 export function aiErrorResponse(
   error: unknown,
-  options: { logLabel: string; fallbackMessage: string; emptyContentMessage?: string }
+  options: {
+    logLabel: string;
+    fallbackMessage: string;
+    emptyContentMessage?: string;
+    // True (default) when the request ran on the USER'S OWN API key — showing
+    // the provider's own message is fine then. When the request ran on the
+    // OPERATOR's key (admin fallback), upstream bodies can embed relay/
+    // accounting internals; sanitise to a generic message.
+    byoKey?: boolean;
+  }
 ): NextResponse {
+  const byoKey = options.byoKey ?? true;
   if (error instanceof HttpError) return apiError(error);
 
   const message = error instanceof Error ? error.message : "Unknown error";
@@ -58,9 +68,10 @@ export function aiErrorResponse(
   // our own 400 validation errors; the status the user needs is in the text.
   if (error instanceof APIError) {
     const status = typeof error.status === "number" && error.status > 0 ? error.status : "連線失敗";
-    const detail = upstreamDetail(error);
-    const hint =
-      error.status === 401 || error.status === 403
+    const detail = byoKey ? upstreamDetail(error) : "";
+    const hint = !byoKey
+      ? "此請求使用系統管理員設定的 AI 金鑰，請稍後再試；若持續失敗請聯絡管理員。"
+      : error.status === 401 || error.status === 403
         ? "API 金鑰可能無效或無權限，請至「使用者設定 → AI 設定」確認金鑰。"
         : error.status === 429
           ? "已達供應商速率或額度上限，請稍後再試或檢查方案額度。"

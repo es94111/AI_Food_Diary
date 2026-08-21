@@ -5,7 +5,7 @@ import { decryptDailySummary } from "@/lib/b2-crypto";
 import { generateAndStoreDailySummary } from "@/lib/daily-summary";
 import { prisma } from "@/lib/db";
 import { dayRangeUtc, normalizeDateStr, todayStr } from "@/lib/dates";
-import { apiRoute } from "@/lib/http";
+import { apiRoute, isCrossSiteNavigation } from "@/lib/http";
 import { enforceAiRateLimit } from "@/lib/rate-limit";
 import { resolveRequestTz } from "@/lib/timezone";
 
@@ -35,7 +35,12 @@ export const GET = apiRoute(async (request: Request) => {
     );
   }
 
-  // Past this point we spend AI quota — apply the shared per-user budget.
+  // Past this point we spend AI quota — apply the shared per-user budget, and
+  // refuse cross-site navigations (SameSite=Lax lets their cookies through, so
+  // a link from another site could otherwise burn the user's AI quota).
+  if (isCrossSiteNavigation(request)) {
+    return NextResponse.json({ error: "無法從外部網站觸發產生總結。" }, { status: 403 });
+  }
   const limited = await enforceAiRateLimit(user.id);
   if (limited) return limited;
 

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes } from "node:crypto";
 import argon2 from "argon2";
 import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
@@ -22,6 +23,20 @@ export async function hashPassword(password: string) {
 
 export async function verifyPassword(hash: string, password: string) {
   return argon2.verify(hash, password);
+}
+
+// Timing-side-channel guard for login: when the account doesn't exist we must
+// still burn roughly the same argon2 time as a failed password check, otherwise
+// response latency reveals which emails are registered. A lazily-created random
+// hash is used so the burn never matches a real password.
+let dummyHash: string | null = null;
+export async function burnPasswordVerifyTiming(password: string): Promise<void> {
+  dummyHash ??= await hashPassword(randomBytes(16).toString("hex"));
+  try {
+    await argon2.verify(dummyHash, password);
+  } catch {
+    // Wrong password against the dummy hash — exactly the work we wanted.
+  }
 }
 
 export async function createSession(userId: string, tokenVersion: number) {

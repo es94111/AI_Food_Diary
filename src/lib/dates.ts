@@ -99,6 +99,15 @@ export function todayStr(spec: TzSpec, now = new Date()): string {
   }).format(now);
 }
 
+/** True when [value] is a real calendar date (`2024-02-30` is not — Feb has 29). */
+export function isCalendarDateStr(value: string): boolean {
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const [, y, mo, d] = m.map(Number) as unknown as number[];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+}
+
 /** Current hour (0–23) as seen in the given zone. */
 export function hourInTz(spec: TzSpec, now = new Date()): number {
   if (spec.kind === "offset") {
@@ -112,7 +121,13 @@ export function hourInTz(spec: TzSpec, now = new Date()): number {
   return Number(parts.find((p) => p.type === "hour")?.value ?? "0");
 }
 
-/** Normalize a possibly-missing/invalid `date` param to `yyyy-MM-dd`, defaulting to today in `spec`. */
+/** Normalize a possibly-missing/invalid `date` param to `yyyy-MM-dd`, defaulting to today in `spec`.
+ *
+ * A syntactically-matching but impossible date (`2024-13-45`) used to slip
+ * through and produce an Invalid Date → Prisma validation error → 500. Real
+ * dates pass; everything else falls back to today (a safe, self-inflicted
+ * coercion for a list endpoint).
+ */
 export function normalizeDateStr(value: string | null | undefined, spec: TzSpec): string {
-  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : todayStr(spec);
+  return value && isCalendarDateStr(value) ? value : todayStr(spec);
 }

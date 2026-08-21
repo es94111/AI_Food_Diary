@@ -74,4 +74,6 @@ COPY --from=builder /app/tsconfig.json ./tsconfig.json
 # Drop root: run the app as the built-in unprivileged `node` user.
 USER node
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma db push --accept-data-loss && npm run start"]
+# Apply committed migrations only — never `db push`, which would happily drop
+# columns/tables on schema drift (irreversible data loss) at every container start.
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]

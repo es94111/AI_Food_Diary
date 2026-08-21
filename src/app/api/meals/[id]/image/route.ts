@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { apiRoute } from "@/lib/http";
+import { enforceMealWriteRateLimit } from "@/lib/rate-limit";
 import { getDecryptedImage, isStorageKey, uploadImage } from "@/lib/storage";
 import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import { mealImageAppendSchema, MAX_MEAL_IMAGES } from "@/lib/validators";
@@ -12,7 +13,11 @@ function currentKeys(meal: { imageStorageKey: string | null; imageStorageKeys: s
   return meal.imageStorageKeys.length ? meal.imageStorageKeys : meal.imageStorageKey ? [meal.imageStorageKey] : [];
 }
 
-export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
+// Legacy rows may hold a raw data-URL key. Only serve actual image types —
+// serving an arbitrary stored content-type (e.g. text/html) would be stored XSS.
+const SERVABLE_CONTENT_TYPE = /^image\/(?:jpeg|png|webp|gif|avif)$/i;
+
+export const GET = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
   const { id } = await context.params;
   const meal = await prisma.meal.findFirst({
@@ -28,6 +33,9 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!isStorageKey(key)) {
     const match = key.match(/^data:([^;]+);base64,(.+)$/);
     if (!match) return NextResponse.json({ error: "圖片格式不支援" }, { status: 400 });
+    if (!SERVABLE_CONTENT_TYPE.test(match[1])) {
+      return NextResponse.json({ error: "圖片格式不支援" }, { status: 400 });
+    }
     return new NextResponse(Buffer.from(match[2], "base64"), {
       headers: {
         "Content-Type": match[1],
@@ -45,13 +53,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       "Cache-Control": "private, max-age=60"
     }
   });
-}
+});
 
 // Retroactively attach photos to an existing meal (the describe/manual flows
 // don't capture one). Appends to the meal's image list, keeping imageStorageKey
 // pointed at the first for backward compatibility.
 export const POST = apiRoute(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const user = await requireUser();
+  // Each accepted photo is a fresh S3 object; keep a per-user budget.
+  const limited = await enforceMealWriteRateLimit(user.id);
+  if (limited) return limited;
   const { id } = await context.params;
   const { imageDataUrls } = mealImageAppendSchema.parse(await request.json());
 

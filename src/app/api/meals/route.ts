@@ -6,6 +6,7 @@ import { encryptJson } from "@/lib/encryption";
 import { decryptMeal, encryptMealItemWrite, encryptMealNotesWrite } from "@/lib/b2-crypto";
 import { dayRangeUtc, normalizeDateStr } from "@/lib/dates";
 import { apiError, apiRoute, HttpError } from "@/lib/http";
+import { enforceMealWriteRateLimit } from "@/lib/rate-limit";
 import { resolveRequestTz } from "@/lib/timezone";
 import { mealSchema, MAX_MEAL_IMAGES } from "@/lib/validators";
 import { uploadImage } from "@/lib/storage";
@@ -31,6 +32,10 @@ export async function POST(request: Request) {
   const uploadedKeys: string[] = [];
   try {
     const user = await requireUser();
+    // Meal creation fans out into rows + up to 5 image uploads; without a
+    // budget a scripted account could grow storage/DB cost without bound.
+    const limited = await enforceMealWriteRateLimit(user.id);
+    if (limited) return limited;
     const body = mealSchema.parse(await request.json());
     const manualItems = body.manualItems ?? [];
     const images = body.imageDataUrls?.length ? body.imageDataUrls : body.imageDataUrl ? [body.imageDataUrl] : [];

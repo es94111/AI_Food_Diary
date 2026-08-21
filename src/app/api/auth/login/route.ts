@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSession, verifyPassword } from "@/lib/auth";
+import { burnPasswordVerifyTiming, createSession, verifyPassword } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { apiRoute } from "@/lib/http";
 import { enforceRateLimit } from "@/lib/rate-limit";
@@ -32,7 +32,13 @@ export const POST = apiRoute(async (request: Request) => {
   }
 
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user || !(await verifyPassword(user.passwordHash, body.password))) {
+  if (!user) {
+    // Burn argon2 time so a missing account is indistinguishable from a wrong
+    // password by response latency (email enumeration via timing).
+    await burnPasswordVerifyTiming(body.password);
+    return NextResponse.json({ error: "Email 或密碼錯誤" }, { status: 401 });
+  }
+  if (!(await verifyPassword(user.passwordHash, body.password))) {
     return NextResponse.json({ error: "Email 或密碼錯誤" }, { status: 401 });
   }
 

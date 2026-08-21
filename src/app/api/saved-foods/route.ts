@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
 import { apiRoute } from "@/lib/http";
+import { enforceSavedFoodWriteRateLimit } from "@/lib/rate-limit";
 import { uploadImage } from "@/lib/storage";
 import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import { savedFoodCreateSchema } from "@/lib/validators";
@@ -56,6 +57,10 @@ export const GET = apiRoute(async (request: Request) => {
 
 export const POST = apiRoute(async (request: Request) => {
   const user = await requireUser();
+  // Creation may upload a 6 MB image and runs a duplicate scan over every
+  // stored food; keep a per-user budget on it.
+  const limited = await enforceSavedFoodWriteRateLimit(user.id);
+  if (limited) return limited;
   const body = savedFoodCreateSchema.parse(await request.json());
   const normalizedBody = {
     ...body,

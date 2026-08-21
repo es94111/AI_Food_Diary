@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptJson } from "@/lib/encryption";
 import { decryptField, decryptMetricValue } from "@/lib/field-crypto";
+import { enforceHealthSyncRateLimit } from "@/lib/rate-limit";
 import { getHealthSyncUserId } from "@/lib/health-auth";
 
 // Shape a stored HealthMetric row for the client: decrypt the value, decrypt
@@ -22,6 +23,24 @@ function toClientMetric(row: {
     value: decryptMetricValue({ value: row.value, encValue }) ?? 0,
     ...(raw !== null ? { raw } : {})
   };
+}
+
+// `raw` is stored (encrypted) and echoed back verbatim; without a size cap a
+// single batch could write hundreds of MB of opaque JSON to the DB.
+const MAX_RAW_JSON_CHARS = 32 * 1024;
+
+function boundedRaw() {
+  return z.unknown().refine(
+    (value) => {
+      if (value === undefined) return true;
+      try {
+        return (JSON.stringify(value) ?? "").length <= MAX_RAW_JSON_CHARS;
+      } catch {
+        return false;
+      }
+    },
+    "raw 資料超過大小上限"
+  ).optional();
 }
 
 const healthMetricSchema = z.object({
@@ -59,12 +78,14 @@ const healthMetricSchema = z.object({
     "NUTRITION",
     "WATER"
   ]),
-  value: z.coerce.number().finite().nonnegative(),
+  // Finite + non-negative + bounded: 1e12 dwarfs any real metric but blocks
+  // absurd values (1e308) that only poison charts.
+  value: z.coerce.number().finite().nonnegative().max(1e12),
   // Some metrics are dimensionless (e.g. BMI), so an empty unit is valid; only
   // cap the length. Rejecting empty units here would fail the whole batch.
   unit: z.string().max(32),
   measuredAt: z.string().datetime(),
-  raw: z.unknown().optional()
+  raw: boundedRaw()
 });
 
 const healthSyncSchema = z.object({
@@ -129,6 +150,9 @@ export async function POST(request: Request) {
   try {
     const auth = await getHealthSyncUserId(request);
     const user = auth ? { id: auth.userId } : await requireUser();
+    // Each batch is up to 500 metrics inside one transaction — cap the cadence.
+    const limited = await enforceHealthSyncRateLimit(user.id);
+    if (limited) return limited;
     const body = healthSyncSchema.parse(await request.json());
 
     const metrics = await prisma.$transaction(

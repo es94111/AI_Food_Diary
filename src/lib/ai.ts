@@ -79,6 +79,9 @@ export type AiConfig = {
   baseUrl: string;
   visionModel: string;
   textModel: string;
+  // Whose API key this config resolves to. "operator" = the admin fallback to
+  // the env-configured key; errors from it must not leak upstream detail.
+  source: "user" | "operator";
 };
 
 // Sampling controls shared by every completion. A low temperature is the single
@@ -92,6 +95,13 @@ const ANALYSIS_SEED = numberEnv("AI_ANALYSIS_SEED", 42);
 // median to be meaningful. Defaults to 3 samples; set to 1 to disable.
 const PRECISE_SAMPLES = Math.max(1, Math.min(Math.round(numberEnv("AI_MEAL_ANALYSIS_SAMPLES", 3)), 5));
 const PRECISE_TEMPERATURE = numberEnv("AI_MEAL_ANALYSIS_SAMPLE_TEMPERATURE", 0.5);
+
+// How many provider calls one precise-mode request fans out into. Exported so
+// the rate limiter can charge the request accordingly instead of counting it
+// as a single AI call.
+export function preciseSampleCount(): number {
+  return PRECISE_SAMPLES;
+}
 
 function numberEnv(name: string, fallback: number) {
   const value = Number(process.env[name]);
@@ -121,6 +131,16 @@ function completionOptions(opts: { json?: boolean; temperature?: number; seed?: 
   return options;
 }
 
+// Node's fetch (undici) follows 3xx redirects, including cross-origin and even
+// https→http downgrades. A malicious OpenAI-compatible base URL could otherwise
+// 302 the server into internal services / cloud metadata and have the response
+// body surface through error messages (SSRF). Disabling redirect following makes
+// any redirect attempt fail loudly as a normal APIError instead. Official
+// providers never redirect API calls, so this changes nothing legitimate.
+function noRedirectFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return fetch(input, { ...init, redirect: "manual" });
+}
+
 function client(config: AiConfig) {
   if (!config.apiKey) {
     throw new Error("AI_NOT_CONFIGURED");
@@ -129,7 +149,8 @@ function client(config: AiConfig) {
     apiKey: config.apiKey,
     baseURL: normalizeBaseUrl(config.baseUrl),
     timeout: AI_REQUEST_TIMEOUT_MS,
-    maxRetries: AI_REQUEST_MAX_RETRIES
+    maxRetries: AI_REQUEST_MAX_RETRIES,
+    fetch: noRedirectFetch
   });
 }
 
