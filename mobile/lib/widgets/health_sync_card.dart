@@ -590,18 +590,31 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
           if (chart != null) ...[const SizedBox(height: 12), chart],
           if (present.isNotEmpty) ...[
             const SizedBox(height: 8),
-            GridView.count(
-              crossAxisCount: 3,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              // Body tiles carry an extra timestamp line, so give them more height.
-              childAspectRatio: showHistory ? 1.05 : 1.4,
-              mainAxisSpacing: 8,
-              crossAxisSpacing: 8,
-              children: [
-                for (final m in present)
-                  _metricTile(group, m, showTime: showHistory),
-              ],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final columns = constraints.maxWidth < 360
+                    ? 1
+                    : constraints.maxWidth < 520
+                    ? 2
+                    : 3;
+                return GridView.count(
+                  crossAxisCount: columns,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  // Body tiles carry an extra timestamp line, so give them more height.
+                  childAspectRatio: columns == 1
+                      ? 3.4
+                      : showHistory
+                      ? 1.05
+                      : 1.4,
+                  mainAxisSpacing: 8,
+                  crossAxisSpacing: 8,
+                  children: [
+                    for (final m in present)
+                      _metricTile(group, m, showTime: showHistory),
+                  ],
+                );
+              },
             ),
           ],
         ],
