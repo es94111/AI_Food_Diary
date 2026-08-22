@@ -1,0 +1,24 @@
+# Web UI 需求摘要
+
+- **执行模式**：深度模式
+- **用户原始请求**：Design the Web application for this project. Before making design decisions, read `docs/ui-design-system-shared.md` as the shared cross-platform foundation. Analyze the existing Web code, design a desktop-first responsive Web experience, and do not modify production code or design the native Mobile App.
+- **产品名称**：AI Food Diary（AI 飲食記錄）
+- **产品定位**：AI 辅助的饮食记录与营养趋势 Web 工作台。用户可拍照、上传相片、描述或手动输入餐点，检查 AI 估算后确认储存，并通过历史、健康数据与每日反馈理解饮食节奏。
+- **目标平台**：仅 Web：桌面优先，覆盖平板与移动 Web；Android/Flutter 仅作为共享语义背景，不在本轮设计。
+- **目标用户**：大众日常健康用户，以及关注热量、宏量营养素、历史趋势和数据管理的健身/营养进阶用户。
+- **品牌调性**：温暖专业、可信、清晰、非评判式；保留共享设计系统的品牌色、字体、间距、圆角、语义色和繁体中文语气。
+- **本轮已确认方向**：
+  - Web 首版覆盖全域工作台：今日/历史饮食、健康趋势、饮水、我的食物、设置、状态与异常恢复。
+  - 桌面端采用高信息密度专业布局；仍遵循摘要优先、详情渐进展开，避免把页面做成难以扫描的数据墙。
+  - 纳入明亮与深色主题的 Web 语义 token、对比度与状态行为。
+- **核心功能优先级**：
+  - **P0**：登录/注册、今日饮食工作台、照片/描述/手动记录、AI 草稿审核与编辑、确认并储存、餐点列表与编辑、保存失败恢复。
+  - **P1**：历史日期/周视图、营养趋势、饮水、健康数据摘要与来源状态、我的食物搜索/筛选/批量整理、每日总结、状态中心。
+  - **P2**：条码/营养标示增强、品牌搜索、AI 设置、Google 绑定、隐私/数据管理、版本与 Android 下载、管理员设置。
+- **关键页面/流程**：今日工作台、历史/日期与周视图、新增餐点、AI 草稿审核、餐点详情、健康概览/趋势、我的食物、设置、状态中心、登录/注册。
+- **现有 Web 代码依据**：仓库没有 `web/` 目录；实际 Web 代码位于 `src/app/` 与 `src/components/`。重点现状包括 `src/app/dashboard/layout.tsx`、`src/components/dashboard-nav.tsx`、`src/app/dashboard/page.tsx`、`src/app/dashboard/health/page.tsx`、`src/app/dashboard/foods/page.tsx`、`src/app/dashboard/settings/page.tsx`、`src/components/meal-capture-form.tsx` 与 `src/app/globals.css`。
+- **现有实现约束**：Next.js App Router + TypeScript；现有 URL 以 `/dashboard`, `/dashboard/health`, `/dashboard/foods`, `/dashboard/settings` 为主；业务已有 AI 分析、确认储存、常用食物、Health Connect 数据展示和管理员能力，规范应优先重组界面而不是发明未实现的业务。
+- **共享设计系统必须保留**：`docs/ui-design-system-shared.md` 中的暖米色/炭色基础、amber/terracotta/olive 品牌语义、状态色与营养分类色、Plus Jakarta Sans + 繁体中文 fallback、4/8 基础间距、48px 交互目标、AI 草稿可编辑与非医疗化文案。
+- **交互与响应式要求**：桌面侧栏/顶部辅助区、表格/仪表板/表单/对话框、hover/focus/active/disabled/loading/error、键盘快捷键、焦点管理、平板抽屉/单栏转换、移动 Web 触控与无横向溢出。
+- **明确不做**：不设计原生 Mobile App；不修改生产代码；不生成 HTML 原型，除非后续阶段 4 经用户再次确认。
+- **待确认/待研究**：参考素材搜索方式、额外分析范围、正式 Logo/字体授权、深色主题上线范围与数据筛选/批量操作的最终产品规则。
