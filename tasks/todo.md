@@ -155,8 +155,8 @@
 ## Goal + acceptance criteria
 - [x] Translate the Android UI refinement into a user-facing Traditional Chinese changelog entry.
 - [x] Synchronize web/mobile version metadata to `0.72.0`.
-- [ ] Commit the scoped changes, squash merge them into `main`, push GitHub, and create the release tag.
-- [ ] Create the GitHub Release from the verified changelog entry.
+- [x] Commit the scoped changes, squash merge them into `main`, push GitHub, and create the release tag.
+- [x] Create the GitHub Release from the verified changelog entry.
 
 ## Release internal notes
 - Technical scope: publish the existing Android Flutter UI refinement, including focused capture/review routes, persistent background-analysis state, logout cleanup, responsive Health cards, accessibility semantics, and updated tests/flows; no API, schema, dependency, or platform integration changes.
@@ -168,7 +168,12 @@
 - Existing untracked `docs/ui-*` design artifacts are preserved but excluded from this release commit because they predate the implementation handoff.
 
 ## Verification plan
-- [ ] Validate `changelog.json` JSON and public-language forbidden-term checks.
-- [ ] Run web type/build checks if affected by version metadata.
-- [ ] Run targeted Flutter analyzer and full Flutter tests.
-- [ ] Review staged scope, commit, PR squash merge, tag, and GitHub Release.
+- [x] Validate `changelog.json` JSON and public-language forbidden-term checks.
+- [x] Run web type/build checks if affected by version metadata.
+- [x] Run targeted Flutter analyzer and full Flutter tests.
+- [x] Review staged scope, commit, PR squash merge, tag, and GitHub Release.
+
+## Results
+- Version metadata is synchronized at `0.72.0`; `v0.72.0` points to the squash-merged feature commit on `main`.
+- PR #116 was squash-merged, and GitHub Release `v0.72.0` was created from `changelog.json`.
+- Existing untracked `docs/ui-*` design artifacts remain intentionally outside the release commits.
