@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import 'api_client.dart';
 import 'app_logger.dart';
+import 'health_sync_validation.dart';
 import 'meal_service.dart';
 import 'water_service.dart';
 
@@ -527,12 +528,16 @@ class HealthService {
   static Map<String, dynamic> _payload(
       String type, double value, String unit, DateTime at,
       {List<Map<String, dynamic>>? raw}) {
+    // Keep the aggregate metric when the optional sleep timeline is too large.
+    final includeRaw = raw != null &&
+        raw.isNotEmpty &&
+        healthRawFitsSyncLimit(raw);
     return {
       'type': type,
       'value': value,
       'unit': unit,
       'measuredAt': _isoUtc.format(at.toUtc()),
-      if (raw != null && raw.isNotEmpty) 'raw': raw,
+      if (includeRaw) 'raw': raw,
     };
   }
 

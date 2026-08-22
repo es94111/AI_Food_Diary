@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { ZodError, z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { encryptJson } from "@/lib/encryption";
@@ -30,17 +30,19 @@ function toClientMetric(row: {
 const MAX_RAW_JSON_CHARS = 32 * 1024;
 
 function boundedRaw() {
-  return z.unknown().refine(
-    (value) => {
-      if (value === undefined) return true;
+  // `raw` is optional; discard an oversized timeline instead of rejecting the
+  // whole batch, so older clients still sync the aggregate metric.
+  return z.unknown()
+    .transform((value) => {
       try {
-        return (JSON.stringify(value) ?? "").length <= MAX_RAW_JSON_CHARS;
+        return (JSON.stringify(value) ?? "").length <= MAX_RAW_JSON_CHARS
+          ? value
+          : undefined;
       } catch {
-        return false;
+        return undefined;
       }
-    },
-    "raw 資料超過大小上限"
-  ).optional();
+    })
+    .optional();
 }
 
 const healthMetricSchema = z.object({
@@ -200,6 +202,7 @@ export async function POST(request: Request) {
     console.error("Health sync failed", error);
     if (message === "Unauthorized") return NextResponse.json({ error: "請先登入後再同步健康資料。" }, { status: 401 });
     if (message.includes("ENCRYPTION_KEY")) return NextResponse.json({ error: "健康資料同步失敗：尚未設定加密金鑰。" }, { status: 500 });
+    if (error instanceof ZodError) return NextResponse.json({ error: "健康資料格式不正確。" }, { status: 400 });
     if (message.includes("Invalid") || message.includes("Expected")) return NextResponse.json({ error: "健康資料格式不正確。" }, { status: 400 });
     return NextResponse.json({ error: "健康資料同步失敗，請稍後再試。" }, { status: 500 });
   }
