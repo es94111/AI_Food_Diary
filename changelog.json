@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.72.0",
+  "currentVersion": "0.72.1",
   "releases": [
+    {
+      "version": "0.72.1",
+      "date": "2026-08-22",
+      "title": "AI 餐點編輯鍵盤遮擋修正",
+      "type": "fixed",
+      "changes": [
+        {
+          "tag": "fixed",
+          "text": "使用者在確認 AI 餐點並修改食物內容時，開啟鍵盤後輸入欄位會維持在可視範圍內，不再被畫面下方的操作區域遮住。"
+        }
+      ]
+    },
     {
       "version": "0.72.0",
       "date": "2026-08-22",

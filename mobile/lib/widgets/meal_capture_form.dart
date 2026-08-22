@@ -2269,11 +2269,7 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.only(
-            left: 16,
-            right: 16,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 16,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: ListView(
             padding: const EdgeInsets.only(bottom: 24),
             children: [
