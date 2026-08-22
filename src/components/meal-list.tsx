@@ -51,8 +51,15 @@ const MEAL_TYPE_LABELS: Record<string, string> = {
 };
 
 export function MealList({ meals, timeZone }: { meals: Meal[]; timeZone: string }) {
-  if (meals.length === 0) return <p className="text-stone-500">今天還沒有紀錄。</p>;
-  return <div className="space-y-4">{meals.map((meal) => <MealCard key={meal.id} meal={meal} timeZone={timeZone} />)}</div>;
+  if (meals.length === 0) {
+    return (
+      <div className="meal-empty-state">
+        <span className="meal-empty-mark" aria-hidden="true">+</span>
+        <div><strong>今天還沒有飲食紀錄</strong><p>從右側開始，留下第一筆餐點。</p></div>
+      </div>
+    );
+  }
+  return <div className="meal-list">{meals.map((meal) => <MealCard key={meal.id} meal={meal} timeZone={timeZone} />)}</div>;
 }
 
 function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
@@ -199,13 +206,13 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
   }
 
   return (
-    <article className="glass glass-lift rounded-2xl p-4">
-      <div className="flex items-start justify-between gap-3">
+    <article className="meal-card">
+      <div className="meal-card-header">
         <div>
-          <p className="font-bold">{MEAL_TYPE_LABELS[meal.mealType] ?? meal.mealType}</p>
+          <div className="meal-card-title-row"><span className="meal-card-dot" aria-hidden="true" /><p className="font-bold">{MEAL_TYPE_LABELS[meal.mealType] ?? meal.mealType}</p></div>
           <p className="text-sm text-stone-500">{formatMealTime(meal.eatenAt, timeZone)} · {meal.totalCalories} kcal</p>
         </div>
-        <div className="flex flex-wrap justify-end gap-2 text-sm">
+        <div className="meal-card-actions">
           {!editing ? (
             <button className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700" disabled={loading} onClick={onRepeat} type="button">
               再記一次
@@ -309,9 +316,9 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
         </form>
       ) : (
         <>
-          <ul className="mt-3 grid gap-3">
+          <ul className="meal-item-list">
             {meal.items.map((item) => (
-              <li className="rounded-2xl p-3" style={{ background: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.7)" }} key={item.id}>
+              <li className="meal-item" key={item.id}>
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="font-bold text-stone-900"><RatingBadge rating={item.aiRating} /> {item.name}</p>
@@ -319,7 +326,7 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
                   </div>
                   <p className="shrink-0 rounded-full bg-white px-3 py-1 text-sm font-bold text-amber-700 shadow-sm">{item.calories} kcal</p>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="meal-item-macros">
                   <div className="rounded-xl bg-white p-2">
                     <p className="font-bold text-sky-700">{Number(item.protein).toFixed(1)}g</p>
                     <p className="text-stone-500">蛋白質</p>

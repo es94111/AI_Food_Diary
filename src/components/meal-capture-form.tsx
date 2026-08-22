@@ -116,9 +116,9 @@ function nearestMealType(timeZone?: string, now: Date = new Date()): string {
 type CaptureMode = "photo" | "describe" | "manual";
 
 const CAPTURE_MODES: { id: CaptureMode; label: string }[] = [
-  { id: "photo", label: "📷 拍照" },
-  { id: "describe", label: "✍️ 描述" },
-  { id: "manual", label: "⌨️ 手動" }
+  { id: "photo", label: "拍照" },
+  { id: "describe", label: "描述" },
+  { id: "manual", label: "手動" }
 ];
 
 const MAX_IMAGES = 5;
@@ -655,7 +655,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   }
 
   return (
-    <form onSubmit={onSubmit} className="glass glass-lift rounded-[2rem] p-6">
+    <form id="capture" onSubmit={onSubmit} className="capture-form">
       <h2 className="text-2xl font-black">新增餐點</h2>
       <p className="mt-2 text-sm text-stone-600">選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。</p>
       <select className="mt-5 w-full rounded-2xl border border-stone-200 px-4 py-3" name="mealType" value={mealType} onChange={(e) => setMealType(e.target.value)}>
