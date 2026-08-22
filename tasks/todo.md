@@ -346,17 +346,22 @@
 ## Plan / checkpoints
 - [x] Update changelog, version metadata, README badge, and release notes.
 - [x] Run JSON, forbidden-term, build/analyzer/test, and diff checks.
-- [ ] Commit and push the release branch; create and squash-merge the PR.
-- [ ] Confirm the tag and create/update the GitHub Release from the changelog entry.
+- [x] Commit and push the release branch; create and squash-merge the PR.
+- [x] Confirm the tag and create/update the GitHub Release from the changelog entry.
 
 ## Results
-- Version surfaces are prepared for `0.72.3` and Android build `115`.
-- `changelog.json` contains a user-facing Traditional Chinese fixed-release entry; no SRS file exists to update.
+- Version surfaces are released as `0.72.3` with Android build `115`.
+- PR `#121` was squash-merged into `main` at `d5a9e0b`.
+- Annotated tag `v0.72.3` was pushed from the merged `main` commit.
+- GitHub Release `v0.72.3` was created from the `changelog.json` entry.
+- Existing pre-release formatting changes in `src/app/api/app/download/route.ts` and `src/lib/storage.ts` were intentionally preserved outside this release commit.
 
 ## Verification
 - `node -e "require('./changelog.json')"` and version/title/length checks — passed.
 - Forbidden-term checks for internal IDs, API paths, filenames, review markers — passed.
 - `npx prisma validate` — passed.
 - `npm run build` — passed.
-- Flutter analyzer/tests from the implementation checkpoint — passed (72 tests).
+- Flutter analyzer/tests — passed (72 tests).
+- PR checks — passed: Application Build, Android APK, CodeQL.
+- Tag checks — passed: Docker image build/push, Android APK, Application Build, CodeQL.
 - `git diff --check` — passed.
