@@ -4,7 +4,7 @@
 > Web 與 Android App 共用同一後端與版本號，一個 tag 同時發佈兩端。
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.72.0-2563eb" alt="version">
+  <img src="https://img.shields.io/badge/version-0.72.1-2563eb" alt="version">
   <img src="https://img.shields.io/badge/Next.js-App_Router-black?logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Flutter-Android-02569B?logo=flutter&logoColor=white" alt="Flutter">
