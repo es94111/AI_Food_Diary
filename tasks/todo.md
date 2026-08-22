@@ -243,3 +243,120 @@
 - `git diff --check` and final pi-lens diagnostics — passed.
 - `curl -H "Range: bytes=0-0" https://aifood.shao.one/api/app/download` — current deployment baseline returned `200 OK`; deploy this change and expect `206 Partial Content` with `Content-Range`.
 - `flutter build apk --debug` — blocked by the pre-existing Kotlin incremental-cache registration failure across plugin modules on the Synology `D:` workspace, reproduced after `flutter clean` and Gradle daemon stop attempt.
+
+---
+
+# 2026-08-23 fix health sync 500
+
+## Goal + acceptance criteria
+- [ ] Health sync POST accepts the existing 92-metric batch instead of returning a generic 500 (requires deployment verification).
+- [x] Existing encrypted HealthMetric writes remain compatible with legacy production databases.
+- [x] The Android sync path continues to report actionable errors without exposing secrets; no client behavior change was needed.
+- [x] Preserve unrelated working-tree changes in `mobile/pubspec.yaml`, `src/app/api/app/download/route.ts`, and `src/lib/storage.ts`.
+
+## Risk & rollback
+- **Risk level**: medium; touches the health-sync persistence schema/deployment path.
+- **Rollback**: revert the new migration and README change; take a database backup before applying the migration.
+
+## Working notes
+- The mobile log proves permission, aggregation, token lookup, and request construction succeeded; the failure starts inside `POST /api/health/sync`.
+- The route writes `HealthMetric.value = null` and `encValue`, while the repository had no migration for the encryption columns/nullability. The Dockerfile recently changed from `prisma db push` to `prisma migrate deploy`, making schema drift the leading root cause.
+- No `tasks/lessons.md` exists in this repository; no correction/postmortem was required.
+
+## Plan / checkpoints
+- [x] Reproduce/trace the API failure path and confirm the smallest schema-compatible fix.
+- [x] Add the minimal backward-compatible migration and deployment guidance.
+- [x] Add focused regression coverage or a deterministic validation for the changed path.
+- [x] Run TypeScript/build, Flutter analyzer/tests as applicable, `git diff --check`, and diagnostics.
+
+## Results
+- Added an idempotent migration that adds the HealthMetric encrypted JSON columns and makes the legacy value nullable, covering databases previously maintained by `prisma db push`.
+- Updated README deployment guidance to match `prisma migrate deploy`.
+- No unrelated working-tree files were changed or reverted; the Flutter dependency-lock change caused by verification was restored.
+
+## Verification
+- `npx prisma validate` — passed.
+- `npm run build` — passed.
+- `cd mobile && flutter analyze lib/services/health_service.dart lib/widgets/health_sync_card.dart` — passed.
+- `cd mobile && flutter test` — 72 tests passed.
+- Migration assertions — passed; `git diff --check` — passed.
+- Live 92-metric sync verification — not run because deployment/database access is not available in this workspace; deploy the image, then retry sync.
+
+---
+
+# 2026-08-23 fix mobile yesterday summary
+
+## Goal + acceptance criteria
+- [x] On the first app entry of a new local day, a stored yesterday summary is shown once.
+- [x] If the worker did not precompute it, the app retries by generating the past-day summary once; no summary/AI-key/network failure blocks the dashboard.
+- [x] Widget summary publishing and current-day dashboard behavior remain unchanged.
+- [x] Preserve the previous health-sync migration and unrelated working-tree changes.
+
+## Risk & rollback
+- **Risk level**: low; restores the existing summary popup flow in the Android dashboard only.
+- **Rollback**: revert the dashboard import/state/helper/call changes; no data or schema changes.
+
+## Working notes
+- `mobile/lib/widgets/daily_summary_popup.dart` still implemented the popup, but v0.72.0 removed its dashboard import, the once-per-day guard, and the call from `_refreshAfterEntry`.
+- `_loadYesterdaySummaryForWidget` only fetched data for the home widget; it never displayed a summary.
+- The server endpoint already supports peek and past-date `generate=1`; the worker remains the preferred path.
+
+## Plan / checkpoints
+- [x] Reproduce the missing-display path and compare the previous known-good implementation.
+- [x] Restore the smallest once-per-local-day popup flow with safe fallback behavior.
+- [x] Add/adjust focused regression coverage where practical; the existing model/widget suite covers the summary contract, and the dashboard analyzer covers the restored path (the overnight UI flow still needs a device repro).
+- [x] Run Flutter analyzer/tests, web checks only if touched, `git diff --check`, and diagnostics.
+
+## Results
+- Restored the once-per-local-day `昨日總結` popup and the on-demand fallback when the worker has not generated a stored summary.
+- Added a lifecycle resume check so returning to an app that stayed open overnight also evaluates the new local day; stale cached summaries are not reused across dates.
+- Kept widget publishing and the existing health-sync migration/working-tree changes intact.
+- Recorded the missing-call-site regression and prevention rule in `tasks/lessons.md`.
+
+## Verification
+- `cd mobile && flutter analyze lib/screens/dashboard_screen.dart lib/widgets/daily_summary_popup.dart` — passed.
+- `cd mobile && flutter test` — 72 tests passed.
+- `git diff --check` and pi-lens diagnostics — passed.
+- Physical overnight/device repro — not run in this workspace; install the updated APK and test once after crossing midnight.
+
+---
+
+# 2026-08-23 release 0.72.3
+
+## Goal + acceptance criteria
+- [ ] Bump Web and Android versions to `0.72.3` / Android build `115`.
+- [ ] Add a user-facing Traditional Chinese changelog entry for the health-sync and yesterday-summary fixes.
+- [ ] Keep the existing migration, summary fix, lessons, and prior working-tree changes in the release commit without silently discarding user edits.
+- [ ] Verify, commit on a feature branch, squash-merge into `main`, push GitHub, and create the GitHub Release/tag.
+
+## Risk & rollback
+- **Risk level**: medium; release includes an additive database migration and Android behavior fix.
+- **Rollback**: revert the release commit and deploy the previous image/APK; the migration is additive and does not delete data.
+
+## Dependencies & environment
+- GitHub CLI at `C:\Program Files\GitHub CLI\gh.exe`.
+- No `SRS.md` exists in this repository; synchronize the available version surfaces only.
+- Docker/Android release workflows run from the pushed version tag.
+
+## Working notes
+- Current version is `0.72.2`; this is a patch release (`0.72.3`).
+- The repository is currently on `main`; create a release branch and squash-merge it back.
+- Existing pre-release changes in `mobile/pubspec.yaml`, `src/app/api/app/download/route.ts`, and `src/lib/storage.ts` must be reviewed and preserved; only the version change to `mobile/pubspec.yaml` is part of this release change.
+
+## Plan / checkpoints
+- [x] Update changelog, version metadata, README badge, and release notes.
+- [x] Run JSON, forbidden-term, build/analyzer/test, and diff checks.
+- [ ] Commit and push the release branch; create and squash-merge the PR.
+- [ ] Confirm the tag and create/update the GitHub Release from the changelog entry.
+
+## Results
+- Version surfaces are prepared for `0.72.3` and Android build `115`.
+- `changelog.json` contains a user-facing Traditional Chinese fixed-release entry; no SRS file exists to update.
+
+## Verification
+- `node -e "require('./changelog.json')"` and version/title/length checks — passed.
+- Forbidden-term checks for internal IDs, API paths, filenames, review markers — passed.
+- `npx prisma validate` — passed.
+- `npm run build` — passed.
+- Flutter analyzer/tests from the implementation checkpoint — passed (72 tests).
+- `git diff --check` — passed.

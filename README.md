@@ -4,7 +4,7 @@
 > Web 與 Android App 共用同一後端與版本號，一個 tag 同時發佈兩端。
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.72.2-2563eb" alt="version">
+  <img src="https://img.shields.io/badge/version-0.72.3-2563eb" alt="version">
   <img src="https://img.shields.io/badge/Next.js-App_Router-black?logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Flutter-Android-02569B?logo=flutter&logoColor=white" alt="Flutter">
@@ -161,6 +161,6 @@ DOCKERHUB_IMAGE=你的 Docker Hub image，例如 username/ai-food-diary
 
 - AI 營養分析為估算值；使用者可在 Web／App 修正餐點項目後重新辨識。
 - 目前圖片以 data URL 送到 AI，不會保存到 MinIO；MinIO 已在部署環境預留，下一步可改為 private bucket + signed URL。
-- Docker runtime 使用 `prisma db push` 方便啟動；正式環境建議改為 migration 流程。
+- Docker runtime 使用 `prisma migrate deploy` 套用版本化 migration；本機開發仍可用 `prisma db push`。
 - 昨日總結排程跑在 **worker** 程序，請確認 worker 與 app 使用相同 env（加密金鑰、`DATABASE_URL`、`REDIS_URL`）。
 - 磁碟加密屬基礎設施控制；部署 PostgreSQL、MinIO/S3、Docker volume、備份與 VM 磁碟時請依 [`docs/disk-encryption.md`](docs/disk-encryption.md) 驗證。
