@@ -159,8 +159,14 @@ export async function getObjectText(key: string): Promise<string | null> {
 }
 
 /// Returns the raw object (for streaming a download).
-export async function getObject(key: string) {
-  return createClient().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+export async function getObject(key: string, range?: string) {
+  return createClient().send(
+    new GetObjectCommand({
+      Bucket: bucket(),
+      Key: key,
+      ...(range ? { Range: range } : {})
+    })
+  );
 }
 
 // Migration helper: encrypt a legacy plaintext object in place. Idempotent —

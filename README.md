@@ -4,7 +4,7 @@
 > Web 與 Android App 共用同一後端與版本號，一個 tag 同時發佈兩端。
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.72.1-2563eb" alt="version">
+  <img src="https://img.shields.io/badge/version-0.72.2-2563eb" alt="version">
   <img src="https://img.shields.io/badge/Next.js-App_Router-black?logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Flutter-Android-02569B?logo=flutter&logoColor=white" alt="Flutter">
@@ -37,7 +37,7 @@
 ## ✨ 功能亮點
 
 | 功能 | 說明 |
-|------|------|
+| ------ | ------ |
 | 📸 **AI 餐點辨識** | OpenAI Vision 由照片估算熱量與蛋白質／脂肪／碳水，支援手動修正後重新辨識 |
 | 🎯 **精準模式** | 同一張照片多次取樣取「總熱量中位數」，大幅降低辨識飄動 |
 | 🌙 **昨日總結自動彈窗** | Worker 依各使用者時區於凌晨事前產生；App／Web 每日首次開啟自動彈出，不跑即時 AI |
@@ -50,14 +50,14 @@
 ## 🧱 技術架構
 
 | 層 | 技術 |
-|----|------|
+| ---- | ------ |
 | 前端（Web） | Next.js App Router + TypeScript |
-| 前端（App） | Flutter（Android）|
+| 前端（App） | Flutter（Android） |
 | 資料庫 | Prisma + PostgreSQL |
 | 認證 | Argon2id 密碼雜湊 · JWT HttpOnly Cookie Session |
 | 加密 | AES-256-GCM 欄位加密 |
-| AI | OpenAI Responses API（支援 OpenAI-compatible endpoint）|
-| 背景工作 | Redis + BullMQ worker（昨日總結事前產生）|
+| AI | OpenAI Responses API（支援 OpenAI-compatible endpoint） |
+| 背景工作 | Redis + BullMQ worker（昨日總結事前產生） |
 | 部署 | Docker Compose：app · worker · postgres · redis · minio |
 
 ---
@@ -110,6 +110,7 @@ AI_DAILY_SUMMARY_PROMPT="每日總結提示語"
 ```
 
 模板變數：
+
 - `AI_NEXT_MEAL_ADVICE_PROMPT`：`{{goal}}`、`{{calorieTarget}}`、`{{todayCalories}}`、`{{todayProtein}}`、`{{todayFat}}`、`{{todayCarbs}}`
 - `AI_DAILY_SUMMARY_PROMPT`：`{{date}}`、`{{calorieTarget}}`、`{{totalCalories}}`、`{{totalProtein}}`、`{{totalFat}}`、`{{totalCarbs}}`
 

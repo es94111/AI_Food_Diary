@@ -177,3 +177,69 @@
 - Version metadata is synchronized at `0.72.0`; `v0.72.0` points to the squash-merged feature commit on `main`.
 - PR #116 was squash-merged, and GitHub Release `v0.72.0` was created from `changelog.json`.
 - Existing untracked `docs/ui-*` design artifacts remain intentionally outside the release commits.
+
+---
+
+# 2026-08-22 fix AI meal review keyboard overlap
+
+## Goal and acceptance criteria
+- [x] Keep the AI meal review text field visible when the Android keyboard opens.
+- [x] Do not change meal editing, re-analysis, save, or navigation behavior.
+- [x] Verify the focused field can be edited without the fixed save area covering it.
+
+## Risk and rollback
+- **Risk level**: low; scoped to the AI review page keyboard/layout behavior.
+- **Rollback**: revert the change in `mobile/lib/widgets/meal_capture_form.dart`; no data or API changes.
+
+## Working notes
+- The issue is isolated to `_ConfirmSheet` in `mobile/lib/widgets/meal_capture_form.dart`.
+- The current full-screen review adds `viewInsets.bottom` to the scroll body while also rendering the save action as `Scaffold.bottomNavigationBar`; this is the likely double keyboard adjustment/overlap source.
+
+## Results
+- Removed the extra keyboard inset from the full-screen AI review body; `Scaffold` now performs the keyboard resize once, so focused fields are not shifted under the lower action area.
+- Meal editing, re-analysis, save, and navigation code paths are unchanged.
+
+## Verification
+- [x] `cd mobile && flutter analyze lib/widgets/meal_capture_form.dart lib/widgets/meal_list.dart` — passed.
+- [x] `cd mobile && flutter test` — 73 tests passed.
+- [x] `git diff --check` and final diff review — passed.
+
+---
+
+# 2026-08-22 fix Android in-app update background download
+
+## Goal and acceptance criteria
+- [x] APK download completion remains successful when the update dialog is dismissed, another app is opened, or the notification shade is pulled down.
+- [x] A temporarily interrupted/resumed download receives a proper partial response instead of becoming a false failure.
+- [x] Completed downloads still open the Android installer through the existing foreground/notification flow.
+- [x] Existing update permission, retry, and foreground-fallback behavior remains intact.
+
+## Risk and rollback
+- **Risk level**: medium; affects mobile update delivery and the APK download endpoint.
+- **Rollback**: revert only the update service and range-response changes; no data or schema migration.
+
+## Working notes
+- The Android downloader uses WorkManager and resumes partial files with an HTTP `Range` request.
+- The deployed `/api/app/download` returned `200 OK` for `Range: bytes=0-0`, confirming that resumed downloads could be rejected by `flutter_downloader`.
+- The background completion callback tried to launch the installer while the Activity was inactive; Android can reject that launch and the app then marked a completed download as failed.
+- Preserve unrelated working-tree changes in `README.md`, auth/home-widget services, `mobile/lib/services/update_service.dart`, and this task log.
+
+## Plan / checkpoints
+- [x] Reproduce/trace the background and resume failure paths.
+- [x] Make the smallest client/server fix for interruption-safe download and installer launch.
+- [x] Add focused regression coverage where practical; existing analyzer/build checks cover the changed code because this repo has no route integration-test harness.
+- [x] Run Flutter analyzer/tests, web type/build checks for the route, and diff/diagnostic verification.
+
+## Results
+- `/api/app/download` now forwards validated single-range requests to S3 and returns `206`, `Content-Range`, `Content-Length`, and `Accept-Ranges` for resumable APK downloads.
+- Android only attempts the installer while the Activity is resumed; background completion remains successful and the existing download notification handles installation. Lifecycle state is rechecked around the async file/installer handoff.
+- No dependency, schema, or API authentication changes were introduced.
+- Release metadata is synchronized to `0.72.2` across the Web, Android, README, and changelog surfaces.
+
+## Verification
+- `npm run build` — passed (Prisma generate, TypeScript, Next production build).
+- `cd mobile && flutter analyze lib/services/update_service.dart` — passed.
+- `cd mobile && flutter test` — 73 tests passed.
+- `git diff --check` and final pi-lens diagnostics — passed.
+- `curl -H "Range: bytes=0-0" https://aifood.shao.one/api/app/download` — current deployment baseline returned `200 OK`; deploy this change and expect `206 Partial Content` with `Content-Range`.
+- `flutter build apk --debug` — blocked by the pre-existing Kotlin incremental-cache registration failure across plugin modules on the Synology `D:` workspace, reproduced after `flutter clean` and Gradle daemon stop attempt.

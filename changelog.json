@@ -1,6 +1,22 @@
 {
-  "currentVersion": "0.72.1",
+  "currentVersion": "0.72.2",
   "releases": [
+    {
+      "version": "0.72.2",
+      "date": "2026-08-22",
+      "title": "Android 更新下載不中斷修正",
+      "type": "fixed",
+      "changes": [
+        {
+          "tag": "improved",
+          "text": "使用者在更新過程中即使暫時離開 App，下載也會保留進度並由系統背景工作接續完成，減少重新下載的等待時間。"
+        },
+        {
+          "tag": "fixed",
+          "text": "使用者在下載 App 更新時切換其他 App、關閉更新畫面或拉下通知欄，下載完成後仍可透過通知安裝，不再因畫面切換而誤判失敗。"
+        }
+      ]
+    },
     {
       "version": "0.72.1",
       "date": "2026-08-22",
