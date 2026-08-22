@@ -61,7 +61,7 @@ class HomeWidgetService {
         'yesterdaySummaryDateIso': yesterdaySummaryDateIso,
         'yesterdaySummaryText': yesterdaySummaryText,
         'yesterdayRecommendationText': yesterdayRecommendationText,
-        if (activeCalories != null) 'activeCalories': activeCalories,
+        'activeCalories': ?activeCalories,
         'activeCaloriesDateIso': activeCaloriesDateIso,
         'dateIso': dateIso,
         if (sessionCookie != null && sessionCookie.isNotEmpty)

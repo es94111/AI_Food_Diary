@@ -13,7 +13,7 @@ class AuthService {
     final res = await _api.post('/api/auth/login', data: {
       'email': email.trim(),
       'password': password,
-      if (turnstileToken != null) 'cf-turnstile-response': turnstileToken,
+      'cf-turnstile-response': ?turnstileToken,
     });
     if (!ApiClient.ok(res)) {
       Sentry.logger.warn('Password login failed', attributes: {
@@ -34,7 +34,7 @@ class AuthService {
       'email': email.trim(),
       'password': password,
       if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
-      if (turnstileToken != null) 'cf-turnstile-response': turnstileToken,
+      'cf-turnstile-response': ?turnstileToken,
     });
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '註冊失敗'),
@@ -115,14 +115,14 @@ class AuthService {
     int? waterGoalMl,
   }) async {
     final res = await _api.patch('/api/me', data: {
-      if (gender != null) 'gender': gender,
+      'gender': ?gender,
       if (birthDate != null && birthDate.isNotEmpty) 'birthDate': birthDate,
-      if (heightCm != null) 'heightCm': heightCm,
-      if (weightKg != null) 'weightKg': weightKg,
-      if (activityLevel != null) 'activityLevel': activityLevel,
-      if (goal != null) 'goal': goal,
-      if (calorieTarget != null) 'calorieTarget': calorieTarget,
-      if (waterGoalMl != null) 'waterGoalMl': waterGoalMl,
+      'heightCm': ?heightCm,
+      'weightKg': ?weightKg,
+      'activityLevel': ?activityLevel,
+      'goal': ?goal,
+      'calorieTarget': ?calorieTarget,
+      'waterGoalMl': ?waterGoalMl,
     });
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '儲存失敗，請確認資料格式。'),

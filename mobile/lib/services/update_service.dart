@@ -6,6 +6,7 @@ import 'dart:ui';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -291,17 +292,19 @@ class UpdateService {
       if (pr >= 0) progress.value = pr / 100.0;
     } else if (st == DownloadTaskStatus.complete) {
       progress.value = 1;
-      // Launch the installer immediately while the app is in the foreground; if
-      // it's backgrounded this is a no-op and the notification handles it.
+      // Android blocks Activity launches while the app is inactive/backgrounded.
+      // Let the completion notification open the APK in that case; otherwise a
+      // successful download was incorrectly reported as a failure.
+      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
+        status.value = DownloadStatus.complete;
+        return;
+      }
       try {
         final dir = await _backgroundDir();
         final path = '${dir.path}/$_fileName';
         if (!await File(path).exists()) {
-          // Seen on some devices (typically while backgrounded): DownloadManager
-          // reports the task complete but the file isn't actually there, so
-          // opening it would just fail with a confusing "file does not exist"
-          // error. Treat it like a failed download so the existing retry /
-          // foreground-fallback path gets a chance to actually produce a file.
+          // Some devices report completion before the file is visible. Treat
+          // that as a real failure so the retry/fallback path can recover.
           if (await _recoverBackgroundFailure(pr)) return;
           lastError = '無法開啟安裝程式：檔案不存在';
           status.value = DownloadStatus.failed;
@@ -315,10 +318,26 @@ class UpdateService {
           );
           return;
         }
+        // The Activity may have become inactive while the file check awaited.
+        // Re-check immediately before launching the installer; the system
+        // notification remains the safe fallback if the app was backgrounded.
+        if (WidgetsBinding.instance.lifecycleState !=
+            AppLifecycleState.resumed) {
+          status.value = DownloadStatus.complete;
+          return;
+        }
         await openApk(path);
         // The native install intent is fire-and-forget; success means the
         // system installer was launched, not that the user completed install.
       } catch (e, st) {
+        // The user can background the app during the installer handoff. The
+        // APK is already complete in that case, so keep it successful and
+        // let the notification provide the retryable install action.
+        if (WidgetsBinding.instance.lifecycleState !=
+            AppLifecycleState.resumed) {
+          status.value = DownloadStatus.complete;
+          return;
+        }
         lastError = '無法開啟安裝程式：$e';
         status.value = DownloadStatus.failed;
         await _reportFailure(
@@ -506,7 +525,7 @@ class UpdateService {
           'message': message,
           'currentVersion': version ?? 'unknown',
           'platform': defaultTargetPlatform.name,
-          if (downloaderContext != null) 'downloader': downloaderContext,
+          'downloader': ?downloaderContext,
         });
       }
 
