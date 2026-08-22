@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../services/api_client.dart';
@@ -14,6 +15,7 @@ import '../services/update_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/ai_settings_form.dart';
 import '../widgets/health_sync_card.dart';
+import '../widgets/daily_summary_popup.dart';
 import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
@@ -31,7 +33,8 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   AppUser? _user;
   bool _weekView = false;
   DateTime _selectedDate = startOfLocalDay(DateTime.now());
@@ -44,6 +47,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double? _todayActiveCalories;
   String _yesterdaySummaryDateIso = '';
   String _yesterdaySummaryText = '';
+  DailySummary? _yesterdaySummary;
+  bool _yesterdaySummaryLoaded = false;
   String _yesterdayRecommendationText = '';
   String _nextMealAdvice = '';
   // Latest water total (ml) reported by the WaterCard, cached so the home-widget
@@ -61,10 +66,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _analysis = MealAnalysisController.instance;
   final _captureController = MealCaptureController();
   bool _quickCaptureOpening = false;
+  bool _dashboardReady = false;
+  bool _summaryCheckRunning = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     HomeWidgetService.setQuickCaptureHandler(_startQuickCaptureFromWidget);
     _bootstrap();
     _analysis.addListener(_onAnalysisChanged);
@@ -72,6 +80,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     HomeWidgetService.clearQuickCaptureHandler();
     _analysis.removeListener(_onAnalysisChanged);
     super.dispose();
@@ -82,6 +91,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _onAnalysisChanged() {
     if (!mounted) return;
     setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _dashboardReady) {
+      unawaited(_maybeShowYesterdaySummary());
+    }
   }
 
   Future<void> _bootstrap() async {
@@ -107,6 +123,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     final handledWidgetAction = await _consumeInitialWidgetAction();
     if (!mounted) return;
+    _dashboardReady = true;
 
     // These jobs do not affect the first usable dashboard frame. Start them
     // after entry so they cannot serialise startup or compete with hidden-tab
@@ -127,8 +144,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (mounted && showPrompts) {
       await UpdateCard.promptIfAvailable(context, updateInfo);
-      // Yesterday's feedback is available from the page, but must not block the
-      // first task of the day with an automatic modal.
+      if (mounted) await _maybeShowYesterdaySummary();
     }
 
     // Health Connect can do substantial native reads and uploads. Give the user
@@ -163,6 +179,78 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _meals = cachedMeals;
       _loading = false;
     });
+  }
+
+  // On the first open of each local day, show yesterday's summary. Normally the
+  // worker has already pre-computed it, so the peek is instant and no AI runs.
+  // If it hasn't yet (first day after enabling, worker missed its window, etc.)
+  // generate it once on demand so the user still sees it.
+  Future<void> _maybeShowYesterdaySummary() async {
+    if (_summaryCheckRunning) return;
+    _summaryCheckRunning = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now();
+      final todayKey = '${now.year}-${now.month}-${now.day}';
+      if (prefs.getString('last_summary_popup_date') == todayKey) return;
+      final yesterday = DateTime(now.year, now.month, now.day - 1);
+      final yesterdayIso = isoDate(yesterday);
+
+      final summary = _yesterdaySummaryLoaded &&
+              _yesterdaySummaryDateIso == yesterdayIso
+          ? _yesterdaySummary
+          : await MealService.dailySummary(yesterday); // peek, no AI
+      var result = summary;
+      if (result == null && mounted) {
+        result = await _generateYesterdaySummary(yesterday);
+      }
+      if (result == null) {
+        return; // no meals or unavailable AI; retry next entry
+      }
+      await prefs.setString('last_summary_popup_date', todayKey);
+      if (!mounted) return;
+      await showDailySummaryPopup(context, result);
+    } catch (_) {
+      // Non-critical: never block the dashboard if the popup check fails.
+    } finally {
+      _summaryCheckRunning = false;
+    }
+  }
+
+  // Generates yesterday's summary on demand behind a blocking spinner. Returns
+  // null if it couldn't be produced (no meals / no AI key / error).
+  Future<DailySummary?> _generateYesterdaySummary(DateTime day) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(20),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+                SizedBox(width: 14),
+                Text('正在整理昨日總結…'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    try {
+      final summary = await MealService.dailySummary(day, generate: true);
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      return summary;
+    } catch (_) {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+      return null;
+    }
   }
 
   Future<void> _loadSyncedWeight() async {
@@ -324,6 +412,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     try {
       final summary = await MealService.dailySummary(yesterday);
+      _yesterdaySummary = summary;
+      _yesterdaySummaryLoaded = true;
       _yesterdaySummaryDateIso = isoDate(yesterday);
       _yesterdaySummaryText = _widgetText(summary?.aiSummary ?? '');
       _yesterdayRecommendationText = _widgetText(
