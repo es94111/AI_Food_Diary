@@ -10,9 +10,9 @@ tags:
 - assertVisible: "健康"
 - assertVisible: "設定"
 - tapOn: "健康"
-- assertVisible: "AI Food Diary · 健康"
+- assertVisible: "健康"
 - tapOn: "設定"
-- assertVisible: "AI Food Diary · 設定"
+- assertVisible: "設定"
 - tapOn: "飲食"
-- assertVisible: "AI Food Diary · 飲食"
+- assertVisible: "今天的飲食"
 - runFlow: logout.yaml

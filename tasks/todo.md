@@ -124,3 +124,51 @@
 - Android 当前已实现三项底部导航、缓存优先启动、后台 AI 分析和 Health Connect；设计报告需区分“现状”与“建议”。
 - 共享规范是跨平台语义基础，不应直接复制 Web 的布局；最终报告必须只保留移动端交互、状态和安全区规则。
 - 深度模式需严格按 `need → form → visual → ia → interaction → content` 传递报告。
+
+## 2026-07-11 Android UI refinement
+
+### Goal and acceptance criteria
+- [x] Keep the root navigation as `飲食 / 健康 / 設定`.
+- [x] Make Today prioritize summary, persistent task state, one primary `記錄飲食` action, and meal review.
+- [x] Use a mobile-native source bottom sheet and focused capture/review pages without changing capture or API contracts.
+- [x] Apply shared warm amber/terracotta/olive tokens and accessible Material 3 touch targets.
+- [x] Preserve Health Connect, background AI, image picker/camera, saved foods, notifications, Google auth, and persistence.
+
+### Risk and rollback
+- Medium risk: the authenticated shell and capture entry changed; service/controller boundaries remain intact.
+- Roll back by reverting the Android UI/theme/widget changes only; no backend, schema, dependency, or platform integration changes are planned.
+
+### Verification
+- [x] Targeted Flutter analyzer: `flutter analyze lib/screens/dashboard_screen.dart lib/screens/meal_capture_screen.dart lib/theme/app_theme.dart lib/widgets/health_sync_card.dart lib/widgets/meal_capture_form.dart lib/widgets/meal_list.dart`.
+- [x] Flutter tests: `flutter test` (72 passed).
+- [x] `git diff --check` and changed-file scope review.
+- [ ] Android APK build: blocked by the workspace/toolchain path mismatch; Kotlin incremental caches reject `C:\Users\...` pub-cache files relative to the `D:\SynologyDrive\...` project, even after `flutter clean`.
+
+### Results
+- Refined the authenticated Android shell and moved capture/review into focused native pages.
+- Added persistent AI task feedback, session-safe logout cancellation, responsive Health metric grids, accessible capture controls, and shared theme tokens.
+
+---
+
+# 2026-08-22 mobile-ui-release-0.72.0
+
+## Goal + acceptance criteria
+- [x] Translate the Android UI refinement into a user-facing Traditional Chinese changelog entry.
+- [x] Synchronize web/mobile version metadata to `0.72.0`.
+- [ ] Commit the scoped changes, squash merge them into `main`, push GitHub, and create the release tag.
+- [ ] Create the GitHub Release from the verified changelog entry.
+
+## Release internal notes
+- Technical scope: publish the existing Android Flutter UI refinement, including focused capture/review routes, persistent background-analysis state, logout cleanup, responsive Health cards, accessibility semantics, and updated tests/flows; no API, schema, dependency, or platform integration changes.
+- User-facing translation: describe the new capture entry and full-screen review, clearer Today/Health feedback, larger accessible controls, and safer account switching without exposing implementation names.
+
+## Dependencies and environment
+- GitHub CLI is expected at `C:\Program Files\GitHub CLI\gh.exe`.
+- No `SRS.md` exists in this repository; README version badge and package/mobile metadata are the available version surfaces.
+- Existing untracked `docs/ui-*` design artifacts are preserved but excluded from this release commit because they predate the implementation handoff.
+
+## Verification plan
+- [ ] Validate `changelog.json` JSON and public-language forbidden-term checks.
+- [ ] Run web type/build checks if affected by version metadata.
+- [ ] Run targeted Flutter analyzer and full Flutter tests.
+- [ ] Review staged scope, commit, PR squash merge, tag, and GitHub Release.

@@ -17,14 +17,21 @@ void main() {
     );
 
     await tester.pumpWidget(app());
-    final first = tester.widget<Image>(find.byType(Image)).image as MemoryImage;
+    final first =
+        (tester.widget<Image>(find.byType(Image)).image as ResizeImage)
+                .imageProvider
+            as MemoryImage;
 
     await tester.pumpWidget(app());
-    final second = tester.widget<Image>(find.byType(Image)).image as MemoryImage;
+    final second =
+        (tester.widget<Image>(find.byType(Image)).image as ResizeImage)
+                .imageProvider
+            as MemoryImage;
 
     expect(identical(first.bytes, second.bytes), isTrue);
-    expect(tester.widget<Image>(find.byType(Image)).cacheWidth, 40);
-    expect(tester.widget<Image>(find.byType(Image)).cacheHeight, 20);
+    final resized = tester.widget<Image>(find.byType(Image)).image as ResizeImage;
+    expect(resized.width, 40);
+    expect(resized.height, 20);
   });
 
   testWidgets('decodes again when the data URL changes', (tester) async {
@@ -37,14 +44,20 @@ void main() {
         ),
       ),
     );
-    final first = tester.widget<Image>(find.byType(Image)).image as MemoryImage;
+    final first =
+        (tester.widget<Image>(find.byType(Image)).image as ResizeImage)
+                .imageProvider
+            as MemoryImage;
 
     await tester.pumpWidget(
       const MaterialApp(
         home: DataUrlImage(dataUrl: png, width: 20, height: 10),
       ),
     );
-    final second = tester.widget<Image>(find.byType(Image)).image as MemoryImage;
+    final second =
+        (tester.widget<Image>(find.byType(Image)).image as ResizeImage)
+                .imageProvider
+            as MemoryImage;
 
     expect(identical(first.bytes, second.bytes), isFalse);
     expect(second.bytes, first.bytes);

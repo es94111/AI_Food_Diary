@@ -346,12 +346,35 @@ class _MealCardState extends State<_MealCard> {
             _photoSection(headers),
             const SizedBox(height: 8),
             ...meal.items.map((it) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Expanded(
-                          child: Text('${_ratingIcon(it.aiRating)} ${it.name}'
-                              '${it.estimatedAmount.isNotEmpty ? ' · ${it.estimatedAmount}' : ''}')),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              it.name,
+                              style: const TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                            if (it.estimatedAmount.isNotEmpty || it.aiRating != 'MANUAL')
+                              Wrap(
+                                spacing: 6,
+                                runSpacing: 4,
+                                children: [
+                                  if (it.estimatedAmount.isNotEmpty)
+                                    Text(
+                                      it.estimatedAmount,
+                                      style: TextStyle(fontSize: 12, color: p.inkSoft),
+                                    ),
+                                  _sourceBadge(it.aiRating),
+                                ],
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
                       Text('${fmtNum(it.calories)} kcal',
                           style: TextStyle(color: p.inkSoft)),
                     ],
@@ -388,12 +411,24 @@ class _MealCardState extends State<_MealCard> {
     );
   }
 
-  String _ratingIcon(String rating) => switch (rating) {
-        'GOOD' => '✅',
-        'OK' => '⚠️',
-        'LIMIT' => '❌',
-        _ => '✎',
-      };
+  Widget _sourceBadge(String rating) {
+    final isManual = rating == 'MANUAL';
+    final color = isManual ? context.palette.inkSoft : context.palette.amberInk;
+    final background = isManual
+        ? context.palette.surfaceAlt
+        : context.palette.amberSurface;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        isManual ? '手動輸入' : 'AI 估算',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: color),
+      ),
+    );
+  }
 }
 
 class _MacroBars extends StatelessWidget {

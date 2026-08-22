@@ -59,6 +59,8 @@ class AppRadius {
   AppRadius._();
   static const double card = 20;
   static const double field = 14;
+  static const double sheet = 28;
+  static const double dialog = 24;
   static const double chip = 999;
 }
 
@@ -319,7 +321,52 @@ class AppTheme {
     );
 
     return base.copyWith(
-      textTheme: base.textTheme.apply(bodyColor: p.ink, displayColor: p.ink),
+      // Keep the product's friendly, information-first hierarchy while using
+      // Android's system font fallback for Traditional Chinese text.
+      textTheme: base.textTheme.copyWith(
+        displayLarge: TextStyle(
+          color: p.ink,
+          fontSize: 40,
+          height: 1.1,
+          fontWeight: FontWeight.w800,
+        ),
+        headlineLarge: TextStyle(
+          color: p.ink,
+          fontSize: 32,
+          height: 1.2,
+          fontWeight: FontWeight.w800,
+        ),
+        headlineMedium: TextStyle(
+          color: p.ink,
+          fontSize: 24,
+          height: 1.25,
+          fontWeight: FontWeight.w800,
+        ),
+        titleLarge: TextStyle(
+          color: p.ink,
+          fontSize: 18,
+          height: 1.35,
+          fontWeight: FontWeight.w700,
+        ),
+        bodyLarge: TextStyle(
+          color: p.ink,
+          fontSize: 16,
+          height: 1.5,
+          fontWeight: FontWeight.w400,
+        ),
+        bodyMedium: TextStyle(
+          color: p.inkSoft,
+          fontSize: 14,
+          height: 1.45,
+          fontWeight: FontWeight.w500,
+        ),
+        labelLarge: TextStyle(
+          color: p.ink,
+          fontSize: 14,
+          height: 1.4,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
 
       appBarTheme: AppBarThemeData(
         backgroundColor: p.scaffold,
@@ -349,8 +396,8 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: p.surface,
         indicatorColor: p.brand.withValues(alpha: 0.14),
-        elevation: 3,
-        height: 64,
+        elevation: 2,
+        height: 80,
         labelTextStyle: WidgetStateProperty.resolveWith(
           (states) => TextStyle(
             fontSize: 12,
@@ -373,6 +420,7 @@ class AppTheme {
 
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 52),
           backgroundColor: p.brand,
           foregroundColor: p.onBrand,
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
@@ -385,6 +433,7 @@ class AppTheme {
 
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, 52),
           foregroundColor: p.brandStrong,
           side: BorderSide(color: p.hairline),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
@@ -458,8 +507,22 @@ class AppTheme {
 
       progressIndicatorTheme: ProgressIndicatorThemeData(color: p.brand),
 
-      dialogTheme: DialogThemeData(backgroundColor: p.surface),
-      bottomSheetTheme: BottomSheetThemeData(backgroundColor: p.surface),
+      dialogTheme: DialogThemeData(
+        backgroundColor: p.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.dialog),
+        ),
+      ),
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: p.surface,
+        modalBackgroundColor: p.surface,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AppRadius.sheet),
+          ),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
     );
   }
 }

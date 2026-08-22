@@ -48,13 +48,6 @@ String nearestMealType([DateTime? now]) {
   return best;
 }
 
-const aiRatings = {
-  'GOOD': '✅ 較推薦',
-  'OK': '⚠️ 普通',
-  'LIMIT': '❌ 建議少吃',
-  'MANUAL': '✎ 手動',
-};
-
 enum _SavedFoodConflictAction { use, update, restore, saveAsNew }
 
 /// Mutable, editable food row used by the form and confirm dialog.
@@ -118,6 +111,8 @@ class MealCaptureForm extends StatefulWidget {
     this.initialAdvice = '',
     this.showAdvice = true,
     this.savedFoodsRevision = 0,
+    this.initialMode = CaptureMode.photo,
+    this.initialImageSource,
   });
 
   final Future<void> Function() onSaved;
@@ -127,6 +122,8 @@ class MealCaptureForm extends StatefulWidget {
   /// The next-meal advice is for "today"; hide it when browsing other dates.
   final bool showAdvice;
   final int savedFoodsRevision;
+  final CaptureMode initialMode;
+  final ImageSource? initialImageSource;
 
   @override
   State<MealCaptureForm> createState() => _MealCaptureFormState();
@@ -158,9 +155,9 @@ class MealCaptureController {
 enum CaptureMode { photo, describe, manual }
 
 const _captureModeLabels = {
-  CaptureMode.photo: '📷 拍照',
-  CaptureMode.describe: '✍️ 描述',
-  CaptureMode.manual: '⌨️ 手動',
+  CaptureMode.photo: '拍照',
+  CaptureMode.describe: '描述',
+  CaptureMode.manual: '手動',
 };
 
 /// Mirrors the web form's MAX_MEAL_IMAGES / nutrition-label cap: one batch of a
@@ -178,7 +175,7 @@ const _productBarcodeFormats = [
 class _MealCaptureFormState extends State<MealCaptureForm> {
   final _picker = ImagePicker();
   String _mealType = nearestMealType();
-  CaptureMode _mode = CaptureMode.photo;
+  late CaptureMode _mode;
   bool _preciseMode = false;
   final List<String> _imageDataUrls = [];
   // Photos pulled from picked saved foods, saved as meal photos (not analysed).
@@ -206,7 +203,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   bool _adviceExpanded = true;
 
   // The shared, navigation-surviving AI analysis. The form observes it so the
-  // "AI 分析中 / 已完成" banner and the confirm sheet work even if the user
+  // "AI 分析中 / 已完成" banner and the review page work even if the user
   // switched tabs while the analysis was running.
   final _analysis = MealAnalysisController.instance;
   bool _reviewing = false;
@@ -214,9 +211,19 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   @override
   void initState() {
     super.initState();
+    _mode = widget.initialMode;
     _loadSavedFoods();
     _analysis.addListener(_onAnalysisChanged);
     widget.controller?._attach(this, _openCameraAndAnalyze);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.initialImageSource != null) {
+        _chooseMealImages(widget.initialImageSource!);
+      }
+      if (_analysis.isDone && _analysis.reviewRequested && !_reviewing) {
+        _onAnalysisChanged();
+      }
+    });
   }
 
   @override
@@ -284,7 +291,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         : await _picker
               .pickImage(source: source, maxWidth: 1600, imageQuality: 80)
               .then((f) => f == null ? <XFile>[] : [f]);
-    if (files.isEmpty) return [];
+    if (!mounted || files.isEmpty) return [];
 
     final messages = <String>[];
     if (files.length > room) messages.add('最多上傳 $_maxImages 張圖片。');
@@ -303,7 +310,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       urls.add('data:$mime;base64,${base64Encode(bytes)}');
     }
     if (skippedSize) messages.add('部分圖片超過 6MB 已略過。');
-    if (messages.isNotEmpty) setState(() => _error = messages.join(' '));
+    if (mounted && messages.isNotEmpty) {
+      setState(() => _error = messages.join(' '));
+    }
     return urls;
   }
 
@@ -314,6 +323,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         source,
         _maxImages - _imageDataUrls.length,
       );
+      if (!mounted) return;
       if (urls.isNotEmpty) setState(() => _imageDataUrls.addAll(urls));
     } catch (e) {
       // e.g. PlatformException(camera_access_denied, ...) when the user denies
@@ -378,7 +388,10 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         if (analyzedItems.first.savedFoodId != null) _pendingBarcode = null;
         _labelLoading = false;
       });
-      final confirmed = await _showConfirmDialog(analyzedItems);
+      final confirmed = await _showConfirmDialog(
+        analyzedItems,
+        mealTypeOverride: _mealType,
+      );
       if (confirmed == true) await _afterSave();
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -485,7 +498,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     }
   }
 
-  /// Opens the confirm/edit sheet for a finished background analysis, then saves
+  /// Opens the full-screen confirm/edit page for a finished background analysis, then saves
   /// using the captured analysis context (not the live form, which may have
   /// changed). Clears everything on a successful save.
   Future<void> _openReview() async {
@@ -580,34 +593,36 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         children: [
           Expanded(
             child: Text(
-              '✅ AI 分析完成，點右側確認並儲存。',
+              'AI 分析完成，尚未儲存。請確認內容後再儲存。',
               style: TextStyle(fontSize: 12, color: p.successInk),
             ),
           ),
           FilledButton.tonal(
             onPressed: _reviewing ? null : _openReview,
-            child: const Text('查看結果'),
+            child: const Text('查看草稿'),
           ),
         ],
       ),
     );
   }
 
-  Future<bool?> _showConfirmDialog(List<EditableItem> items) {
+  Future<bool?> _showConfirmDialog(
+    List<EditableItem> items, {
+    String? mealTypeOverride,
+  }) {
     // Use the context captured when the analysis started (held in the
     // controller), not the live form — the user may have changed the form while
     // the analysis ran in the background.
-    final mealType = _analysis.mealType;
+    final mealType = mealTypeOverride ?? _analysis.mealType;
     final mode = _analysis.mode; // 'photo' | 'describe' | 'manual'
     final images = _analysis.imageDataUrls;
     final pickedFoodIds = _analysis.savedFoodImageIds;
     final desc = _analysis.description.trim();
-    return showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      showDragHandle: true,
-      builder: (ctx) => _ConfirmSheet(
+    return Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        settings: const RouteSettings(name: '/capture/review'),
+        builder: (_) => _ConfirmSheet(
         items: items,
         // Includes meal photos and any photos from picked saved foods.
         imageDataUrls: List.of(images),
@@ -651,13 +666,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             }),
           );
         },
+        ),
       ),
     );
   }
 
   Future<void> _afterSave() async {
     // The background analysis can finish (and the user confirm the review
-    // sheet) after they've navigated away from this screen, so this must not
+    // page) after they've navigated away from this screen, so this must not
     // assume the form is still mounted.
     if (!mounted) return;
     setState(() {
@@ -1109,7 +1125,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                           const Text('AI 分析中（可切換分頁）'),
                         ],
                       )
-                    : const Text('AI 分析並確認'),
+                    : const Text('開始分析'),
               ),
             ),
             const SizedBox(height: 6),
@@ -1148,24 +1164,33 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         children: CaptureMode.values.map((mode) {
           final selected = _mode == mode;
           return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() {
-                _mode = mode;
-                _error = null;
-              }),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: selected ? p.brand : Colors.transparent,
+            child: Semantics(
+              button: true,
+              selected: selected,
+              label: '記錄方式 ${_captureModeLabels[mode]}',
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
                   borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  _captureModeLabels[mode]!,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: selected ? p.onBrand : p.inkSoft,
+                  onTap: () => setState(() {
+                    _mode = mode;
+                    _error = null;
+                  }),
+                  child: Container(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: selected ? p.brand : Colors.transparent,
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      _captureModeLabels[mode]!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? p.onBrand : p.inkSoft,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1312,17 +1337,24 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
               ),
             ),
             Positioned(
-              top: 2,
-              right: 2,
-              child: GestureDetector(
-                onTap: () => setState(() => _imageDataUrls.removeAt(entry.key)),
-                child: Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: const BoxDecoration(
-                    color: Colors.black54,
-                    shape: BoxShape.circle,
+              top: 0,
+              right: 0,
+              child: Semantics(
+                button: true,
+                label: '移除第 ${entry.key + 1} 張相片',
+                child: Material(
+                  color: Colors.black54,
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: () =>
+                        setState(() => _imageDataUrls.removeAt(entry.key)),
+                    child: const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Icon(Icons.close, size: 18, color: Colors.white),
+                    ),
                   ),
-                  child: const Icon(Icons.close, size: 16, color: Colors.white),
                 ),
               ),
             ),
@@ -2087,21 +2119,30 @@ class _ItemEditorState extends State<ItemEditor> {
           _field('食物名稱', _nameCtrl),
           _field('份量，例如：150g', _amountCtrl),
           if (widget.showRating)
-            DropdownButtonFormField<String>(
-              initialValue: aiRatings.containsKey(widget.item.aiRating)
-                  ? widget.item.aiRating
-                  : 'MANUAL',
-              isDense: true,
-              decoration: const InputDecoration(isDense: true),
-              items: aiRatings.entries
-                  .map(
-                    (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
-                  )
-                  .toList(),
-              onChanged: (v) {
-                widget.item.aiRating = v ?? 'MANUAL';
-                widget.onChanged();
-              },
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Row(
+                children: [
+                  Icon(
+                    widget.item.aiRating == 'MANUAL'
+                        ? Icons.edit_outlined
+                        : Icons.auto_awesome_outlined,
+                    size: 16,
+                    color: p.amberInk,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    widget.item.aiRating == 'MANUAL'
+                        ? '手動輸入'
+                        : 'AI 估算・待確認',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: p.amberInk,
+                    ),
+                  ),
+                ],
+              ),
             ),
           Row(
             children: [
@@ -2216,28 +2257,33 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.85,
-      maxChildSize: 0.95,
-      builder: (ctx, scrollController) {
-        final p = ctx.palette;
-        return Padding(
+    final p = context.palette;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('AI 估算・待確認'),
+        leading: IconButton(
+          tooltip: '返回',
+          icon: const Icon(Icons.arrow_back),
+          onPressed: _saving ? null : () => Navigator.of(context).maybePop(),
+        ),
+      ),
+      body: SafeArea(
+        child: Padding(
           padding: EdgeInsets.only(
             left: 16,
             right: 16,
             bottom: MediaQuery.of(context).viewInsets.bottom + 16,
           ),
           child: ListView(
-            controller: scrollController,
+            padding: const EdgeInsets.only(bottom: 24),
             children: [
               const Text(
-                '確認 AI 分析品項',
+                'AI 估算・待確認',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900),
               ),
               const SizedBox(height: 4),
               Text(
-                '請確認食物是否正確，可先修正、刪除或新增後再儲存。',
+                'AI 已完成初步估算。請檢查食物與份量，再確認並儲存這份紀錄。',
                 style: TextStyle(fontSize: 12, color: p.inkSoft),
               ),
               if (widget.imageDataUrls.isNotEmpty) ...[
@@ -2290,10 +2336,6 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                 icon: const Icon(Icons.add),
                 label: const Text('新增食物品項'),
               ),
-              if (_error != null) ...[
-                const SizedBox(height: 10),
-                Text(_error!, style: TextStyle(color: p.danger)),
-              ],
               const SizedBox(height: 12),
               OutlinedButton.icon(
                 onPressed: _saving || _reanalyzing ? null : _reestimate,
@@ -2307,7 +2349,7 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.refresh),
-                label: Text(_reanalyzing ? '重新辨識中...' : '依修改重新 AI 辨識'),
+                label: Text(_reanalyzing ? '重新分析中...' : '重新分析'),
               ),
               const SizedBox(height: 4),
               Text(
@@ -2315,11 +2357,31 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                 style: TextStyle(fontSize: 11, color: p.inkFaint),
               ),
               const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          decoration: BoxDecoration(
+            color: p.surface,
+            border: Border(top: BorderSide(color: p.hairline)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_error != null) ...[
+                Text(
+                  '儲存未完成，草稿仍保留：$_error',
+                  style: TextStyle(color: p.dangerInk),
+                ),
+                const SizedBox(height: 6),
+              ],
               FilledButton(
                 onPressed: _saving || _reanalyzing ? null : _save,
-                style: FilledButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
                 child: _saving
                     ? SizedBox(
                         height: 20,
@@ -2329,13 +2391,12 @@ class _ConfirmSheetState extends State<_ConfirmSheet> {
                           color: p.onBrand,
                         ),
                       )
-                    : const Text('確認並儲存餐點'),
+                    : const Text('確認並儲存'),
               ),
-              const SizedBox(height: 8),
             ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 }

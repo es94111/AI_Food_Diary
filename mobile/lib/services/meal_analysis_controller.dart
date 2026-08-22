@@ -243,6 +243,34 @@ class MealAnalysisController extends ChangeNotifier
 
   void clearReview() => reviewRequested = false;
 
+  /// Cancels any background work and clears the captured meal context before a
+  /// session changes. This is deliberately separate from [reset], which is a
+  /// synchronous UI action used to dismiss a local error banner.
+  Future<void> cancel() async {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _background = false;
+    status = MealAnalysisStatus.idle;
+    error = null;
+    result = const [];
+    imageDataUrls = const [];
+    savedFoodImageIds = const [];
+    savedFoodIds = const [];
+    description = '';
+    mealType = 'LUNCH';
+    mode = 'manual';
+    reviewRequested = false;
+    try {
+      await BackgroundAnalysis.cancel();
+    } catch (_) {
+      // Logout must still complete if an optional background plugin is not ready.
+    }
+    try {
+      await BackgroundAnalysis.clearJobFiles();
+    } catch (_) {}
+    notifyListeners();
+  }
+
   void reset() {
     _pollTimer?.cancel();
     _pollTimer = null;
@@ -254,6 +282,8 @@ class MealAnalysisController extends ChangeNotifier
     savedFoodImageIds = const [];
     savedFoodIds = const [];
     description = '';
+    mealType = 'LUNCH';
+    mode = 'manual';
     reviewRequested = false;
     BackgroundAnalysis.clearNotifications();
     BackgroundAnalysis.clearJobFiles();

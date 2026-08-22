@@ -9,12 +9,9 @@ env:
     clearState: true
 - runFlow: login.yaml
 
-# The capture form sits below the date switcher / calorie card / water card,
-# so scroll to it before switching to manual mode.
-- scrollUntilVisible:
-    element: "⌨️ 手動"
-    direction: DOWN
-- tapOn: "⌨️ 手動"
+# Capture starts from the primary mobile action and continues in a focused page.
+- tapOn: "記錄飲食"
+- tapOn: "手動記錄"
 
 - tapOn: "食物名稱"
 - inputText: ${MEAL_NAME}
@@ -23,20 +20,20 @@ env:
 - hideKeyboard
 
 - scrollUntilVisible:
-    element: "AI 分析並確認"
+    element: "開始分析"
     direction: DOWN
-- tapOn: "AI 分析並確認"
+- tapOn: "開始分析"
 
 # Manual mode still round-trips through the backend, so give it real time.
 - extendedWaitUntil:
-    visible: "查看結果"
+    visible: "查看草稿"
     timeout: 60000
-- tapOn: "查看結果"
+- tapOn: "查看草稿"
 
 - scrollUntilVisible:
-    element: "確認並儲存餐點"
+    element: "確認並儲存"
     direction: DOWN
-- tapOn: "確認並儲存餐點"
+- tapOn: "確認並儲存"
 
 - extendedWaitUntil:
     visible: ".*${MEAL_NAME}.*"

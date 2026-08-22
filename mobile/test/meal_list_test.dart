@@ -53,8 +53,10 @@ void main() {
     expect(find.text('500 kcal'), findsOneWidget);
     expect(find.text('12:30'), findsOneWidget);
 
-    // 項目（MANUAL → ✎；顯示份量與項目 kcal）
-    expect(find.text('✎ 白飯 · 1 碗'), findsOneWidget);
+    // 項目顯示名稱、份量、來源與項目 kcal
+    expect(find.text('白飯'), findsOneWidget);
+    expect(find.text('1 碗'), findsOneWidget);
+    expect(find.text('手動輸入'), findsOneWidget);
     expect(find.text('280 kcal'), findsOneWidget); // 項目 kcal
 
     // 巨量總計行

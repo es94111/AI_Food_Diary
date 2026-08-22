@@ -1,8 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../services/api_client.dart';
@@ -16,7 +14,6 @@ import '../services/update_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/ai_settings_form.dart';
 import '../widgets/health_sync_card.dart';
-import '../widgets/daily_summary_popup.dart';
 import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
@@ -24,6 +21,7 @@ import '../widgets/water_card.dart';
 import '../widgets/profile_form.dart';
 import '../widgets/update_card.dart';
 import 'login_screen.dart';
+import 'meal_capture_screen.dart';
 import 'saved_foods_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -47,8 +45,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _yesterdaySummaryDateIso = '';
   String _yesterdaySummaryText = '';
   String _yesterdayRecommendationText = '';
-  DailySummary? _yesterdaySummary;
-  bool _yesterdaySummaryLoaded = false;
   String _nextMealAdvice = '';
   // Latest water total (ml) reported by the WaterCard, cached so the home-widget
   // publish can reuse it instead of issuing its own /api/water request.
@@ -64,7 +60,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   final _analysis = MealAnalysisController.instance;
   final _captureController = MealCaptureController();
-  MealAnalysisStatus _lastAnalysisStatus = MealAnalysisStatus.idle;
   bool _quickCaptureOpening = false;
 
   @override
@@ -82,43 +77,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.dispose();
   }
 
-  /// Global notifier for the background meal analysis: when it finishes (on any
-  /// tab) show a SnackBar with a one-tap "查看" that jumps to the 飲食 tab and
-  /// opens the confirm sheet. Rebuilds for the cross-tab "分析中" progress bar.
+  /// Keep long-running analysis feedback in the page hierarchy. A SnackBar is
+  /// too easy to miss when Android background work finishes after navigation.
   void _onAnalysisChanged() {
     if (!mounted) return;
-    final status = _analysis.status;
-    final changed = status != _lastAnalysisStatus;
-    _lastAnalysisStatus = status;
     setState(() {});
-    if (!changed) return;
-    final messenger = ScaffoldMessenger.of(context);
-    if (status == MealAnalysisStatus.done) {
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: const Text('AI 分析完成'),
-            duration: const Duration(seconds: 8),
-            action: SnackBarAction(
-              label: '查看',
-              onPressed: () {
-                setState(() => _tabIndex = 0);
-                _analysis.requestReview();
-              },
-            ),
-          ),
-        );
-    } else if (status == MealAnalysisStatus.error) {
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text('AI 分析失敗：${_analysis.error ?? ''}'),
-            duration: const Duration(seconds: 6),
-          ),
-        );
-    }
   }
 
   Future<void> _bootstrap() async {
@@ -164,7 +127,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (mounted && showPrompts) {
       await UpdateCard.promptIfAvailable(context, updateInfo);
-      if (mounted) await _maybeShowYesterdaySummary();
+      // Yesterday's feedback is available from the page, but must not block the
+      // first task of the day with an automatic modal.
     }
 
     // Health Connect can do substantial native reads and uploads. Give the user
@@ -199,70 +163,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _meals = cachedMeals;
       _loading = false;
     });
-  }
-
-  // On the first open of each local day, show yesterday's summary. Normally the
-  // worker has already pre-computed it, so the peek is instant and no AI runs.
-  // If it hasn't yet (first day after enabling, worker missed its window, etc.)
-  // we generate it once on demand with a spinner so the user still sees it.
-  Future<void> _maybeShowYesterdaySummary() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final now = DateTime.now();
-      final todayKey = '${now.year}-${now.month}-${now.day}';
-      if (prefs.getString('last_summary_popup_date') == todayKey) return;
-      final yesterday = DateTime(now.year, now.month, now.day - 1);
-
-      var summary = _yesterdaySummaryLoaded
-          ? _yesterdaySummary
-          : await MealService.dailySummary(yesterday); // peek, no AI
-      if (summary == null && mounted) {
-        // Not pre-computed yet → generate once on demand (spends AI this once).
-        summary = await _generateYesterdaySummary(yesterday);
-      }
-      if (summary == null) return; // nothing to show — leave today unset so we retry later
-      await prefs.setString('last_summary_popup_date', todayKey);
-      if (!mounted) return;
-      await showDailySummaryPopup(context, summary);
-    } catch (_) {
-      // Non-critical: never block the dashboard if the popup check fails.
-    }
-  }
-
-  // Generates yesterday's summary on demand behind a blocking spinner. Returns
-  // null if it couldn't be produced (no meals / no AI key / error).
-  Future<DailySummary?> _generateYesterdaySummary(DateTime day) async {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(20),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 22,
-                  height: 22,
-                  child: CircularProgressIndicator(strokeWidth: 2.5),
-                ),
-                SizedBox(width: 14),
-                Text('正在整理昨日總結…'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-    try {
-      final summary = await MealService.dailySummary(day, generate: true);
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
-      return summary;
-    } catch (_) {
-      if (mounted) Navigator.of(context, rootNavigator: true).pop();
-      return null;
-    }
   }
 
   Future<void> _loadSyncedWeight() async {
@@ -327,6 +227,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _logout() async {
+    // Never carry an in-flight or completed draft across account sessions.
+    await _analysis.cancel();
     await GoogleAuth.signOut();
     await AuthService.logout();
     await HomeWidgetService.clearCalorieProgress();
@@ -363,9 +265,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _selectedDate = today;
       });
       if (needsReload) await _loadMeals();
-      await WidgetsBinding.instance.endOfFrame;
-      if (!mounted) return;
-      await _captureController.openCameraAndAnalyze();
+      await _openCapture(startImmediately: true);
     } finally {
       _quickCaptureOpening = false;
     }
@@ -424,8 +324,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
     try {
       final summary = await MealService.dailySummary(yesterday);
-      _yesterdaySummary = summary;
-      _yesterdaySummaryLoaded = true;
       _yesterdaySummaryDateIso = isoDate(yesterday);
       _yesterdaySummaryText = _widgetText(summary?.aiSummary ?? '');
       _yesterdayRecommendationText = _widgetText(
@@ -454,6 +352,113 @@ class _DashboardScreenState extends State<DashboardScreen> {
       builder: (_) => ProfileFormSheet(profile: _user?.profile),
     );
     if (saved == true) await _refreshUserAndMeals();
+  }
+
+  Future<void> _openCapture({
+    CaptureLaunch launch = CaptureLaunch.none,
+    bool startImmediately = false,
+    bool reviewExistingDraft = false,
+  }) async {
+    if (!mounted) return;
+    final page = MaterialPageRoute<void>(
+      builder: (_) => MealCapturePage(
+        controller: _captureController,
+        onSaved: _loadMeals,
+        initialAdvice: _nextMealAdvice,
+        savedFoodsRevision: _savedFoodsRevision,
+        launch: launch,
+        reviewExistingDraft: reviewExistingDraft,
+      ),
+      settings: const RouteSettings(name: '/capture'),
+    );
+
+    if (!startImmediately) {
+      await Navigator.of(context).push(page);
+      return;
+    }
+
+    // The widget quick action needs the page mounted before the controller can
+    // invoke the native camera. Do not await the route itself in this branch.
+    unawaited(Navigator.of(context).push(page));
+    await WidgetsBinding.instance.endOfFrame;
+    if (mounted) await _captureController.openCameraAndAnalyze();
+  }
+
+  Future<void> _showCaptureSourceSheet() async {
+    final launch = await showModalBottomSheet<CaptureLaunch>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
+                child: Text(
+                  '怎麼記錄這餐？',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
+                ),
+              ),
+              _captureSourceTile(
+                sheetContext,
+                launch: CaptureLaunch.camera,
+                icon: Icons.photo_camera_outlined,
+                title: '拍照記錄',
+                subtitle: '拍下餐點，讓 AI 協助建立估算草稿',
+              ),
+              _captureSourceTile(
+                sheetContext,
+                launch: CaptureLaunch.gallery,
+                icon: Icons.photo_library_outlined,
+                title: '從相簿選取',
+                subtitle: '使用裝置中已有的餐點相片',
+              ),
+              _captureSourceTile(
+                sheetContext,
+                launch: CaptureLaunch.describe,
+                icon: Icons.notes_outlined,
+                title: '文字描述',
+                subtitle: '用幾句話描述吃了什麼與大概份量',
+              ),
+              _captureSourceTile(
+                sheetContext,
+                launch: CaptureLaunch.manual,
+                icon: Icons.edit_note_outlined,
+                title: '手動記錄',
+                subtitle: '直接輸入食物、份量與營養資料',
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (launch != null && mounted) await _openCapture(launch: launch);
+  }
+
+  Widget _captureSourceTile(
+    BuildContext sheetContext, {
+    required CaptureLaunch launch,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    return ListTile(
+      minVerticalPadding: 10,
+      leading: CircleAvatar(
+        backgroundColor: context.palette.amberSurface,
+        foregroundColor: context.palette.brandStrong,
+        child: Icon(icon),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
+      subtitle: Text(subtitle),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.of(sheetContext).pop(launch),
+    );
   }
 
   String _weekdayZh(DateTime d) =>
@@ -509,16 +514,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'AI Food Diary · ${_tabTitles[_tabIndex]}',
-          style: const TextStyle(fontWeight: FontWeight.w900),
+          _tabIndex == 0 ? '今天的飲食' : _tabTitles[_tabIndex],
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
-        // Cross-tab hint that a background meal analysis is in flight.
-        bottom: _analysis.isRunning
-            ? const PreferredSize(
-                preferredSize: Size.fromHeight(4),
-                child: LinearProgressIndicator(minHeight: 4),
-              )
-            : null,
+        actions: [
+          if (_analysis.isRunning || _analysis.isDone || _analysis.isError)
+            Semantics(
+              button: true,
+              label: '查看待處理狀態',
+              child: IconButton(
+                tooltip: '查看待處理狀態',
+                icon: Badge(
+                  backgroundColor: context.palette.brand,
+                  smallSize: 8,
+                  isLabelVisible: true,
+                  child: const Icon(Icons.inbox_outlined),
+                ),
+                onPressed: () {
+                  if (_tabIndex != 0) setState(() => _tabIndex = 0);
+                  if (_analysis.isDone) {
+                    _openCapture(reviewExistingDraft: true);
+                  }
+                },
+              ),
+            ),
+        ],
       ),
       body: IndexedStack(
         index: _tabIndex,
@@ -563,24 +583,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return RefreshIndicator(
       onRefresh: _refreshUserAndMeals,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Text(
-                _error!,
-                style: TextStyle(color: context.palette.danger),
-              ),
+          if (_error != null) ...[
+            _persistentMessage(
+              icon: Icons.cloud_off_outlined,
+              title: '資料更新未完成',
+              message: '內容仍保留在畫面上，可以下拉重新整理。',
+              danger: true,
             ),
+            const SizedBox(height: 12),
+          ],
           _dateSwitcher(),
           const SizedBox(height: 12),
-          // 熱量卡有模糊陰影（blurRadius 20），每次滑動重繪都很貴；獨立重繪
-          // 讓陰影只算一次，滑動時直接搬移快取圖層。
           RepaintBoundary(child: _calorieCard(totals, target)),
           if (!_weekView && _isToday && _todayTotalCalories != null) ...[
             const SizedBox(height: 12),
             _netCalorieCard(totals.calories.round(), _todayTotalCalories!),
+          ],
+          const SizedBox(height: 12),
+          _recordActionCard(),
+          if (_analysis.isRunning || _analysis.isDone || _analysis.isError) ...[
+            const SizedBox(height: 12),
+            _analysisStatusCard(),
           ],
           if (!_weekView) ...[
             const SizedBox(height: 12),
@@ -597,22 +622,128 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ],
           const SizedBox(height: 12),
-          // 表單獨立重繪：AI 分析狀態變化或輸入時的重繪不會連帶重繪下方的
-          // 餐點照片列表，照片很多時滑動更順。
-          RepaintBoundary(
-            child: MealCaptureForm(
-              controller: _captureController,
-              onSaved: _loadMeals,
-              initialAdvice: _nextMealAdvice,
-              showAdvice: !_weekView && _isToday,
-              savedFoodsRevision: _savedFoodsRevision,
-            ),
-          ),
-          const SizedBox(height: 12),
           _mealsSection(),
           const SizedBox(height: 12),
           _DailySummaryCard(date: _selectedDate, key: ValueKey(_selectedDate)),
-          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _recordActionCard() {
+    final isEmpty = _meals.isEmpty && !_weekView;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isEmpty ? '今天還沒有飲食紀錄' : '繼續記錄下一餐',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              isEmpty
+                  ? '拍照、描述或手動記錄第一餐都可以。'
+                  : '每筆內容都會先進入可編輯草稿，確認後才會儲存。',
+              style: TextStyle(color: context.palette.inkSoft),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _showCaptureSourceSheet,
+                icon: const Icon(Icons.add_a_photo_outlined),
+                label: const Text('記錄飲食'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _analysisStatusCard() {
+    if (_analysis.isRunning) {
+      return _persistentMessage(
+        icon: Icons.auto_awesome_outlined,
+        title: 'AI 正在分析這餐…',
+        message: '可以離開這個頁面；完成後會在這裡保留待確認狀態。',
+        action: TextButton(
+          onPressed: () => setState(() => _tabIndex = 0),
+          child: const Text('稍後處理'),
+        ),
+      );
+    }
+    if (_analysis.isDone) {
+      return _persistentMessage(
+        icon: Icons.fact_check_outlined,
+        title: 'AI 分析完成，尚未儲存',
+        message: '請檢查食物與份量，確認後才會成為正式飲食紀錄。',
+        action: FilledButton.tonal(
+          onPressed: () => _openCapture(reviewExistingDraft: true),
+          child: const Text('查看草稿'),
+        ),
+      );
+    }
+    return _persistentMessage(
+      icon: Icons.error_outline,
+      title: '分析未完成，內容已保留',
+      message: '你可以稍後重新開始，或改用手動記錄。',
+      danger: true,
+      action: Wrap(
+        spacing: 4,
+        children: [
+          TextButton(
+            onPressed: _analysis.reset,
+            child: const Text('關閉'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => _openCapture(launch: CaptureLaunch.manual),
+            child: const Text('手動記錄'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _persistentMessage({
+    required IconData icon,
+    required String title,
+    required String message,
+    bool danger = false,
+    Widget? action,
+  }) {
+    final p = context.palette;
+    final background = danger ? p.dangerSurface : p.amberSurface;
+    final foreground = danger ? p.dangerInk : p.amberInk;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(AppRadius.field),
+        border: Border.all(
+          color: danger ? p.danger.withValues(alpha: 0.35) : p.amberBorder,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: foreground),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(fontWeight: FontWeight.w800, color: foreground)),
+                const SizedBox(height: 2),
+                Text(message, style: TextStyle(fontSize: 13, color: foreground)),
+                if (action != null) ...[const SizedBox(height: 6), action],
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -848,15 +979,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : (totals.calories / target).clamp(0.0, 1.0);
     return Container(
       decoration: BoxDecoration(
-        gradient: AppColors.heroGradient,
+        color: AppColors.heroTop,
         borderRadius: BorderRadius.circular(AppRadius.card),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -1142,18 +1266,39 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _mealsSection() {
+    final title = _weekView ? '本週餐點' : '今天的餐點';
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _weekView ? '本週餐點' : '當日餐點',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+            Row(
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                ),
+                const Spacer(),
+                Text(
+                  '${_meals.length} 筆紀錄',
+                  style: TextStyle(fontSize: 13, color: context.palette.inkSoft),
+                ),
+              ],
             ),
-            const SizedBox(height: 8),
-            MealList(meals: _meals, onChanged: _loadMeals),
+            const SizedBox(height: 4),
+            if (_meals.isEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 20),
+                child: Center(
+                  child: Text(
+                    _weekView ? '這週還沒有飲食紀錄。' : '今天還沒有飲食紀錄。',
+                    style: TextStyle(color: context.palette.inkFaint),
+                  ),
+                ),
+              )
+            else
+              MealList(meals: _meals, onChanged: _loadMeals),
           ],
         ),
       ),
