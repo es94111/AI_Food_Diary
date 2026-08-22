@@ -17,16 +17,17 @@ export function DateRangeSwitcher({ date, view }: { date: string; view: "day" | 
   }
 
   return (
-    <div className="glass mt-6 rounded-[2rem] p-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <input className="rounded-xl border border-stone-200 px-3 py-2" onChange={(event) => update(event.target.value)} type="date" value={date} />
-        <div className="flex rounded-xl bg-stone-100 p-1 text-sm font-semibold">
-          <button className={`rounded-lg px-3 py-2 ${view === "day" ? "bg-white shadow-sm" : "text-stone-500"}`} onClick={() => update(date, "day")} type="button">日</button>
-          <button className={`rounded-lg px-3 py-2 ${view === "week" ? "bg-white shadow-sm" : "text-stone-500"}`} onClick={() => update(date, "week")} type="button">星期</button>
-        </div>
-        <button className="rounded-xl border border-stone-200 px-3 py-2 text-sm font-semibold" onClick={() => shift(view === "week" ? -7 : -1)} type="button">上一{view === "week" ? "週" : "日"}</button>
-        <button className="rounded-xl border border-stone-200 px-3 py-2 text-sm font-semibold" onClick={() => shift(view === "week" ? 7 : 1)} type="button">下一{view === "week" ? "週" : "日"}</button>
+    <div className="date-range-switcher" aria-label="日期範圍">
+      <button aria-label={`上一${view === "week" ? "週" : "日"}`} className="date-range-arrow" onClick={() => shift(view === "week" ? -7 : -1)} type="button">←</button>
+      <label className="date-range-input">
+        <span className="date-range-label">檢視日期</span>
+        <input aria-label="選擇日期" onChange={(event) => update(event.target.value)} type="date" value={date} />
+      </label>
+      <div className="date-range-toggle" role="group" aria-label="檢視範圍">
+        <button className={view === "day" ? "is-active" : ""} onClick={() => update(date, "day")} type="button">日</button>
+        <button className={view === "week" ? "is-active" : ""} onClick={() => update(date, "week")} type="button">週</button>
       </div>
+      <button aria-label={`下一${view === "week" ? "週" : "日"}`} className="date-range-arrow" onClick={() => shift(view === "week" ? 7 : 1)} type="button">→</button>
     </div>
   );
 }

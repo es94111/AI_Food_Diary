@@ -1,95 +1,126 @@
-# 2026-07-09 typescript-7-upgrade
+# Dashboard frontend implementation
 
 ## Goal + Acceptance Criteria
-- [x] Restate goal: upgrade the project TypeScript dependency from 6.x to 7.x.
-- [x] `package.json` declares TypeScript 7.x.
-- [x] `package-lock.json` resolves TypeScript 7.x consistently.
-- [x] Verification confirms the installed compiler is TypeScript 7.x.
-- [x] Run available static/build checks, or document exact blockers.
+- [x] Replace the narrow dashboard shell with a distinctive, responsive Warm Evidence Desk workspace.
+- [x] Preserve existing dashboard data loading, routes, forms, and API behavior.
+- [x] Give the Today view a scannable summary, meal rhythm rail, and clear record action.
+- [x] Keep mobile layouts usable with 48px targets and no critical horizontal overflow.
+- [x] Verify with TypeScript/build checks and a diff review.
 
 ## Risk & Rollback
-- Risk level: low to medium.
-- Affected components: TypeScript compiler, Next.js type checking, `tsx` scripts that depend on compiler/runtime compatibility.
-- Rollback strategy: revert `package.json` and `package-lock.json`, then run `npm install`.
-- Deployment/ops notes: no runtime config, schema, auth, or secret changes expected.
+- **Risk level**: medium; visual shell and dashboard composition change, data/API contracts do not.
+- **Rollback**: revert dashboard layout/nav/page and global style changes; no schema or dependency migration.
 
 ## Dependencies & Environment
-- Package manager: npm with `package-lock.json`.
-- Current observed TypeScript: 6.0.3.
-- npm registry latest TypeScript 7.x observed on 2026-07-09: 7.0.2.
-- Next.js TypeScript 7 compatibility package observed on 2026-07-09: `@typescript/native-preview` 7.0.0-dev.20260707.2.
-
-## Checklist
-- [x] Review repo notes and current TypeScript setup.
-- [x] Check npm registry for available TypeScript 7.x version.
-- [x] Install TypeScript 7.x and update lockfile.
-- [x] Verify installed compiler version.
-- [x] Run type/build verification.
-- [x] Summarize changes and verification story.
-- [x] Record lessons if a correction or postmortem occurs.
+- Next.js App Router + TypeScript + Tailwind CSS v4.
+- Existing data contracts and client components remain the source of truth.
+- No new runtime dependency planned.
 
 ## Working Notes
-- `tasks/lessons.md` was not present at session start.
-- TypeScript 7.0.2 no longer exposes the old compiler API at `typescript/lib/typescript.js`; `require("typescript")` resolves to `lib/version.cjs` and exposes version metadata only.
-- Next.js 16.2.9 still checks for `typescript/lib/typescript.js` in `verify-typescript-setup`, so `@typescript/native-preview` is required to make Next use its built-in native TypeScript transition path.
-- Stable `typescript-eslint` 8.63.0 still declares peer support as `typescript >=4.8.4 <6.1.0`; npm install/build proceed with warnings.
+- Direction: Warm Evidence Desk — warm paper canvas, charcoal workspace, amber action color, terracotta food accent, olive health accent.
+- Existing `/dashboard`, `/dashboard/health`, `/dashboard/foods`, and `/dashboard/settings` URLs must remain valid.
+- The existing page already computes totals, weekly data, water, meals, and target values; redesign should consume those values rather than duplicate business logic.
+
+## Release internal notes
+- Technical scope: replace the dashboard shell and today view composition with a responsive CSS workspace; keep existing server-side aggregation, routes, meal capture APIs, hydration actions, and AI summary actions intact; correct weekly multi-image counting; bump web/mobile release metadata to 0.71.0.
+- User-facing translation: present the change as a new workbench, faster daily scanning, clearer meal rhythm, and safer narrow-screen date controls without exposing implementation details.
 
 ## Results
-- Updated `package.json` to pin `typescript` 7.0.2.
-- Added `@typescript/native-preview` 7.0.0-dev.20260707.2 for Next.js TypeScript 7 compatibility.
-- Updated `package-lock.json` for TypeScript 7 platform optional packages and native preview packages.
-- Changed `npm run build` to run `prisma generate && tsc --noEmit && next build`, so TypeScript 7 checking happens before Next skips its incompatible legacy typecheck path.
+- Replaced the narrow dashboard shell with a charcoal sidebar, responsive mobile navigation, editorial topbar, and a warm paper workspace.
+- Redesigned the Today view around a calorie hero, quick-read pulse, meal rhythm rail, logged-entry list, capture workspace, hydration, and summary modules.
+- Kept existing route/query/API contracts and improved weekly image counting for multi-image meals.
 
 ## Verification
-- `npm ls typescript @typescript/native-preview --depth=0` -> TypeScript 7.0.2 and native preview 7.0.0-dev.20260707.2 installed.
-- `npx tsc --version` -> Version 7.0.2.
+- `npm run build` -> passed (Prisma generate, TypeScript, Next production build).
 - `npx tsc --noEmit` -> passed.
-- `npm run build` with local dummy `AUTH_SECRET` and `DATABASE_URL` -> passed after clearing stale `.next`.
-- `npm run lint` -> failed because existing script runs `next lint`, and this Next CLI treats `lint` as an invalid project directory; no ESLint config file is present.
-- `npm ci --dry-run --ignore-scripts` -> inconclusive because npm dry-run used cache-only mode and local cache lacked `eslint`; `npm install --package-lock-only --ignore-scripts` passed.
-# 2026-08-09 mobile-performance-and-stability
+- `git diff --check` -> passed; Git reports only existing LF/CRLF normalization warnings.
+- `npm run lint` -> blocked by the existing `next lint` script, which Next 16 treats as an invalid project directory; direct ESLint is also blocked because the repo has no `eslint.config.*`.
+
+---
+
+# 2026-08-10 web-ui-workflow-spec
 
 ## Goal + Acceptance Criteria
-- [x] Identify a directly observable Flutter APP performance bottleneck and existing errors.
-- [x] Implement low-risk optimizations without changing public behavior.
-- [x] Add regression coverage for repeated data-URL thumbnail decoding.
-- [x] Run available static checks and record the missing Flutter SDK blocker.
-- [ ] Commit the verified change and open a PR with verification and rollback notes.
+- [x] 读取 `docs/ui-design-system-shared.md`，明确本轮只设计 Web。
+- [x] 确认执行模式与关键 Web 方向。
+- [x] 检查仓库入口与现有 Web 代码；记录实际路径为 `src/app/` 与 `src/components/`。
+- [x] 建立 `docs/ui-workflow/` 归档目录。
+- [x] 生成 Web-specific 需求摘要到兼容路径与归档路径。
+- [x] 选择参考搜索方式与额外分析范围：等效 Web 搜索兜底；IA + interaction + content 全选。
+- [x] 运行并保存研究报告到 `docs/ui-workflow/01-research-report.md`。
+- [x] 运行并保存需求报告到 `docs/ui-workflow/02-need-report.md`。
+- [x] 运行并保存形态报告到 `docs/ui-workflow/03-form-report.md`。
+- [x] 运行并保存视觉、IA、交互、内容专家报告到 `docs/ui-workflow/04-visual-report.md`、`05-ia-report.md`、`06-interaction-report.md`、`07-content-report.md`。
+- [x] 总审核并保存 Web-only 最终规范到 `docs/ui-design-spec.md` 与 `docs/ui-workflow/99-ui-design-spec.md`。
+- [ ] 询问是否生成 HTML 原型；未经确认不得生成。
+- [ ] 验证文档完整性与生产代码未修改。
 
 ## Risk & Rollback
-- Risk level: low to medium.
-- Affected components: Flutter dashboard request handling, water-card request handling, async widget lifecycle, and local image thumbnails.
-- Rollback strategy: revert the atomic commit; there are no schema, auth, payment, migration, dependency, or config changes.
-- Rollout/monitoring: CI should run Flutter analysis/tests/build; observe dashboard date changes, water totals, and thumbnail memory in profile mode.
+- **Risk level**：低；仅新增/更新设计文档和任务记录，不改变运行时行为。
+- **Affected components**：后续 Web UI 实现指导；不影响 Android 原生实现。
+- **Rollback**：还原或删除本轮生成的 `docs/ui-workflow/*.md`、`docs/ui-design-spec.md` 与 `docs/ui-need-summary.md`；不需要应用回滚。
 
 ## Dependencies & Environment
-- Flutter/Dart SDK is not installed in this container (`flutter: command not found`).
-- No new dependency was added.
-
-## Checklist
-- [x] Audit authoritative Flutter code/tests and capture baseline verification.
-- [x] Select the highest-value low-risk optimizations and document invariants.
-- [x] Cache decoded thumbnail bytes and bound raster decode size.
-- [x] Prevent stale meal/water responses and post-dispose state updates.
-- [x] Add targeted thumbnail regression tests.
-- [x] Run available static checks; record unavailable analyzer/tests/build.
-- [x] Review diff for correctness, security/privacy, and performance regressions.
-- [x] Document results and verification story.
-- [ ] Commit and open a PR.
+- Web：Next.js App Router + TypeScript。
+- 共享设计基础：`docs/ui-design-system-shared.md`。
+- Web 事实来源：`src/app/`、`src/components/`、`src/app/globals.css`、`README.md`。
+- 用户选择：深度模式；全域工作台；桌面高信息密度；纳入明暗主题。
+- 生产代码约束：本轮不修改 `src/`、依赖、配置或数据库。
 
 ## Working Notes
-- Scope is limited to evidence-backed Flutter improvements; no speculative dependency or architecture changes.
-- Invariant: only the newest meal/water load may update screen state or callbacks.
-- Invariant: thumbnail source bytes change only when the data URL changes, while decoded raster size is bounded to physical display pixels.
-- Independent reviews found no blocking correctness, security, privacy, or performance regression.
+- 仓库不存在 `web/` 目录；不要虚构路径，Web 实际代码在 `src/`。
+- 共享规范中有跨平台内容；最终报告必须明确排除 Mobile App，只保留对 Web 有用的共享 token/语义。
+- 现有 Web 仍以窄容器、胶囊顶栏和玻璃卡片为主；设计重点是桌面侧栏、可扫描高密度布局、表格/抽屉/状态中心和响应式降级。
+- 现有路由以 `/dashboard/*` 为主；任何更细的 IA 路由建议须标注实现迁移成本。
 
 ## Results
-- Added a reusable data-URL thumbnail widget that avoids repeated Base64 allocation during unrelated parent rebuilds and bounds image decode dimensions.
-- Replaced three repeated thumbnail decode sites and added widget regression coverage.
-- Added generation guards so late meal/water responses cannot overwrite the currently selected date; stale water callbacks no longer publish incorrect totals.
-- Added mounted guards to audited async dashboard/profile/health state updates.
+- 已完成模式确认、仓库探索、共享设计系统读取和 Web 需求方向确认。
+- 已写入 `docs/ui-need-summary.md` 与 `docs/ui-workflow/00-need-summary.md`。
+- 尚未运行外部研究或专家 Agent，尚未生成最终规范。
 
 ## Verification
-- `git diff --check` -> passed.
-- `rg -n "base64Decode\(.*split|Image\.memory\(" mobile/lib/widgets` -> only the centralized `DataUrlImage` remains.
-- `cd mobile && flutter analyze` / `flutter test` / Android build -> unavailable because the container has no Flutter SDK.
+- 已检查：README、package.json、src/app、src/components、共享设计系统与当前任务记录。
+- 观察到：仓库没有 `web/` 目录；当前 Web 代码位于 `src/`。
+- 生产代码未修改；后续需用 `git status --short` 与 `git diff --check` 验证。
+
+---
+
+# 2026-08-22 mobile-ui-workflow-spec
+
+## Goal + Acceptance Criteria
+- [x] 读取 `docs/ui-design-system-shared.md`，明确本轮只设计 Android 手机原生体验。
+- [x] 确认深度模式、目标用户与完整 App 范围。
+- [x] 检查 `mobile/` 的 Flutter 入口、主题、饮食记录、健康同步、我的食物与测试/流程。
+- [x] 建立 `docs/ui-workflow/` 归档目录。
+- [x] 生成 Mobile-App-specific 需求摘要到兼容路径与归档路径。
+- [x] 选择参考搜索方式与额外分析范围：TinyFish 选项；当前环境无 TinyFish 工具，使用等效 Web 搜索/抓取兜底；IA + interaction + content 全选。
+- [x] 运行并保存研究报告、需求报告、形态报告、视觉报告、IA、交互与内容报告。
+- [x] 总审核并保存移动端最终规范到 `docs/ui-design-spec.md` 与 `docs/ui-workflow/99-ui-design-spec.md`。
+- [ ] 询问是否生成 HTML 原型；未经确认不得生成。
+- [ ] 完成最终文档完整性与生产代码未修改验证。
+
+## Results
+- 已完成深度模式 Mobile-App-specific UI/UX 规范；覆盖 Android 导航、触控、安全区、Sheet、全屏表单、键盘、离线、同步、权限、冲突、无障碍与内容策略。
+- 已记录冲突处理：复杂 AI 审核使用全屏；根级 CTA 使用 `記錄飲食`；昨日总结改为可召回；负面 AI 评级改为中性方向。
+- 未生成 HTML 原型，等待用户二次确认。
+
+## Verification plan
+- [x] `git diff --check`（通过；仅有 Git 的 LF/CRLF 提示）
+- [x] `git status --short -- mobile src`（无生产路径变更）
+- [x] 检查 `docs/ui-workflow/00-need-summary.md` 至 `07-content-report.md`、`99-ui-design-spec.md` 和兼容规范均存在且非空
+
+## Risk & Rollback
+- **Risk level**：低；本轮仅新增/更新设计文档和任务记录，不改变 Flutter/Web 运行时行为。
+- **Affected components**：后续 Android UI 实现指导；不影响现有生产代码。
+- **Rollback**：还原或删除本轮新增的 `docs/ui-workflow/*.md`、`docs/ui-design-spec.md`、`docs/ui-need-summary.md` 及本段任务记录。
+
+## Dependencies & Environment
+- Android：Flutter，Material 3；具体版本见 `mobile/pubspec.yaml`。
+- 共享设计基础：`docs/ui-design-system-shared.md`。
+- 移动端事实来源：`mobile/lib/screens/dashboard_screen.dart`、`mobile/lib/theme/app_theme.dart`、`mobile/lib/widgets/meal_capture_form.dart`、`mobile/lib/widgets/health_sync_card.dart`、`mobile/lib/widgets/saved_foods_manager.dart`、`mobile/.maestro/flows/`。
+- 生产代码约束：不修改 `mobile/`、`src/`、依赖、配置或数据库。
+
+## Working Notes
+- Android 当前已实现三项底部导航、缓存优先启动、后台 AI 分析和 Health Connect；设计报告需区分“现状”与“建议”。
+- 共享规范是跨平台语义基础，不应直接复制 Web 的布局；最终报告必须只保留移动端交互、状态和安全区规则。
+- 深度模式需严格按 `need → form → visual → ia → interaction → content` 传递报告。
