@@ -8,8 +8,14 @@ class AuthService {
 
   static Future<bool> hasSession() => _api.hasSession();
 
-  static Future<AppUser> loginWithGoogle(String idToken) async {
-    final res = await _api.post('/api/auth/google', data: {'idToken': idToken});
+  static Future<AppUser> loginWithGoogle(
+    String idToken, {
+    required String turnstileToken,
+  }) async {
+    final res = await _api.post('/api/auth/google', data: {
+      'idToken': idToken,
+      'cf-turnstile-response': turnstileToken,
+    });
     if (!ApiClient.ok(res)) {
       Sentry.logger.warn('Google login failed', attributes: {
         'status': SentryAttribute.int(res.statusCode ?? 0),

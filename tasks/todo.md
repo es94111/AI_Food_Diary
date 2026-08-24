@@ -601,3 +601,41 @@
 - PR #124 checks — passed: Build, Android APK, and all Analyze jobs; CodeQL was skipped by workflow conditions.
 - `npm run lint` — blocked because the existing `next lint` script is invalid under Next 16; no ESLint config is present for a direct replacement.
 - Flutter analyzer/tests — unavailable locally because `flutter`/`dart` are not installed; Android CI passed the APK build.
+
+---
+
+# 2026-08-24 Turnstile login integration
+
+## Goal and acceptance criteria
+
+- [x] Require a fresh Turnstile token for every real Google SSO login from Web and Android.
+- [x] Verify `success`, exact action, and exact hostname before Google authentication or session creation.
+- [x] Reset single-use tokens after every login attempt and preserve the existing Google SSO/account policy.
+- [x] Document the public site key and deployment-only secret/hostname configuration without storing a secret in Git.
+
+## Risk & rollback
+
+- **Risk level**: high; authentication gates and the Android login dependency are affected.
+- **Rollback**: revert the Turnstile login commit and remove the deployment secret/hostname settings; no database migration is required.
+
+## Working notes
+
+- The existing widget site key is `0x4AAAAAADYFeQGVNASty2ls`.
+- The server verifier fails closed when `TURNSTILE_SECRET` or `TURNSTILE_HOSTNAMES` is missing, when Siteverify fails, or when action/hostname does not match.
+- Google account linking remains separate from login and intentionally keeps its existing authenticated-session flow.
+- Existing-widget secret retrieval/e2e validation remains a deployment step; no Wrangler executable or secret-write confirmation was available in this coding workspace.
+
+## Results
+
+- Added explicit Web rendering and Android same-origin WebView rendering for the existing widget.
+- Wired the one-time `cf-turnstile-response` token through Google SSO and reset it after success, rejection, provider failure, cancellation, or network failure.
+- Added public configuration, release/docs updates, and smoke-test coverage for missing tokens.
+
+## Verification
+
+- `lsp_diagnostics` on changed Web TypeScript files — clean.
+- `npm run lint` — passed locally.
+- `npx tsc --noEmit` / `npm run build` — blocked in the Synology-backed checkout by `tsc.exe UNKNOWN` / Prisma native file-read errors; rerun in a local filesystem checkout or CI.
+- PowerShell UTF-8 parser — passed.
+- Flutter analyzer/tests — unavailable because `flutter`/`dart` are not installed locally.
+- Real Siteverify success/replay validation — pending deployment secret configuration and a fresh real token.

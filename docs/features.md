@@ -40,7 +40,7 @@
 | POST | `/api/auth/login` | 舊版帳密登入（已停用） | Public | 永遠回 410；不解析或驗證密碼。請改用 Google SSO。 |
 | POST | `/api/auth/register` | 舊版帳密註冊（已停用） | Public | 永遠回 410；不建立帳號。請改用 Google SSO。 |
 | POST | `/api/auth/logout` | 本機登出 | Authed | 僅清本機 Cookie，不撤銷 `tokenVersion`。回 `{ ok:true }` |
-| POST | `/api/auth/google` | Google SSO 登入／註冊 | Public | 驗證 Google ID token；以 `googleId` 找回帳號，首次使用自動建立帳號；不以 Email 自動綁定既有帳號 |
+| POST | `/api/auth/google` | Google SSO 登入／註冊 | Public | 先以 Turnstile action=`login` 驗證人機 token（success、action、hostname），再驗證 Google ID token；以 `googleId` 找回帳號，首次使用自動建立帳號；不以 Email 自動綁定既有帳號 |
 | POST | `/api/auth/google/link` | 綁定 Google SSO | Authed | 供仍有 session 的舊帳號遷移；409 若該 Google 帳號屬於他人 |
 | GET | `/api/me` | 取得目前使用者＋設定檔 | Authed | 敏感欄位（性別／生日／身高／體重）已加密，回傳明文 |
 | PATCH | `/api/me` | 更新設定檔 | Authed | `gender?, birthDate?, heightCm?(80-250), weightKg?(20-350), activityLevel?, goal?, calorieTarget?(800-6000), waterGoalMl?, preferences?[], allergies?[]` |
@@ -111,14 +111,14 @@
 | --- | --- | --- | --- | --- |
 | GET/PATCH | `/api/admin/settings` | 舊版註冊設定（已停用） | Public | 永遠回 410；SSO 註冊不受舊設定切換。 |
 | GET | `/api/app/download` | 串流最新 APK | **Public** | 從 S3 `downloads/` 取，無檔則 404 |
-| GET | `/api/app/version` | 版本／更新資訊 | **Public** | 回 `{ webVersion, latestVersion, apkUrl, releaseNotes, googleClientId }` |
+| GET | `/api/app/version` | 版本／更新資訊 | **Public** | 回 `{ webVersion, latestVersion, apkUrl, releaseNotes, googleClientId, turnstileSiteKey }`；Turnstile site key 為公開值 |
 
 ### Web 頁面
 
 | 頁面 | 路徑 | 功能 |
 | --- | --- | --- |
 | 首頁 | `/` | 行銷登入頁；**已登入自動轉到 `/dashboard`**；hero 文案＋預覽卡，按鈕連到 `/login` 使用 Google SSO |
-| 登入／註冊 | `/login` | **已登入自動轉到 `/dashboard`**；僅顯示 Google SSO。首次成功登入自動建立帳號 |
+| 登入／註冊 | `/login` | **已登入自動轉到 `/dashboard`**；Google SSO 前先完成 Turnstile 人機驗證。首次成功登入自動建立帳號 |
 | 舊註冊網址 | `/register` | 導向 `/login`；不再提供帳密註冊表單 |
 | 儀表板殼 | `/dashboard` | 認證守門（未登入轉 `/login`）；`TimezoneReporter`、品牌 header、`DashboardNav`（飲食／健康／食物／設定） |
 | 飲食 | `/dashboard` | 日／週切換；熱量目標卡（TDEE，Health Connect 體重身高覆蓋設定檔）＋巨量環；Health Connect 有 `TOTAL_CALORIES` 時顯示淨熱量卡；`WaterCard`；`MealCaptureForm`（照片／描述／手動／營養標示／條碼／下一餐建議）；`MealList`；週檢視；`DailySummaryPopup`；`AiInfoCard` |

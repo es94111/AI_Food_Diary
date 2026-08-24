@@ -19,7 +19,7 @@ publish_to: "none" # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build
 # suffix.
-version: 0.73.0+117
+version: 0.74.0+118
 
 environment:
   sdk: ^3.12.0
@@ -68,6 +68,9 @@ dependencies:
   # non-Android foreground fallback.)
   flutter_downloader: ^1.12.0
   google_sign_in: ^7.2.0
+  # Cloudflare Turnstile login challenge rendered with the production origin as
+  # the WebView base URL so siteverify can validate the returned hostname.
+  webview_flutter: ^4.14.1
   # Background meal analysis: WorkManager runs the analysis in a background
   # isolate that survives the app being minimised or killed, and posts a system
   # notification on completion.

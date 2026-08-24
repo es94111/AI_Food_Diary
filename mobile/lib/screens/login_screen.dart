@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../services/google_auth.dart';
+import '../services/turnstile_service.dart';
+import '../widgets/turnstile_webview.dart';
 import 'dashboard_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -14,12 +16,17 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _loading = false;
   bool _googleConfigChecked = false;
+  bool _siteKeyChecked = false;
+  String? _siteKey;
+  String? _turnstileToken;
+  final _turnstileController = TurnstileController();
   String? _error;
 
   @override
   void initState() {
     super.initState();
     _loadGoogleConfig();
+    _loadSiteKey();
   }
 
   /// Resolve the Google client id from the backend so the SSO button works
@@ -30,13 +37,32 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _googleConfigChecked = true);
   }
 
+  Future<void> _loadSiteKey() async {
+    final key = await TurnstileService.siteKey();
+    if (!mounted) return;
+    setState(() {
+      _siteKey = key;
+      _siteKeyChecked = true;
+    });
+  }
+
   Future<void> _googleLogin() async {
+    if (!_siteKeyChecked || _siteKey == null) {
+      setState(() => _error = '安全驗證尚未載入，請稍後再試。');
+      return;
+    }
+    final turnstileToken = _turnstileToken;
+    if (turnstileToken == null) {
+      setState(() => _error = '請先完成下方人機驗證。');
+      return;
+    }
+
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final user = await GoogleAuth.signIn();
+      final user = await GoogleAuth.signIn(turnstileToken: turnstileToken);
       if (user == null) return; // cancelled
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
@@ -48,6 +74,9 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
+      // Tokens are single-use, including tokens consumed by a rejected login.
+      _turnstileToken = null;
+      await _turnstileController.reset();
       if (mounted) setState(() => _loading = false);
     }
   }
@@ -95,11 +124,50 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(color: palette.inkSoft),
                   ),
                   const SizedBox(height: 28),
-                  if (!_googleConfigChecked)
+                  if (!_googleConfigChecked || !_siteKeyChecked)
                     const Center(child: CircularProgressIndicator())
                   else if (GoogleAuth.isConfigured) ...[
+                    if (_siteKey != null) ...[
+                      Text(
+                        _turnstileToken == null
+                            ? '人機驗證'
+                            : '✅ 已完成人機驗證',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _turnstileToken == null
+                              ? palette.inkSoft
+                              : palette.success,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      TurnstileWebView(
+                        siteKey: _siteKey!,
+                        controller: _turnstileController,
+                        onToken: (token) {
+                          if (mounted) {
+                            setState(() {
+                              _turnstileToken = token;
+                              if (_error == '請先完成下方人機驗證。') {
+                                _error = null;
+                              }
+                            });
+                          }
+                        },
+                        onExpired: () {
+                          if (mounted) setState(() => _turnstileToken = null);
+                        },
+                      ),
+                    ] else
+                      Text(
+                        '安全驗證尚未設定，請聯絡管理員。',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: palette.danger),
+                      ),
+                    const SizedBox(height: 12),
                     OutlinedButton.icon(
-                      onPressed: _loading ? null : _googleLogin,
+                      onPressed: _loading || _siteKey == null
+                          ? null
+                          : _googleLogin,
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),

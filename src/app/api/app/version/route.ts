@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLatestAppRelease } from "@/lib/app-release";
 import { WEB_VERSION } from "@/lib/version";
+import { TURNSTILE_SITE_KEY } from "@/lib/turnstile-config";
 
 // Public endpoint so the mobile app can check for updates before/after login.
 // Version + notes are resolved dynamically from S3 (downloads/ and notes/).
@@ -17,7 +18,9 @@ export async function GET(request: Request) {
       // The Google web client id (same one the backend verifies tokens against),
       // so the app can enable Google sign-in at runtime without baking the id in
       // at build time. Empty when Google sign-in isn't configured.
-      googleClientId: process.env.GOOGLE_CLIENT_ID ?? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? ""
+      googleClientId: process.env.GOOGLE_CLIENT_ID ?? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ?? "",
+      // Public Turnstile site key used by the Android WebView login widget.
+      turnstileSiteKey: TURNSTILE_SITE_KEY,
     },
     // The origin may be derived from Host headers; tell shared caches to vary
     // on it so one client's forged Host can't poison another's cached apkUrl.
