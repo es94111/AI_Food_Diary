@@ -4,9 +4,9 @@ appId: aifood.shao.one
 ---
 - tapOn: "設定"
 - scrollUntilVisible:
-    element: "登出"
-    direction: DOWN
+      element: "登出"
+      direction: DOWN
 - tapOn: "登出"
 - extendedWaitUntil:
-    visible: "電子郵件"
-    timeout: 10000
+      visible: "使用 Google 登入"
+      timeout: 10000

@@ -17,26 +17,13 @@ function getJwtSecret() {
   return new TextEncoder().encode(secret);
 }
 
-export async function hashPassword(password: string) {
-  return argon2.hash(password, { type: argon2.argon2id });
-}
-
-export async function verifyPassword(hash: string, password: string) {
-  return argon2.verify(hash, password);
-}
-
-// Timing-side-channel guard for login: when the account doesn't exist we must
-// still burn roughly the same argon2 time as a failed password check, otherwise
-// response latency reveals which emails are registered. A lazily-created random
-// hash is used so the burn never matches a real password.
-let dummyHash: string | null = null;
-export async function burnPasswordVerifyTiming(password: string): Promise<void> {
-  dummyHash ??= await hashPassword(randomBytes(16).toString("hex"));
-  try {
-    await argon2.verify(dummyHash, password);
-  } catch {
-    // Wrong password against the dummy hash — exactly the work we wanted.
-  }
+// The legacy User.passwordHash column is still required for backward-compatible
+// rows. Google-only accounts receive a valid but random hash; no user-supplied
+// password is accepted or verified anywhere in the authentication flow.
+export function createUnusablePasswordHash() {
+  return argon2.hash(randomBytes(32).toString("hex"), {
+    type: argon2.argon2id
+  });
 }
 
 export async function createSession(userId: string, tokenVersion: number) {
@@ -65,7 +52,7 @@ export async function clearSession() {
 
 // Revokes every outstanding token for the current user by bumping tokenVersion.
 // This is the "sign out of all devices" / compromised-account escape hatch (and
-// the hook for a future password-change flow) — normal per-device logout does
+// the hook for a future provider-recovery flow) — normal per-device logout does
 // NOT call this. Returns the userId, or null if no valid session was present.
 export async function invalidateUserSessions(): Promise<string | null> {
   const cookieStore = await cookies();

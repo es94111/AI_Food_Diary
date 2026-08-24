@@ -2,7 +2,16 @@ import "server-only";
 import { createRemoteJWKSet, decodeJwt, jwtVerify } from "jose";
 
 // Google's public keys for verifying ID token signatures (cached by jose).
-const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
+function createGoogleJwks() {
+  try {
+    return createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
+  } catch {
+    // Keep startup failure explicit if this fixed provider URL is ever changed.
+    throw new Error("Invalid Google JWKS URL");
+  }
+}
+
+const GOOGLE_JWKS = createGoogleJwks();
 
 export type GoogleIdentity = {
   sub: string;
@@ -20,9 +29,15 @@ export class GoogleAuthError extends Error {
 /// Verifies a Google ID token (signature, issuer, audience) and returns the
 /// verified identity. Throws GoogleAuthError on any problem.
 export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdentity> {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  // The client id is public by design. Prefer the server-side name, but keep
+  // the public name as a deployment-safe fallback so UI and verification do not
+  // disagree when only one copy was configured.
+  const clientId = process.env.GOOGLE_CLIENT_ID ?? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
   if (!clientId) {
-    throw new GoogleAuthError("尚未設定 Google 登入（GOOGLE_CLIENT_ID）。", 400);
+    throw new GoogleAuthError(
+      "尚未設定 Google 登入（GOOGLE_CLIENT_ID 或 NEXT_PUBLIC_GOOGLE_CLIENT_ID）。",
+      400
+    );
   }
 
   let payload: { sub?: string; email?: string; email_verified?: boolean | string; name?: string };

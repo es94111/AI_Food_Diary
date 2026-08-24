@@ -1,33 +1,14 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth";
-import { prisma } from "@/lib/db";
-import { apiRoute } from "@/lib/http";
 
-export const GET = apiRoute(async () => {
-  await requireAdmin();
-  const config = await prisma.appConfig.findUnique({ where: { id: "singleton" } });
-  return NextResponse.json({ registrationOpen: config?.registrationOpen ?? true });
-});
+const errorMessage = "公開帳密註冊已停用，登入與註冊請一律使用 Google SSO。";
 
-export const PATCH = apiRoute(async (request: Request) => {
-  await requireAdmin();
+// The old admin registration toggle is intentionally inert. Keep explicit
+// responses for older app builds instead of allowing them to mistake a legacy
+// setting for an active account-creation control.
+export function GET() {
+  return NextResponse.json({ error: errorMessage }, { status: 410 });
+}
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "request body 必須是 JSON" }, { status: 400 });
-  }
-  const registrationOpen = (body as { registrationOpen?: unknown } | null)?.registrationOpen;
-  if (typeof registrationOpen !== "boolean") {
-    return NextResponse.json({ error: "registrationOpen 必須是 boolean" }, { status: 400 });
-  }
-
-  const config = await prisma.appConfig.upsert({
-    where: { id: "singleton" },
-    create: { id: "singleton", registrationOpen },
-    update: { registrationOpen }
-  });
-
-  return NextResponse.json({ registrationOpen: config.registrationOpen });
-});
+export function PATCH() {
+  return NextResponse.json({ error: errorMessage }, { status: 410 });
+}

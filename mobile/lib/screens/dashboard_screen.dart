@@ -890,10 +890,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         ],
         const SizedBox(height: 12),
         const UpdateCard(),
-        if (_user?.isAdmin == true) ...[
-          const SizedBox(height: 12),
-          const _AdminPanel(),
-        ],
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: _logout,
@@ -1525,69 +1521,7 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
   }
 }
 
-class _AdminPanel extends StatefulWidget {
-  const _AdminPanel();
-
-  @override
-  State<_AdminPanel> createState() => _AdminPanelState();
-}
-
-class _AdminPanelState extends State<_AdminPanel> {
-  bool? _open;
-  bool _busy = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    try {
-      final open = await AuthService.getRegistrationOpen();
-      if (mounted) setState(() => _open = open);
-    } catch (_) {}
-  }
-
-  Future<void> _toggle(bool value) async {
-    setState(() => _busy = true);
-    try {
-      final result = await AuthService.setRegistrationOpen(value);
-      if (!mounted) return;
-      setState(() => _open = result);
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '管理員設定',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('開放公開註冊'),
-              subtitle: const Text('關閉後僅管理員可建立新帳號'),
-              value: _open ?? true,
-              onChanged: _busy || _open == null ? null : _toggle,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Settings card: bind / unbind a Google account to the current user.
+/// Settings card: bind a Google account to a legacy current session.
 class _GoogleLinkCard extends StatefulWidget {
   const _GoogleLinkCard({required this.linked, required this.onChanged});
   final bool linked;
@@ -1624,24 +1558,6 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
     }
   }
 
-  Future<void> _unbind() async {
-    setState(() => _busy = true);
-    try {
-      await AuthService.unlinkGoogle();
-      await GoogleAuth.signOut();
-      await widget.onChanged();
-      if (mounted) setState(() => _linked = false);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('解除綁定失敗：$e')));
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -1664,19 +1580,14 @@ class _GoogleLinkCardState extends State<_GoogleLinkCard> {
                     size: 20,
                   ),
                   const SizedBox(width: 6),
-                  const Expanded(child: Text('已綁定 Google 帳號')),
-                  TextButton(
-                    onPressed: _busy ? null : _unbind,
-                    child: Text(
-                      '解除綁定',
-                      style: TextStyle(color: context.palette.danger),
-                    ),
+                  const Expanded(
+                    child: Text('Google SSO 已綁定（目前唯一登入方式）'),
                   ),
                 ],
               )
             else ...[
               Text(
-                '綁定後即可使用 Google 一鍵登入。',
+                '綁定後即可使用 Google SSO 登入。',
                 style: TextStyle(fontSize: 12, color: context.palette.inkSoft),
               ),
               const SizedBox(height: 10),

@@ -1,23 +1,5 @@
 import { z } from "zod";
 
-// Cap password length: argon2 has no practical input limit, so an unbounded
-// string turns every login/register into a CPU amplification vector. 128 is
-// far above any real passphrase (zod rejects before any hashing happens).
-const passwordSchema = z.string().min(8).max(128);
-
-export const registerSchema = z.object({
-  email: z.string().email(),
-  password: passwordSchema,
-  name: z.string().min(1).max(80).optional(),
-  "cf-turnstile-response": z.string().optional()
-});
-
-export const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1).max(128),
-  "cf-turnstile-response": z.string().optional()
-});
-
 export const profileSchema = z.object({
   gender: z.string().max(40).optional(),
   birthDate: z.string().date().optional(),

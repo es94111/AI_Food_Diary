@@ -36,13 +36,12 @@
 ### 1. 認證與使用者
 
 | Method | Path | 功能 | 認證 | 說明 |
-|---|---|---|---|---|
-| POST | `/api/auth/login` | Email＋密碼登入 | Public | 建立 session；依 IP（15/5m）與 email（8/15m）速率限制；有設定時需 Turnstile。回 `{ user }` |
-| POST | `/api/auth/register` | 註冊帳號 | Public | 第一個使用者自動成為管理員並略過 Turnstile／註冊開關；初始化 AppConfig。密碼 ≥ 8。回 `{ user }` |
+| --- | --- | --- | --- | --- |
+| POST | `/api/auth/login` | 舊版帳密登入（已停用） | Public | 永遠回 410；不解析或驗證密碼。請改用 Google SSO。 |
+| POST | `/api/auth/register` | 舊版帳密註冊（已停用） | Public | 永遠回 410；不建立帳號。請改用 Google SSO。 |
 | POST | `/api/auth/logout` | 本機登出 | Authed | 僅清本機 Cookie，不撤銷 `tokenVersion`。回 `{ ok:true }` |
-| POST | `/api/auth/google` | Google 登入 | Public | 帶 `idToken`：先比 googleId，再比 email，否則建帳號（受 `registrationOpen` 限制，第一個使用者除外） |
-| POST | `/api/auth/google/link` | 綁定 Google | Authed | 把 Google 身分綁到目前登入使用者。409 若該 Google 帳號屬於他人 |
-| DELETE | `/api/auth/google/link` | 解除 Google 綁定 | Authed | 回 `{ googleLinked:false }` |
+| POST | `/api/auth/google` | Google SSO 登入／註冊 | Public | 驗證 Google ID token；以 `googleId` 找回帳號，首次使用自動建立帳號；不以 Email 自動綁定既有帳號 |
+| POST | `/api/auth/google/link` | 綁定 Google SSO | Authed | 供仍有 session 的舊帳號遷移；409 若該 Google 帳號屬於他人 |
 | GET | `/api/me` | 取得目前使用者＋設定檔 | Authed | 敏感欄位（性別／生日／身高／體重）已加密，回傳明文 |
 | PATCH | `/api/me` | 更新設定檔 | Authed | `gender?, birthDate?, heightCm?(80-250), weightKg?(20-350), activityLevel?, goal?, calorieTarget?(800-6000), waterGoalMl?, preferences?[], allergies?[]` |
 | GET | `/api/me/ai-settings` | 取得 AI 設定 | Authed | API 金鑰永不回傳，僅回 `hasKey` 布林 |
@@ -53,7 +52,7 @@
 ### 2. 餐點 Meals
 
 | Method | Path | 功能 | 認證 | 說明 |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | GET | `/api/meals` | 列出某日餐點 | Authed | `?date=YYYY-MM-DD`，時區取自 `afd_tz` cookie／`tz` query／設定檔 |
 | POST | `/api/meals` | 儲存確認的餐點 | Authed | 上傳照片到 S3、計算總計、加密 notes/items。`{ mealType, imageDataUrls?\|imageDataUrl?, description?, manualItems?[], savedFoodImageIds?[], eatenAt? }` |
 | POST | `/api/meals/analyze` | AI 圖片分析（預覽，不儲存） | Authed + AI 限流 | `precise=true` 跑中位數穩定估算。`{ mealType, imageDataUrls\|imageDataUrl, precise? }` |
@@ -71,7 +70,7 @@
 ### 3. 常用食物 Saved Foods
 
 | Method | Path | 功能 | 認證 | 說明 |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | GET | `/api/saved-foods` | 列出食物／條碼查詢 | Authed | `?archived=true` 列已封存；`?barcode=` 單筆查詢。排序：收藏→最近使用→使用次數→更新 |
 | POST | `/api/saved-foods` | 建立食物 | Authed | 條碼硬性唯一＋軟性相似比對（`allowDuplicate` 可略過）。409 `DUPLICATE_FOOD` |
 | PATCH | `/api/saved-foods/batch` | 批次封存 | Authed | `{ ids[](1-100) }` → `{ archivedCount }` |
@@ -83,7 +82,7 @@
 ### 4. 喝水 Water
 
 | Method | Path | 功能 | 認證 | 說明 |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | GET | `/api/water` | 列出某日喝水紀錄 | Authed | `?date=`，回 `{ logs[], totalMl }` |
 | POST | `/api/water` | 新增喝水紀錄 | Authed | `{ amountMl(1-5000), drankAt? }` |
 | DELETE | `/api/water/[id]` | 刪除喝水紀錄 | Authed | 404 若非本人 |
@@ -91,7 +90,7 @@
 ### 5. 健康 Health Connect
 
 | Method | Path | 功能 | 認證 | 說明 |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | GET | `/api/health/connections` | 列出同步裝置 | Authed | 回 `{ connections[] }` |
 | POST | `/api/health/connections` | 建立同步裝置 | Authed | 產生一次性 Bearer token（回傳一次，後端存雜湊） |
 | DELETE | `/api/health/connections/[id]` | 撤銷同步裝置 | Authed | 設 `revokedAt` |
@@ -102,31 +101,30 @@
 ### 6. 昨日總結與下一餐建議
 
 | Method | Path | 功能 | 認證 | 說明 |
-|---|---|---|---|---|
+| --- | --- | --- | --- | --- |
 | GET | `/api/daily-summary` | 預覽已存總結 | Authed | `?date=`、`?generate=1` 才花 AI 配額（僅允許過去日期） |
 | GET | `/api/recommendations/next-meal` | 預覽／產生下一餐建議 | Authed | `?peek=1` 只讀已存；否則花 AI 產生並儲存（用當日總計、同步體重身高、TDEE） |
 
 ### 7. 管理 / App 後設資料
 
 | Method | Path | 功能 | 認證 | 說明 |
-|---|---|---|---|---|
-| GET | `/api/admin/settings` | 讀取 `registrationOpen` | **Admin** | 回 `{ registrationOpen }` |
-| PATCH | `/api/admin/settings` | 切換 `registrationOpen` | **Admin** | `{ registrationOpen: boolean }` |
+| --- | --- | --- | --- | --- |
+| GET/PATCH | `/api/admin/settings` | 舊版註冊設定（已停用） | Public | 永遠回 410；SSO 註冊不受舊設定切換。 |
 | GET | `/api/app/download` | 串流最新 APK | **Public** | 從 S3 `downloads/` 取，無檔則 404 |
 | GET | `/api/app/version` | 版本／更新資訊 | **Public** | 回 `{ webVersion, latestVersion, apkUrl, releaseNotes, googleClientId }` |
 
 ### Web 頁面
 
 | 頁面 | 路徑 | 功能 |
-|---|---|---|
-| 首頁 | `/` | 行銷登入頁；**已登入自動轉到 `/dashboard`**；hero 文案＋預覽卡，按鈕連到 `/login`、`/register` |
-| 登入 | `/login` | **已登入自動轉到 `/dashboard`**；`AuthForm`(login)＋Google 登入；載入 Turnstile／Google client id |
-| 註冊 | `/register` | **已登入自動轉**；首位使用者→「建立管理員帳號」（略過 Turnstile）；`registrationOpen=false` 顯示封鎖頁；否則 `AuthForm`(register)＋Google |
+| --- | --- | --- |
+| 首頁 | `/` | 行銷登入頁；**已登入自動轉到 `/dashboard`**；hero 文案＋預覽卡，按鈕連到 `/login` 使用 Google SSO |
+| 登入／註冊 | `/login` | **已登入自動轉到 `/dashboard`**；僅顯示 Google SSO。首次成功登入自動建立帳號 |
+| 舊註冊網址 | `/register` | 導向 `/login`；不再提供帳密註冊表單 |
 | 儀表板殼 | `/dashboard` | 認證守門（未登入轉 `/login`）；`TimezoneReporter`、品牌 header、`DashboardNav`（飲食／健康／食物／設定） |
 | 飲食 | `/dashboard` | 日／週切換；熱量目標卡（TDEE，Health Connect 體重身高覆蓋設定檔）＋巨量環；Health Connect 有 `TOTAL_CALORIES` 時顯示淨熱量卡；`WaterCard`；`MealCaptureForm`（照片／描述／手動／營養標示／條碼／下一餐建議）；`MealList`；週檢視；`DailySummaryPopup`；`AiInfoCard` |
 | 食物 | `/dashboard/foods` | 「我的食物」`SavedFoodsManager` |
 | 健康 | `/dashboard/health` | Health Connect 同步儀表板；`ActivityHero`；分組 `HealthGroupCard`（活動／睡眠／身體組成）；`HealthHistoryProvider`（點擊鑽取歷史）；BMR/TDEE 代謝卡（Mifflin-St Jeor） |
-| 設定 | `/dashboard/settings` | `ProfileMetabolismForm`、`AiSettingsForm`、`GoogleLinkPanel`（綁定／解綁）、`AdminPanel`（管理員切換註冊）、版本卡（APK 下載 `/api/app/download`）、`LogoutButton` |
+| 設定 | `/dashboard/settings` | `ProfileMetabolismForm`、`AiSettingsForm`、`GoogleLinkPanel`（舊帳號綁定）、版本卡（APK 下載 `/api/app/download`）、`LogoutButton` |
 
 ### 背景工作 Worker
 
@@ -141,17 +139,16 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 ### 畫面 Screens
 
 | 畫面 | 檔案 | 功能／使用者操作 |
-|---|---|---|
+| --- | --- | --- |
 | Splash | `splash_screen.dart` | 品牌動畫閃屏（三色巨量環旋轉、餐廳 logo、標題＋標語）；背景啟動 `BackgroundAnalysis`/`MealAnalysisController`/`UpdateService`；檢查 session 後導向 |
-| 登入 | `login_screen.dart` | Email＋密碼欄位（送出可按 Enter）、Turnstile WebView「人機驗證」、`登入`、`使用 Google 登入`（僅在已設定時顯示）、`還沒有帳號？註冊`；成功轉 `/dashboard` |
-| 註冊 | `register_screen.dart` | AppBar「建立帳號」、姓名（選填）、email、密碼（≥8 字客端驗證）、Turnstile、`建立帳號`；成功 `pushAndRemoveUntil` 到 `/dashboard` |
+| 登入／註冊 | `login_screen.dart` | 僅顯示 Google SSO；首次 Google 登入自動建立帳號；成功轉 `/dashboard` |
 | 儀表板 | `dashboard_screen.dart` | `Scaffold` + `NavigationBar` 三分頁（飲食／健康／設定），背景分析時 AppBar 下方顯示進度條。**飲食**：日期切換（每日/每週、不可選未來）、熱量卡（含巨量與淨熱量）、`WaterCard`、`MealCaptureForm`、`MealList`、`_DailySummaryCard`；**健康**：`HealthSyncCard`、BMR/TDEE 卡；**設定**：帳號卡、身體資料卡、`AiSettingsCard`、我的食物管理、Google 連結、`UpdateCard`、管理員面板、登出。接 home widget 快速拍攝 |
 | 食物管理 | `saved_foods_screen.dart` | `Scaffold` + `SavedFoodsManager()` |
 
 ### 元件 Widgets
 
 | 元件 | 檔案 | 用途 |
-|---|---|---|
+| --- | --- | --- |
 | `AiSettingsCard` | `ai_settings_form.dart` | 自帶 AI 金鑰（OpenAI/Gemini/相容）；provider 下拉、遮蔽金鑰欄、Base URL、模型欄、`載入模型清單`、`儲存 AI 設定` |
 | `showDailySummaryPopup` | `daily_summary_popup.dart` | 昨日總結彈窗：kcal 行、`MarkdownText`、amber 建議框、關閉／`知道了`；不觸發 AI |
 | `HealthSyncCard` | `health_sync_card.dart` | Health Connect 同步卡：同步狀態、分類指標圖（活動/身體組成/生命徵象/睡眠/營養）、點指標看趨勢、同步按鈕、同步紀錄 |
@@ -161,22 +158,18 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | `ProfileFormSheet` | `profile_form.dart` | 底部表單：性別、生日、身高、體重、活動量、目標；即時算 BMR/TDEE/熱量目標；`儲存身體資料` |
 | `SavedFoodEditor` | `saved_food_editor.dart` | 建立／編輯食物：名稱、條碼、份量、巨量、`source` 唯讀鎖、收藏、圖片；處理 `DuplicateFoodException` 衝突（使用/更新/還原/另存） |
 | `SavedFoodsManager` | `saved_foods_manager.dart` | 食物管理：分頁（常用/全部/有條碼/最近/未使用/可能重複/資料不完整/已封存）＋排序＋搜尋＋批次封存＋收藏＋編輯＋封存／還原 |
-| `TurnstileWebView` | `turnstile_webview.dart` | Cloudflare Turnstile 小 WebView；JS channel 回傳 token／過期／錯誤；`reset()` |
 | `UpdateCard` | `update_card.dart` | App 自更新：版本顯示、`promptIfAvailable`、安裝未知應用權限、`UpdateService.start(apkUrl)`、下載進度對話框 |
 | `WaterCard` | `water_card.dart` | 喝水卡：總量/目標＋進度條、預設 100/500/800 ml＋自訂、每筆刪除、內嵌目標編輯 |
 
 ### 服務與 API 對應
 
 | 服務 | Method | Endpoint | 用途 |
-|---|---|---|---|
-| AuthService | POST | `/api/auth/login` | Email/密碼登入（＋可選 Turnstile）→ 捕獲 cookie |
-| AuthService | POST | `/api/auth/register` | 註冊 |
-| AuthService | POST | `/api/auth/google` | Google 登入 |
-| AuthService | POST/DELETE | `/api/auth/google/link` | 綁定／解綁 Google |
+| --- | --- | --- | --- |
+| AuthService | POST | `/api/auth/google` | Google SSO 登入／首次使用時註冊 |
+| AuthService | POST | `/api/auth/google/link` | 舊帳號綁定 Google SSO |
 | AuthService | POST | `/api/auth/logout` | 登出 |
 | AuthService | GET | `/api/me` | 取得使用者（快取） |
 | AuthService | PATCH | `/api/me` | 更新設定檔 |
-| AuthService | GET/PATCH | `/api/admin/settings` | 管理員：讀／切換註冊 |
 | MealService | GET | `/api/meals?date=&tzOffset=` | 某日餐點（快取） |
 | MealService | POST | `/api/meals/analyze` | AI 圖片分析 |
 | MealService | POST | `/api/meals/analyze-description` | AI 文字分析 |
@@ -206,7 +199,6 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | HealthService | GET/DELETE | `/api/health/connections` (`/$id`) | 列出／撤銷 |
 | AiSettingsService | GET/PATCH | `/api/me/ai-settings` | 取／存 AI 設定 |
 | AiSettingsService | POST | `/api/me/ai-settings/models` | 列出模型 |
-| TurnstileService | GET | `/login`（HTML） | 抓 `data-sitekey` |
 | UpdateService | GET | `/api/app/version` | 版本／APK／發布說明 |
 | UpdateService | GET | `/api/app/download…` | 前景下載 APK |
 | GoogleAuth | GET | `/api/app/version` | 執行期解析 `googleClientId` |
@@ -226,23 +218,20 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 **先決條件**：本機已 `npm run dev`（且 `.env` 至少有 `ENCRYPTION_KEY`、`AUTH_SECRET`；AI 測試另需 `OPENAI_API_KEY`）。
 
 ```powershell
-# 預設：本機 dev server，用預設測試帳號 smoke@test.local / SmokeTest123!
+# 不帶 token：驗證公開端點與帳密／舊註冊端點已回 410
 ./scripts/smoke-test-web.ps1
 
-# 指定 base url 與測試帳號
+# 帶短效 Google ID token：建立 SSO session 後測受保護端點
 ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 `
-  -TestEmail mytest@example.com -TestPassword 'MyPass123!'
+  -GoogleIdToken '<short-lived token>'
 
 # 連 AI 端點也測（會花 OpenAI 配額）
-./scripts/smoke-test-web.ps1 -IncludeAi
-
-# 測試帳號不是管理員時，另傳管理員帳號來測管理員端點
-./scripts/smoke-test-web.ps1 -AdminEmail admin@example.com -AdminPassword 'AdminPass123!'
+./scripts/smoke-test-web.ps1 -GoogleIdToken '<short-lived token>' -IncludeAi
 ```
 
-**測試帳號流程**：先嘗試以 `-TestEmail/-TestPassword` 登入；401 則嘗試註冊（第一個使用者自動為管理員）。重複執行會重用同一個帳號（不會累積）。
+**測試帳號流程**：腳本不接受或儲存 Email／密碼；只有傳入有效的 `-GoogleIdToken` 才會透過 Google SSO 建立 session。測試 token 請使用短效值，勿提交至 shell history 或日誌。
 
-**分組**：公開端點 → 認證 → 設定檔 → 餐點 → 喝水 → 常用食物 → 健康 → 昨日總結／下一餐建議（peek，不花 AI）→ 管理（僅管理員）→ AI（僅 `-IncludeAi`，未設金鑰會回 SKIP）。
+**分組**：公開端點 → 認證政策與 Google SSO → 設定檔 → 餐點 → 喝水 → 常用食物 → 健康 → 昨日總結／下一餐建議（peek，不花 AI）→ 舊管理設定停用檢查 → AI（僅 `-IncludeAi`，未設金鑰會回 SKIP）。
 
 **清理**：餐點／喝水／健康連線測試會建立後刪除；常用食物會建立後封存（留為封存項）。
 
@@ -251,7 +240,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 新增測試檔（`mobile/test/`）：
 
 | 檔案 | 涵蓋 |
-|---|---|
+| --- | --- |
 | `models_test.dart` | 所有 model 的 `fromJson`／`toPayload` 來回轉換（抓 API 契約漂移） |
 | `metabolism_test.dart` | BMR/TDEE/熱量目標/巨量目標運算（Mifflin-St Jeor；與 web `lib/metabolism.ts` 對齊） |
 | `markdown_text_test.dart` | `MarkdownText` 標題／清單／粗斜體／code 渲染 |

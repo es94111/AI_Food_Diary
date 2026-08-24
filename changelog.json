@@ -1,6 +1,30 @@
 {
-  "currentVersion": "0.72.4",
+  "currentVersion": "0.73.0",
   "releases": [
+    {
+      "version": "0.73.0",
+      "date": "2026-08-24",
+      "title": "Google 統一登入與帳號安全升級",
+      "type": "removed",
+      "changes": [
+        {
+          "tag": "warning",
+          "text": "升級後不再提供 Email 與密碼登入或註冊；已有舊帳號的使用者請在仍登入的裝置開啟設定並綁定 Google，無法登入時請聯絡管理員。"
+        },
+        {
+          "tag": "new",
+          "text": "使用者可以在 Web 與 Android 以 Google SSO 登入，首次使用會自動建立帳號，既有日記、個人設定與登入工作階段會保留。"
+        },
+        {
+          "tag": "improved",
+          "text": "系統會以 Google 身分安全辨識帳號，不會只依 Email 自動合併；已登入的舊帳號也能明確綁定 Google，降低資料誤連結風險。"
+        },
+        {
+          "tag": "removed",
+          "text": "移除舊版密碼登入、註冊開關與人機驗證流程，登入畫面與 App 只保留 Google SSO，直接使用舊密碼方式也會被拒絕。"
+        }
+      ]
+    },
     {
       "version": "0.72.4",
       "date": "2026-08-23",

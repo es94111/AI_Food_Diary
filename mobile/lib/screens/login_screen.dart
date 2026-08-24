@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
-import '../services/auth_service.dart';
 import '../services/google_auth.dart';
-import '../services/turnstile_service.dart';
-import '../widgets/turnstile_webview.dart';
 import 'dashboard_screen.dart';
-import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,78 +12,22 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _emailCtrl = TextEditingController();
-  final _passwordCtrl = TextEditingController();
   bool _loading = false;
+  bool _googleConfigChecked = false;
   String? _error;
-
-  String? _siteKey;
-  bool _siteKeyChecked = false;
-  String? _turnstileToken;
-  final _turnstile = TurnstileController();
 
   @override
   void initState() {
     super.initState();
-    _loadSiteKey();
     _loadGoogleConfig();
   }
 
-  /// Resolve the Google client id from the backend so the sign-in button shows
-  /// even if the APK was built without the GOOGLE_SERVER_CLIENT_ID dart-define.
+  /// Resolve the Google client id from the backend so the SSO button works
+  /// even when the APK was built without the dart-define.
   Future<void> _loadGoogleConfig() async {
     await GoogleAuth.ensureConfigured();
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _loadSiteKey() async {
-    final key = await TurnstileService.siteKey();
     if (!mounted) return;
-    setState(() {
-      _siteKey = (key != null && key.isNotEmpty) ? key : null;
-      _siteKeyChecked = true;
-    });
-  }
-
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    super.dispose();
-  }
-
-  bool get _needsTurnstile => _siteKey != null;
-
-  Future<void> _login() async {
-    if (_needsTurnstile && _turnstileToken == null) {
-      setState(() => _error = '請先完成下方人機驗證');
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      await AuthService.login(_emailCtrl.text, _passwordCtrl.text,
-          turnstileToken: _turnstileToken);
-      if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-            builder: (_) => const DashboardScreen(),
-            settings: const RouteSettings(name: '/dashboard')),
-      );
-    } catch (e) {
-      // A used/expired Turnstile token can't be reused — re-run the challenge
-      // so the next attempt gets a fresh token instead of staying stuck on
-      // "請先完成下方人機驗證".
-      setState(() {
-        _error = e.toString();
-        _turnstileToken = null;
-      });
-      if (_needsTurnstile) await _turnstile.reset();
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+    setState(() => _googleConfigChecked = true);
   }
 
   Future<void> _googleLogin() async {
@@ -101,11 +41,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
-            builder: (_) => const DashboardScreen(),
-            settings: const RouteSettings(name: '/dashboard')),
+          builder: (_) => const DashboardScreen(),
+          settings: const RouteSettings(name: '/dashboard'),
+        ),
       );
     } catch (e) {
-      setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -113,6 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.palette;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -129,126 +71,65 @@ class _LoginScreenState extends State<LoginScreen> {
                       width: 88,
                       height: 88,
                       decoration: BoxDecoration(
-                        color: context.palette.brand.withValues(alpha: 0.12),
+                        color: palette.brand.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(Icons.restaurant,
-                          size: 44, color: context.palette.brand),
+                          size: 44, color: palette.brand),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text('AI Food Diary',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -0.5)),
+                  const Text(
+                    'AI Food Diary',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text('回到你的 AI 飲食紀錄。',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: context.palette.inkSoft)),
+                  Text(
+                    '登入或註冊都使用 Google SSO。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: palette.inkSoft),
+                  ),
                   const SizedBox(height: 28),
-                  TextField(
-                    controller: _emailCtrl,
-                    keyboardType: TextInputType.emailAddress,
-                    autofillHints: const [AutofillHints.email],
-                    decoration: const InputDecoration(
-                        labelText: '電子郵件', border: OutlineInputBorder()),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: _passwordCtrl,
-                    obscureText: true,
-                    onSubmitted: (_) => _login(),
-                    decoration: const InputDecoration(
-                        labelText: '密碼', border: OutlineInputBorder()),
-                  ),
-                  // Human verification sits directly below the credentials.
-                  if (_needsTurnstile) ...[
-                    const SizedBox(height: 14),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        _turnstileToken == null ? '人機驗證' : '✅ 已完成人機驗證',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: _turnstileToken == null
-                              ? context.palette.inkSoft
-                              : context.palette.success,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    TurnstileWebView(
-                      siteKey: _siteKey!,
-                      controller: _turnstile,
-                      onToken: (t) => setState(() {
-                        _turnstileToken = t;
-                        if (_error == '請先完成下方人機驗證') _error = null;
-                      }),
-                      onExpired: () => setState(() => _turnstileToken = null),
-                    ),
-                  ],
-                  if (_error != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_error!,
-                        style: TextStyle(color: context.palette.danger)),
-                  ],
-                  const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: _loading ? null : _login,
-                    style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14)),
-                    child: _loading
-                        ? SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: context.palette.onBrand))
-                        : const Text('登入'),
-                  ),
-                  if (GoogleAuth.isConfigured) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Expanded(child: Divider()),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          child: Text('或',
-                              style: TextStyle(color: context.palette.inkFaint)),
-                        ),
-                        const Expanded(child: Divider()),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
+                  if (!_googleConfigChecked)
+                    const Center(child: CircularProgressIndicator())
+                  else if (GoogleAuth.isConfigured) ...[
                     OutlinedButton.icon(
                       onPressed: _loading ? null : _googleLogin,
                       style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
                       icon: const Icon(Icons.login),
                       label: const Text('使用 Google 登入'),
                     ),
-                  ],
-                  const SizedBox(height: 14),
-                  TextButton(
-                    onPressed: _loading
-                        ? null
-                        : () => Navigator.of(context).push(
-                              MaterialPageRoute(
-                                  builder: (_) => const RegisterScreen(),
-                                  settings: const RouteSettings(
-                                      name: '/register')),
-                            ),
-                    child: const Text('還沒有帳號？註冊'),
-                  ),
-                  if (!_siteKeyChecked)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text('檢查驗證設定中...',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                              fontSize: 11, color: context.palette.inkFaint)),
+                    const SizedBox(height: 12),
+                    Text(
+                      '首次使用 Google 帳號會自動建立帳號。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 12, color: palette.inkSoft),
                     ),
+                  ] else
+                    Text(
+                      'Google 登入尚未設定，請聯絡管理員。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: palette.danger),
+                    ),
+                  if (_loading) ...[
+                    const SizedBox(height: 16),
+                    const Center(child: CircularProgressIndicator()),
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: palette.danger),
+                    ),
+                  ],
                 ],
               ),
             ),
