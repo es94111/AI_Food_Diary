@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 
 // Minimal typing for the Google Identity Services global.
 type GoogleId = {
-  initialize: (config: { client_id: string; callback: (res: { credential: string }) => void }) => void;
+  initialize: (config: {
+    client_id: string;
+    callback: (res: { credential: string }) => void;
+  }) => void;
   renderButton: (parent: HTMLElement, options: Record<string, unknown>) => void;
 };
 declare global {
@@ -29,7 +32,7 @@ export function GoogleSignInButton({ clientId }: { clientId?: string }) {
       const res = await fetch("/api/auth/google", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken: response.credential })
+        body: JSON.stringify({ idToken: response.credential }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -42,13 +45,16 @@ export function GoogleSignInButton({ clientId }: { clientId?: string }) {
 
     function render() {
       if (!window.google || !ref.current) return;
-      window.google.accounts.id.initialize({ client_id: clientId!, callback: onCredential });
+      window.google.accounts.id.initialize({
+        client_id: clientId!,
+        callback: onCredential,
+      });
       window.google.accounts.id.renderButton(ref.current, {
         theme: "outline",
         size: "large",
         width: 320,
         text: "continue_with",
-        locale: "zh_TW"
+        locale: "zh_TW",
       });
     }
 
@@ -56,7 +62,9 @@ export function GoogleSignInButton({ clientId }: { clientId?: string }) {
       render();
       return;
     }
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${SCRIPT_SRC}"]`);
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${SCRIPT_SRC}"]`,
+    );
     if (existing) {
       existing.addEventListener("load", render);
       return () => existing.removeEventListener("load", render);
@@ -70,10 +78,16 @@ export function GoogleSignInButton({ clientId }: { clientId?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId]);
 
-  if (!clientId) return null;
+  if (!clientId) {
+    return (
+      <p className="mt-6 text-sm text-red-700">
+        Google SSO 尚未設定，請聯絡管理員。
+      </p>
+    );
+  }
 
   return (
-    <div className="mt-4 flex flex-col items-center gap-2">
+    <div className="mt-6 flex flex-col items-center gap-2">
       <div ref={ref} />
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </div>

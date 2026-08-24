@@ -66,7 +66,7 @@ type EnforceOptions = {
 
 // Records a hit and returns a 429 response when the limit is exceeded, or null
 // when the request may proceed. Usage:
-//   const limited = await enforceRateLimit(`login:ip:${ip}`, { limit: 10, windowSec: 300 });
+//   const limited = await enforceRateLimit(`some-scope:${key}`, { limit: 10, windowSec: 300 });
 //   if (limited) return limited;
 export async function enforceRateLimit(
   key: string,

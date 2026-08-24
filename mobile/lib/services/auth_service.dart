@@ -8,41 +8,6 @@ class AuthService {
 
   static Future<bool> hasSession() => _api.hasSession();
 
-  static Future<AppUser> login(String email, String password,
-      {String? turnstileToken}) async {
-    final res = await _api.post('/api/auth/login', data: {
-      'email': email.trim(),
-      'password': password,
-      'cf-turnstile-response': ?turnstileToken,
-    });
-    if (!ApiClient.ok(res)) {
-      Sentry.logger.warn('Password login failed', attributes: {
-        'status': SentryAttribute.int(res.statusCode ?? 0),
-      });
-      throw ApiException(ApiClient.errorMessage(res, 'Email 或密碼錯誤'),
-          statusCode: res.statusCode);
-    }
-    Sentry.logger.info('Password login succeeded');
-    // Cookie captured by the interceptor; fetch full profile.
-    return fetchMe();
-  }
-
-  static Future<AppUser> register(
-      String email, String password, String? name,
-      {String? turnstileToken}) async {
-    final res = await _api.post('/api/auth/register', data: {
-      'email': email.trim(),
-      'password': password,
-      if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
-      'cf-turnstile-response': ?turnstileToken,
-    });
-    if (!ApiClient.ok(res)) {
-      throw ApiException(ApiClient.errorMessage(res, '註冊失敗'),
-          statusCode: res.statusCode);
-    }
-    return fetchMe();
-  }
-
   static Future<AppUser> loginWithGoogle(String idToken) async {
     final res = await _api.post('/api/auth/google', data: {'idToken': idToken});
     if (!ApiClient.ok(res)) {
@@ -87,14 +52,6 @@ class AuthService {
     }
   }
 
-  static Future<void> unlinkGoogle() async {
-    final res = await _api.delete('/api/auth/google/link');
-    if (!ApiClient.ok(res)) {
-      throw ApiException(ApiClient.errorMessage(res, '解除綁定失敗'),
-          statusCode: res.statusCode);
-    }
-  }
-
   static Future<void> logout() async {
     try {
       await _api.post('/api/auth/logout');
@@ -130,24 +87,4 @@ class AuthService {
     }
   }
 
-  // ---- admin ----
-
-  static Future<bool> getRegistrationOpen() async {
-    final res = await _api.get('/api/admin/settings');
-    if (!ApiClient.ok(res)) {
-      throw ApiException(ApiClient.errorMessage(res, '權限不足'),
-          statusCode: res.statusCode);
-    }
-    return res.data['registrationOpen'] == true;
-  }
-
-  static Future<bool> setRegistrationOpen(bool open) async {
-    final res =
-        await _api.patch('/api/admin/settings', data: {'registrationOpen': open});
-    if (!ApiClient.ok(res)) {
-      throw ApiException(ApiClient.errorMessage(res, '更新失敗'),
-          statusCode: res.statusCode);
-    }
-    return res.data['registrationOpen'] == true;
-  }
 }

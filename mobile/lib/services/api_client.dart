@@ -12,7 +12,7 @@ import 'image_cache_service.dart';
 ///
 /// The Next.js backend authorises every food-diary endpoint via the
 /// `food_diary_session` httpOnly cookie (`requireUser()`), so the mobile app
-/// must capture that cookie on login/register and replay it on every request.
+/// must capture that cookie on Google SSO and replay it on every request.
 class ApiClient {
   ApiClient._();
   static final ApiClient instance = ApiClient._();
@@ -20,13 +20,6 @@ class ApiClient {
   static const String baseUrl = 'https://aifood.shao.one';
   static const _sessionKey = 'food_diary_session_cookie';
   static const _storage = FlutterSecureStorage();
-
-  // Only set via `--dart-define=QA_BYPASS_TOKEN=...` on local Maestro test
-  // builds; empty (and therefore never sent) in the distributed release APK.
-  // Lets the backend swap in Cloudflare's always-pass Turnstile test key so
-  // automated login doesn't hit the real human-verification challenge — see
-  // src/lib/turnstile.ts.
-  static const String _qaBypassToken = String.fromEnvironment('QA_BYPASS_TOKEN');
 
   Dio? _dio;
   String? _sessionCookie;
@@ -59,9 +52,6 @@ class ApiClient {
         onRequest: (options, handler) {
           if (_sessionCookie != null) {
             options.headers['Cookie'] = _sessionCookie;
-          }
-          if (_qaBypassToken.isNotEmpty) {
-            options.headers['x-qa-bypass-token'] = _qaBypassToken;
           }
           // Stamp the start time and bump the in-flight gauge so we can report
           // request latency + concurrency to Sentry once the request completes.

@@ -1,38 +1,13 @@
-# Reusable login subflow — run via `runFlow: login.yaml` from a parent flow
-# that has already launched the app onto the login screen.
+# Reusable Google SSO login subflow — run via `runFlow: login.yaml` from a
+# parent flow that has already launched the app onto the login screen.
 #
-# Requires TEST_EMAIL / TEST_PASSWORD from mobile/.maestro/.env.
-#
-# The production login page serves a real Cloudflare Turnstile challenge.
-# The debug APK used for these tests must be built with
-# `--dart-define=QA_BYPASS_TOKEN=<value from mobile/.maestro/.env>` so the
-# backend swaps in Cloudflare's official always-pass test widget instead
-# (see src/lib/turnstile.ts). Without that dart-define, or before the backend
-# change is deployed, this flow will time out waiting for "✅ 已完成人機驗證".
+# The test device must have a dedicated Google test account configured and the
+# backend/client Google OAuth settings must be available. Native Google account
+# selection and consent screens can vary by emulator, so this flow is a smoke
+# check rather than a substitute for provider integration tests.
 appId: aifood.shao.one
 ---
-- tapOn: "電子郵件"
-- inputText: ${TEST_EMAIL}
-- tapOn: "密碼"
-- inputText: ${TEST_PASSWORD}
-- hideKeyboard
-- runFlow:
-    when:
-      visible: "人機驗證"
-    commands:
-      # Cloudflare's always-pass test widget (site key 1x00000000000000000000AA)
-      # still renders an interactive checkbox inside the login WebView; tap it.
-      # This is Cloudflare's own documented test scaffold, not a real challenge
-      # — real users never see this because they never carry the QA bypass
-      # token. Coordinates are relative to the widget position on a typical
-      # phone layout; re-check with inspect_screen if this stops matching.
-      - tapOn:
-          point: "18%,59%"
-          label: "Tap Cloudflare Turnstile test checkbox"
-      - extendedWaitUntil:
-          visible: "✅ 已完成人機驗證"
-          timeout: 15000
-- tapOn: "登入"
+- tapOn: "使用 Google 登入"
 - extendedWaitUntil:
-    visible: "AI Food Diary ·.*"
-    timeout: 20000
+      visible: "AI Food Diary.*"
+      timeout: 30000

@@ -1,13 +1,11 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { decryptProfile } from "@/lib/profile-crypto";
 import { ProfileMetabolismForm } from "@/components/profile-metabolism-form";
 import { AiSettingsForm } from "@/components/ai-settings-form";
 import { LogoutButton } from "@/components/logout-button";
 import { GoogleLinkPanel } from "@/components/google-link-panel";
-import { AdminPanel } from "@/components/admin-panel";
 import { Metric } from "@/components/health-cards";
 import { WEB_VERSION } from "@/lib/version";
 import { getLatestAppRelease } from "@/lib/app-release";
@@ -24,11 +22,8 @@ export default async function SettingsPage() {
         weightKg: decProfile.weightKg,
         activityLevel: decProfile.activityLevel,
         goal: decProfile.goal,
-        calorieTarget: decProfile.calorieTarget
+        calorieTarget: decProfile.calorieTarget,
       }
-    : null;
-  const appConfig = user.isAdmin
-    ? await prisma.appConfig.findUnique({ where: { id: "singleton" } })
     : null;
   const appRelease = await getLatestAppRelease();
   return (
@@ -48,20 +43,35 @@ export default async function SettingsPage() {
         <div className="glass glass-lift rounded-[2rem] p-6">
           <AiSettingsForm />
         </div>
-        <Link className="glass glass-lift block rounded-[2rem] p-6" href="/dashboard/foods">
+        <Link
+          className="glass glass-lift block rounded-[2rem] p-6"
+          href="/dashboard/foods"
+        >
           <h2 className="text-xl font-black">我的食物管理</h2>
-          <p className="mt-1 text-sm text-stone-500">前往獨立頁面搜尋、整理、批次封存與處理重複資料。</p>
+          <p className="mt-1 text-sm text-stone-500">
+            前往獨立頁面搜尋、整理、批次封存與處理重複資料。
+          </p>
         </Link>
-        <GoogleLinkPanel clientId={process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID} linked={!!user.googleId} />
-        {user.isAdmin && <AdminPanel registrationOpen={appConfig?.registrationOpen ?? true} />}
+        <GoogleLinkPanel
+          clientId={
+            process.env.GOOGLE_CLIENT_ID ??
+            process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
+          }
+          linked={!!user.googleId}
+        />
         <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">版本資訊</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
-            <Metric label="最新版本" value={appRelease.version ? `v${appRelease.version}` : "—"} />
+            <Metric
+              label="最新版本"
+              value={appRelease.version ? `v${appRelease.version}` : "—"}
+            />
             <Metric label="目前版本" value={`v${WEB_VERSION}`} />
           </div>
           {appRelease.notes ? (
-            <p className="mt-3 whitespace-pre-line text-xs text-stone-500">{appRelease.notes}</p>
+            <p className="mt-3 whitespace-pre-line text-xs text-stone-500">
+              {appRelease.notes}
+            </p>
           ) : null}
           {appRelease.apkKey ? (
             <a

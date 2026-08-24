@@ -509,3 +509,95 @@
 ## Verification
 
 - Changelog JSON, wording constraints, `npm run build`, Flutter analyzer, and 73 Flutter tests passed.
+
+---
+
+# 2026-08-24 restrict authentication to SSO
+
+## Goal and acceptance criteria
+
+- [x] Remove all user-facing email/password login and registration flows from Web and Android.
+- [x] Enforce the same restriction server-side so direct calls to the legacy password endpoints cannot authenticate or create accounts.
+- [x] Keep Google SSO account creation/login working, including the existing Google-only mobile flow and current-session account linking for legacy users.
+- [x] Remove obsolete registration toggles, Turnstile/password auth plumbing, and stale documentation/tests without changing authenticated diary behavior.
+- [x] Preserve existing unrelated working-tree and staged changes.
+
+## Risk & rollback
+
+- **Risk level**: high; authentication and account access behavior changes.
+- **Affected components**: Web/Android auth entry points, auth APIs, legacy user migration path, admin registration settings, auth documentation.
+- **Rollback**: revert only this task's auth/UI/docs changes. Do not drop the existing `passwordHash` column or delete legacy users; current sessions and existing data remain recoverable.
+- **Migration policy**: retain `passwordHash` as an unused compatibility field for existing rows and keep explicit Google linking for legacy sessions; do not auto-link by email.
+
+## Dependencies & environment
+
+- Next.js App Router + TypeScript; Flutter mobile client.
+- Google ID-token verification remains the supported identity provider in this repository.
+- No new dependency or database migration planned.
+
+## Working notes
+
+- Existing staged auth changes are user work and must not be reset; edit the current working tree on top of them.
+- Google login currently creates accounts with an unusable random password hash and rejects unlinked legacy password accounts by email; preserve the safe no-auto-link behavior but update the user-facing recovery message.
+- `registrationOpen` only controls local/public registration today, so it should not gate Google SSO account creation after password registration is removed.
+
+## Plan / checkpoints
+
+- [x] Checkpoint A: map Web/Android auth surfaces, current Google behavior, legacy-account constraints, and baseline diagnostics.
+- [x] Checkpoint B: remove password UI/client paths and make legacy password API endpoints non-authenticating.
+- [x] Checkpoint C: simplify obsolete registration settings/plumbing and update docs; add focused regression coverage where practical.
+- [x] Checkpoint D: run TypeScript/build, Flutter analyzer/tests, diff/diagnostic checks, and review the final auth blast radius; unavailable checks are documented below.
+
+## Results
+
+- Web and Android now expose Google SSO as the only interactive authentication path; first Google sign-in creates the account.
+- Legacy password login/registration and admin registration settings return 410 without parsing credentials or mutating data.
+- Removed the registration toggle, Turnstile client/server plumbing, password auth client methods, unlink actions, and stale password-based smoke-flow setup while retaining the legacy schema field and explicit current-session Google linking.
+- Added trusted-proxy-aware Google rate limiting and aligned Google client-id fallback behavior across UI, mobile config, and backend verification.
+
+## Verification
+
+- `npm run lint` — passed (no lint output/errors).
+- `lsp_diagnostics` on changed Web auth files — primary diagnostics clean; only pre-existing auxiliary style hints remain.
+- `lens_diagnostics mode=all --severity error` — no error issues across 17 diagnosed files.
+- Follow-up security review — no blockers/high-risk findings after trusted-proxy rate-limit and client-id fallback fixes.
+- PowerShell UTF-8 parser for `scripts/smoke-test-web.ps1` — passed.
+- Standard `git diff --check` — blocked by the pre-existing corrupt staged index (missing object `bf01e4d...` for `mobile/lib/screens/dashboard_screen.dart`); a temporary HEAD-based index ran `git diff --cached --check` successfully. Only existing LF/CRLF warnings remain.
+- `npx tsc --noEmit` / `npm run build` — blocked by this Synology-backed Windows workspace: TypeScript/Prisma native executables fail with `UNKNOWN` spawn/read errors; rerun from a local filesystem checkout.
+- Flutter analyzer/tests — unavailable because `flutter`/`dart` are not installed in this environment.
+
+---
+
+# 2026-08-24 release 0.73.0
+
+## Goal and acceptance criteria
+
+- [x] Publish the Web/Android Google-SSO-only authentication policy and preserve explicit legacy-account linking.
+- [x] Synchronize `changelog.json`, package/mobile version metadata, README, and the release notes.
+- [x] Commit the scoped release changes on a feature branch and push GitHub as PR #124.
+- [ ] Squash-merge into `main`, confirm the CI-created tag, and create the GitHub Release from the verified changelog entry.
+
+## Risk and rollback
+
+- **Risk level**: high; authentication entry points and legacy account access behavior change.
+- **Rollback**: revert the release commit and redeploy the previous version; do not delete legacy users, sessions, diary data, or the compatibility password field.
+- **Operational note**: existing legacy users must bind Google from an active session; do not auto-link by email.
+
+## Internal release notes
+
+- Technical scope: disable password UI and endpoints, retain Google ID-token verification and current-session linking, remove registration toggles/Turnstile/unlink paths, align client-id fallback and trusted-proxy rate limiting, and bump Web/App versions to `0.73.0` / build `117`.
+- User-facing translation: explain Google-only sign-in, first-use account creation, explicit legacy-account migration, and removal of password authentication without exposing implementation paths.
+
+## Results
+
+- Version metadata is prepared as `0.73.0` with Android build `117`.
+- The scoped release commit is pushed to branch `feat/google-sso-only-0.73.0`; PR #124 is open.
+
+## Verification
+
+- Changelog JSON, title/change-length checks, and public-language forbidden-term checks — passed.
+- `npx prisma validate` and `npm run build` (Prisma generate, TypeScript, Next production build) — passed in the local temporary clone.
+- `git diff --check` — passed; only existing LF/CRLF normalization warnings remain.
+- PR #124 checks — passed: Build, Android APK, and all Analyze jobs; CodeQL was skipped by workflow conditions.
+- `npm run lint` — blocked because the existing `next lint` script is invalid under Next 16; no ESLint config is present for a direct replacement.
+- Flutter analyzer/tests — unavailable locally because `flutter`/`dart` are not installed; Android CI passed the APK build.

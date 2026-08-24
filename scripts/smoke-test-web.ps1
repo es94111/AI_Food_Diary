@@ -7,10 +7,10 @@
   先決條件：本機已 `npm run dev`（.env 至少有 ENCRYPTION_KEY、AUTH_SECRET；AI 測試另需 OPENAI_API_KEY）。
 
   流程：
-    1. 先測公開端點與認證閘門（不帶 cookie）。
-    2. 以 -TestEmail/-TestPassword 登入；401 則嘗試註冊（首位使用者自動為管理員）。
+    1. 先測公開端點、SSO 認證閘門與已停用的舊帳密端點。
+    2. 只有在傳入 -GoogleIdToken 時，才以 Google SSO 建立測試 session。
     3. 帶 session 測認證保護端點：設定檔／餐點／喝水／常用食物／健康／昨日總結（peek）。
-    4. 若測試帳號為管理員（或另傳 -AdminEmail/-AdminPassword），測管理員端點。
+    4. 驗證舊管理員註冊設定端點已停用。
     5. 加 -IncludeAi 才測 AI 端點（會花 OpenAI 配額；未設金鑰會回 SKIP 而非 FAIL）。
 
   清理：餐點／喝水／健康連線會建立後刪除；常用食物會建立後封存。
@@ -18,27 +18,21 @@
 .PARAMETER BaseUrl
   dev server base URL，預設 http://localhost:3000
 
-.PARAMETER TestEmail / TestPassword
-  測試帳號。預設 smoke@test.local / SmokeTest123!。重複執行會重用同一帳號。
-
-.PARAMETER AdminEmail / AdminPassword
-  選填。當測試帳號非管理員時，另傳管理員帳號來測 /api/admin/* 端點。
+.PARAMETER GoogleIdToken
+  選填的 Google ID token。提供有效 token 才會建立測試 session；token 不會寫入檔案或輸出。
 
 .PARAMETER IncludeAi
   連 AI 端點也測（會呼叫 OpenAI / 相容服務，花配額）。
 
 .EXAMPLE
   ./scripts/smoke-test-web.ps1
-  ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 -IncludeAi
-  ./scripts/smoke-test-web.ps1 -AdminEmail admin@example.com -AdminPassword 'AdminPass123!'
+  ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 -GoogleIdToken '<short-lived token>'
+  ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 -GoogleIdToken '<short-lived token>' -IncludeAi
 #>
 [CmdletBinding()]
 param(
   [string]$BaseUrl = "http://localhost:3000",
-  [string]$TestEmail = "smoke@test.local",
-  [string]$TestPassword = "SmokeTest123!",
-  [string]$AdminEmail = "",
-  [string]$AdminPassword = "",
+  [string]$GoogleIdToken = "",
   [switch]$IncludeAi
 )
 
@@ -140,7 +134,7 @@ function Write-Group([string]$title) {
 
 # ---------- preflight ----------
 Write-Host "AI Food Diary · WEB HTTP 煙霧測試" -ForegroundColor White
-Write-Host "目標: $BaseUrl   帳號: $TestEmail   AI: $(if($IncludeAi){'啟用'}else{'關閉'})" -ForegroundColor DarkGray
+Write-Host "目標: $BaseUrl   認證: $(if($GoogleIdToken){'Google SSO'}else{'未提供 token'})   AI: $(if($IncludeAi){'啟用'}else{'關閉'})" -ForegroundColor DarkGray
 $preflight = Send-Request -Method GET -Uri "$BaseUrl/api/app/version"
 if ($preflight.StatusCode -eq 0) {
   Write-Host ""
@@ -150,8 +144,7 @@ if ($preflight.StatusCode -eq 0) {
 }
 
 # ---------- sessions ----------
-$script:session = New-Session       # 測試帳號 session
-$script:adminSession = New-Session   # 管理員 session（若需要）
+$script:session = New-Session       # Google SSO 測試 session
 $script:testUser = $null
 $script:testIsAdmin = $false
 
@@ -196,35 +189,38 @@ Check 'Auth gate' 'GET /api/meals (未登入應 401)' {
 }
 
 # ---------- 2. Auth ----------
-Write-Group "2. 認證（登入／註冊）"
+Write-Group "2. 認證（Google SSO）"
 
 $today    = (Get-Date).ToString("yyyy-MM-dd")
 $yesterday= (Get-Date).AddDays(-1).ToString("yyyy-MM-dd")
 $isoNow   = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-# 先嘗試登入；401 嘗試註冊；否則回報錯誤。
-$login = Send-Request POST "$BaseUrl/api/auth/login" -Body @{ email=$TestEmail; password=$TestPassword } -Session $script:session
-if ($login.StatusCode -eq 200) {
-  $script:testUser = (Parse-Json $login.Content).user
-  Add-Result 'Auth' '登入測試帳號' 'PASS' 'login 200'
-} elseif ($login.StatusCode -eq 401) {
-  $reg = Send-Request POST "$BaseUrl/api/auth/register" -Body @{ email=$TestEmail; password=$TestPassword; name='SmokeTest' } -Session $script:session
-  if ($reg.StatusCode -eq 200) {
-    $script:testUser = (Parse-Json $reg.Content).user
-    Add-Result 'Auth' '註冊測試帳號' 'PASS' 'register 200'
-  } elseif ($reg.StatusCode -eq 403) {
-    Add-Result 'Auth' '取得測試 session' 'FAIL' "註冊已關閉且帳號不存在；請改用既有帳號 -TestEmail/-TestPassword"
-  } elseif ($reg.StatusCode -eq 409) {
-    Add-Result 'Auth' '取得測試 session' 'FAIL' "帳號已存在但密碼不符；請用正確的 -TestPassword"
+Check 'Auth policy' 'POST /api/auth/login (帳密已停用)' {
+  $r = Send-Request POST "$BaseUrl/api/auth/login"
+  if ($r.StatusCode -eq 410) { return @{ Status='PASS'; Detail='410' } }
+  @{ Status='FAIL'; Detail="預期 410，實際 $($r.StatusCode)" }
+}
+
+Check 'Auth policy' 'POST /api/auth/register (帳密已停用)' {
+  $r = Send-Request POST "$BaseUrl/api/auth/register"
+  if ($r.StatusCode -eq 410) { return @{ Status='PASS'; Detail='410' } }
+  @{ Status='FAIL'; Detail="預期 410，實際 $($r.StatusCode)" }
+}
+
+if ($GoogleIdToken) {
+  $login = Send-Request POST "$BaseUrl/api/auth/google" -Body @{ idToken=$GoogleIdToken } -Session $script:session
+  if ($login.StatusCode -eq 200) {
+    $script:testUser = (Parse-Json $login.Content).user
+    $script:testIsAdmin = [bool]$script:testUser.isAdmin
+    Add-Result 'Auth' 'Google SSO 測試 session' 'PASS' 'google 200'
   } else {
-    Add-Result 'Auth' '取得測試 session' 'FAIL' "register status $($reg.StatusCode): $(Short $reg.Content)"
+    Add-Result 'Auth' 'Google SSO 測試 session' 'FAIL' "google status $($login.StatusCode): $(Short $login.Content)"
   }
 } else {
-  Add-Result 'Auth' '取得測試 session' 'FAIL' "login status $($login.StatusCode): $(Short $login.Content)"
+  Add-Result 'Auth' 'Google SSO 測試 session' 'SKIP' '請傳入短效 -GoogleIdToken 才能測試需登入端點'
 }
 
 if ($script:testUser) {
-  $script:testIsAdmin = [bool]$script:testUser.isAdmin
   Check 'Auth' 'GET /api/me' {
     $r = Send-Request GET "$BaseUrl/api/me" -Session $script:session
     $j = Parse-Json $r.Content
@@ -415,38 +411,16 @@ if ($script:testUser) {
 }
 
 # ---------- 9. Admin ----------
-Write-Group "9. 管理（管理員端點）"
-$script:adminReady = $script:testIsAdmin
-$script:adminSessionResolved = $script:session
-if (-not $script:testIsAdmin -and $AdminEmail -and $AdminPassword) {
-  $al = Send-Request POST "$BaseUrl/api/auth/login" -Body @{ email=$AdminEmail; password=$AdminPassword } -Session $script:adminSession
-  if ($al.StatusCode -eq 200 -and (Parse-Json $al.Content).user.isAdmin) {
-    $script:adminReady = $true
-    $script:adminSessionResolved = $script:adminSession
-  } else {
-    Add-Result 'Admin' '管理員登入' 'FAIL' "無法以 -AdminEmail 登入為管理員（status $($al.StatusCode)）"
-  }
+Write-Group "9. 舊管理設定（已停用）"
+Check 'Admin policy' 'GET /api/admin/settings (註冊設定已停用)' {
+  $r = Send-Request GET "$BaseUrl/api/admin/settings"
+  if ($r.StatusCode -eq 410) { return @{ Status='PASS'; Detail='410' } }
+  @{ Status='FAIL'; Detail="預期 410，實際 $($r.StatusCode)" }
 }
-if ($script:adminReady) {
-  Check 'Admin' 'GET /api/admin/settings' {
-    $r = Send-Request GET "$BaseUrl/api/admin/settings" -Session $script:adminSessionResolved
-    $j = Parse-Json $r.Content
-    if ($r.StatusCode -eq 200 -and $null -ne $j.registrationOpen) { return @{ Status='PASS'; Detail="registrationOpen=$($j.registrationOpen)" } }
-    @{ Status='FAIL'; Detail="status $($r.StatusCode)" }
-  }
-  $adminSettings = Send-Request GET "$BaseUrl/api/admin/settings" -Session $script:adminSessionResolved
-  $currentFlag = (Parse-Json $adminSettings.Content).registrationOpen
-  if ($null -ne $currentFlag) {
-    Check 'Admin' 'PATCH /api/admin/settings (no-op)' {
-      # 用目前值重送，確保不改變全域狀態。
-      $r = Send-Request PATCH "$BaseUrl/api/admin/settings" -Body @{ registrationOpen=$currentFlag } -Session $script:adminSessionResolved
-      if ($r.StatusCode -eq 200) { return @{ Status='PASS'; Detail="registrationOpen=$currentFlag (unchanged)" } }
-      @{ Status='FAIL'; Detail="status $($r.StatusCode): $(Short $r.Content)" }
-    }
-  }
-} else {
-  Add-Result 'Admin' 'GET /api/admin/settings' 'SKIP' '測試帳號非管理員；傳 -AdminEmail/-AdminPassword 來測'
-  Add-Result 'Admin' 'PATCH /api/admin/settings' 'SKIP' '測試帳號非管理員；傳 -AdminEmail/-AdminPassword 來測'
+Check 'Admin policy' 'PATCH /api/admin/settings (註冊設定已停用)' {
+  $r = Send-Request PATCH "$BaseUrl/api/admin/settings" -Body @{ registrationOpen=$true }
+  if ($r.StatusCode -eq 410) { return @{ Status='PASS'; Detail='410' } }
+  @{ Status='FAIL'; Detail="預期 410，實際 $($r.StatusCode)" }
 }
 
 # ---------- 10. AI ----------

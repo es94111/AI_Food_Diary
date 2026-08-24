@@ -4,7 +4,7 @@
 > Web 與 Android App 共用同一後端與版本號，一個 tag 同時發佈兩端。
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.72.4-2563eb" alt="version">
+  <img src="https://img.shields.io/badge/version-0.73.0-2563eb" alt="version">
   <img src="https://img.shields.io/badge/Next.js-App_Router-black?logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Flutter-Android-02569B?logo=flutter&logoColor=white" alt="Flutter">
@@ -54,7 +54,7 @@
 | 前端（Web） | Next.js App Router + TypeScript |
 | 前端（App） | Flutter（Android） |
 | 資料庫 | Prisma + PostgreSQL |
-| 認證 | Argon2id 密碼雜湊 · JWT HttpOnly Cookie Session |
+| 認證 | Google SSO · JWT HttpOnly Cookie Session |
 | 加密 | AES-256-GCM 欄位加密 |
 | AI | OpenAI Responses API（支援 OpenAI-compatible endpoint） |
 | 背景工作 | Redis + BullMQ worker（昨日總結事前產生） |
@@ -72,7 +72,8 @@
    [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
    ```
 
-4. 填入 `AUTH_SECRET` 與 `OPENAI_API_KEY`。
+4. 填入 `AUTH_SECRET`、`GOOGLE_CLIENT_ID`、`NEXT_PUBLIC_GOOGLE_CLIENT_ID` 與 `OPENAI_API_KEY`。
+   - `GOOGLE_CLIENT_ID` 與 `NEXT_PUBLIC_GOOGLE_CLIENT_ID` 請填入同一個 Google OAuth Web client ID。
    - 使用 OpenAI 官方 API 時可留空 `OPENAI_BASE_URL`。
    - 使用 OpenAI-compatible API 時，將 `OPENAI_BASE_URL` 設為相容服務的 `/v1` endpoint，例如 `https://api.example.com/v1`。
 5. 啟動服務（會一併啟動 **worker**，昨日總結排程才會運作）：
