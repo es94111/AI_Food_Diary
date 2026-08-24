@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { TURNSTILE_SITE_KEY } from "@/lib/turnstile-config";
 
 export default async function LoginPage() {
   const user = await getCurrentUser();
@@ -19,6 +20,7 @@ export default async function LoginPage() {
             process.env.GOOGLE_CLIENT_ID ??
             process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
           }
+          turnstileSiteKey={TURNSTILE_SITE_KEY}
         />
       </div>
     </main>

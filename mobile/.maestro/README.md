@@ -15,11 +15,15 @@ dedicated Google test account configured.
    `/api/app/version` at runtime.
 3. Sign the emulator/device into a dedicated Google test account. Do not use a
    personal account in production-data flows.
+4. Confirm the deployment has `TURNSTILE_SECRET` and a production-only
+   `TURNSTILE_HOSTNAMES` value. Complete the Turnstile widget manually on the
+   login screen before starting a flow.
 
 ## Building the test APK
 
-No password or Turnstile bypass is needed. Build and install a normal debug
-APK:
+The login screen requires a real Cloudflare Turnstile challenge. There is no
+password or QA bypass; solve the widget manually on the test device before
+Maestro taps the Google button. Build and install a normal debug APK:
 
 ```bash
 flutter build apk --debug

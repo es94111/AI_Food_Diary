@@ -8,7 +8,7 @@
 
   流程：
     1. 先測公開端點、SSO 認證閘門與已停用的舊帳密端點。
-    2. 只有在傳入 -GoogleIdToken 時，才以 Google SSO 建立測試 session。
+    2. 只有在同時傳入 -GoogleIdToken 與 -TurnstileToken 時，才以 Google SSO 建立測試 session。
     3. 帶 session 測認證保護端點：設定檔／餐點／喝水／常用食物／健康／昨日總結（peek）。
     4. 驗證舊管理員註冊設定端點已停用。
     5. 加 -IncludeAi 才測 AI 端點（會花 OpenAI 配額；未設金鑰會回 SKIP 而非 FAIL）。
@@ -19,20 +19,24 @@
   dev server base URL，預設 http://localhost:3000
 
 .PARAMETER GoogleIdToken
-  選填的 Google ID token。提供有效 token 才會建立測試 session；token 不會寫入檔案或輸出。
+  選填的 Google ID token。需搭配新鮮的 -TurnstileToken 才會建立測試 session；token 不會寫入檔案或輸出。
+
+.PARAMETER TurnstileToken
+  選填的、尚未使用的 Cloudflare Turnstile token。只存在記憶體中，不會寫入檔案或輸出。
 
 .PARAMETER IncludeAi
   連 AI 端點也測（會呼叫 OpenAI / 相容服務，花配額）。
 
 .EXAMPLE
   ./scripts/smoke-test-web.ps1
-  ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 -GoogleIdToken '<short-lived token>'
-  ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 -GoogleIdToken '<short-lived token>' -IncludeAi
+  ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 -GoogleIdToken '<short-lived token>' -TurnstileToken '<fresh token>'
+  ./scripts/smoke-test-web.ps1 -BaseUrl http://localhost:3000 -GoogleIdToken '<short-lived token>' -TurnstileToken '<fresh token>' -IncludeAi
 #>
 [CmdletBinding()]
 param(
   [string]$BaseUrl = "http://localhost:3000",
   [string]$GoogleIdToken = "",
+  [string]$TurnstileToken = "",
   [switch]$IncludeAi
 )
 
@@ -134,7 +138,7 @@ function Write-Group([string]$title) {
 
 # ---------- preflight ----------
 Write-Host "AI Food Diary · WEB HTTP 煙霧測試" -ForegroundColor White
-Write-Host "目標: $BaseUrl   認證: $(if($GoogleIdToken){'Google SSO'}else{'未提供 token'})   AI: $(if($IncludeAi){'啟用'}else{'關閉'})" -ForegroundColor DarkGray
+Write-Host "目標: $BaseUrl   認證: $(if($GoogleIdToken -and $TurnstileToken){'Google SSO + Turnstile'}elseif($GoogleIdToken){'缺 Turnstile token'}else{'未提供 token'})   AI: $(if($IncludeAi){'啟用'}else{'關閉'})" -ForegroundColor DarkGray
 $preflight = Send-Request -Method GET -Uri "$BaseUrl/api/app/version"
 if ($preflight.StatusCode -eq 0) {
   Write-Host ""
@@ -207,8 +211,17 @@ Check 'Auth policy' 'POST /api/auth/register (帳密已停用)' {
   @{ Status='FAIL'; Detail="預期 410，實際 $($r.StatusCode)" }
 }
 
-if ($GoogleIdToken) {
-  $login = Send-Request POST "$BaseUrl/api/auth/google" -Body @{ idToken=$GoogleIdToken } -Session $script:session
+Check 'Auth policy' 'POST /api/auth/google (缺 Turnstile 應 403)' {
+  $r = Send-Request POST "$BaseUrl/api/auth/google" -Body @{ idToken='smoke-test-invalid-id-token' }
+  if ($r.StatusCode -eq 403) { return @{ Status='PASS'; Detail='missing Turnstile rejected' } }
+  @{ Status='FAIL'; Detail="預期 403，實際 $($r.StatusCode): $(Short $r.Content)" }
+}
+
+if ($GoogleIdToken -and $TurnstileToken) {
+  $login = Send-Request POST "$BaseUrl/api/auth/google" -Body @{
+    idToken = $GoogleIdToken
+    'cf-turnstile-response' = $TurnstileToken
+  } -Session $script:session
   if ($login.StatusCode -eq 200) {
     $script:testUser = (Parse-Json $login.Content).user
     $script:testIsAdmin = [bool]$script:testUser.isAdmin
@@ -216,8 +229,10 @@ if ($GoogleIdToken) {
   } else {
     Add-Result 'Auth' 'Google SSO 測試 session' 'FAIL' "google status $($login.StatusCode): $(Short $login.Content)"
   }
+} elseif ($GoogleIdToken) {
+  Add-Result 'Auth' 'Google SSO 測試 session' 'SKIP' 'Google SSO 現在需要同時傳入新鮮 -TurnstileToken'
 } else {
-  Add-Result 'Auth' 'Google SSO 測試 session' 'SKIP' '請傳入短效 -GoogleIdToken 才能測試需登入端點'
+  Add-Result 'Auth' 'Google SSO 測試 session' 'SKIP' '請同時傳入短效 -GoogleIdToken 與新鮮 -TurnstileToken 才能測試需登入端點'
 }
 
 if ($script:testUser) {

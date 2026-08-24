@@ -1,6 +1,26 @@
 {
-  "currentVersion": "0.73.0",
+  "currentVersion": "0.74.0",
   "releases": [
+    {
+      "version": "0.74.0",
+      "date": "2026-08-24",
+      "title": "Web 與 Android 登入安全驗證整合",
+      "type": "feature",
+      "changes": [
+        {
+          "tag": "warning",
+          "text": "更新後登入會要求完成 Cloudflare 人機驗證；請先在部署環境設定驗證密鑰與允許的網站來源，否則登入會被安全拒絕。"
+        },
+        {
+          "tag": "new",
+          "text": "使用者在 Web 與 Android 登入時，都必須先完成 Cloudflare 人機驗證，再使用 Google 登入；驗證通過後維持原有帳號建立、登入與資料存取流程。"
+        },
+        {
+          "tag": "improved",
+          "text": "驗證失敗、逾時或網路異常時，系統會清除本次驗證並要求重新完成，避免重複使用已消耗的驗證結果，也讓再次登入有明確的恢復方式。"
+        }
+      ]
+    },
     {
       "version": "0.73.0",
       "date": "2026-08-24",

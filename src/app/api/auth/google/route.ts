@@ -7,8 +7,15 @@ import { apiRoute } from "@/lib/http";
 import { GoogleAuthError, verifyGoogleIdToken } from "@/lib/google";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/request";
+import {
+  TURNSTILE_LOGIN_ACTION,
+} from "@/lib/turnstile-config";
+import { verifyTurnstile } from "@/lib/turnstile";
 
-const bodySchema = z.object({ idToken: z.string().min(10) });
+const bodySchema = z.object({
+  idToken: z.string().min(10),
+  "cf-turnstile-response": z.string().max(2048).optional(),
+});
 
 export const POST = apiRoute(async (request: Request) => {
   const clientIp = getClientIp(request);
@@ -24,9 +31,9 @@ export const POST = apiRoute(async (request: Request) => {
   );
   if (limited) return limited;
 
-  let idToken: string;
+  let body: z.infer<typeof bodySchema>;
   try {
-    idToken = bodySchema.parse(await request.json()).idToken;
+    body = bodySchema.parse(await request.json());
   } catch {
     return NextResponse.json(
       { error: "缺少 Google 登入憑證。" },
@@ -34,6 +41,19 @@ export const POST = apiRoute(async (request: Request) => {
     );
   }
 
+  const turnstileValid = await verifyTurnstile(
+    body["cf-turnstile-response"],
+    TURNSTILE_LOGIN_ACTION,
+    clientIp,
+  );
+  if (!turnstileValid) {
+    return NextResponse.json(
+      { error: "請先完成安全驗證，或重新整理後再試。" },
+      { status: 403 },
+    );
+  }
+
+  const idToken = body.idToken;
   let identity;
   try {
     identity = await verifyGoogleIdToken(idToken);

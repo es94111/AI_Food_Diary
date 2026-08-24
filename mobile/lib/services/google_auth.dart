@@ -50,10 +50,13 @@ class GoogleAuth {
   }
 
   /// Returns the logged-in user, or null if the user cancelled.
-  static Future<AppUser?> signIn() async {
+  static Future<AppUser?> signIn({required String turnstileToken}) async {
     final idToken = await _authenticateAndGetIdToken();
     if (idToken == null) return null; // cancelled
-    return AuthService.loginWithGoogle(idToken);
+    return AuthService.loginWithGoogle(
+      idToken,
+      turnstileToken: turnstileToken,
+    );
   }
 
   /// Runs Google sign-in and returns just the ID token (for account linking),
