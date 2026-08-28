@@ -119,6 +119,15 @@ function numberEnv(name: string, fallback: number) {
 const AI_REQUEST_TIMEOUT_MS = Math.max(1000, numberEnv("AI_REQUEST_TIMEOUT_MS", 90_000));
 const AI_REQUEST_MAX_RETRIES = Math.max(0, Math.round(numberEnv("AI_REQUEST_MAX_RETRIES", 1)));
 
+// Shared request knobs for ad-hoc OpenAI clients built outside `client()` (e.g.
+// the model-list route), so they inherit the same SSRF redirect guard and the
+// same timeout/retry ceiling instead of the SDK's 600s default.
+export const AI_CLIENT_OPTIONS = {
+  timeout: AI_REQUEST_TIMEOUT_MS,
+  maxRetries: AI_REQUEST_MAX_RETRIES,
+  fetch: noRedirectFetch
+} as const;
+
 // Builds the shared request knobs. `seed: null` opts out of the fixed seed (used
 // when sampling, so the runs actually differ). `json` switches on JSON mode to
 // cut down on free-text parsing failures — only safe for prompts that already ask
@@ -137,7 +146,7 @@ function completionOptions(opts: { json?: boolean; temperature?: number; seed?: 
 // body surface through error messages (SSRF). Disabling redirect following makes
 // any redirect attempt fail loudly as a normal APIError instead. Official
 // providers never redirect API calls, so this changes nothing legitimate.
-function noRedirectFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+export function noRedirectFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   return fetch(input, { ...init, redirect: "manual" });
 }
 

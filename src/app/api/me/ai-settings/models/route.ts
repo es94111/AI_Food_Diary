@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
 import { aiErrorResponse } from "@/lib/ai-errors";
+import { AI_CLIENT_OPTIONS } from "@/lib/ai";
 import { AI_PROVIDERS } from "@/lib/ai-providers";
 import { requireUser } from "@/lib/auth";
 import { decryptJson } from "@/lib/encryption";
@@ -41,7 +42,10 @@ export async function POST(request: Request) {
       ? assertSafeCompatibleBaseUrl(body.baseUrl?.trim() || "")
       : provider.baseUrl;
 
-    const client = new OpenAI({ apiKey, baseURL: baseUrl.replace(/\/+$/, "") });
+    // AI_CLIENT_OPTIONS applies the same redirect guard as the shared client —
+    // undici follows 3xx (even https→http), so a malicious compatible base URL
+    // could otherwise 302 the server into internal services (SSRF).
+    const client = new OpenAI({ apiKey, baseURL: baseUrl.replace(/\/+$/, ""), ...AI_CLIENT_OPTIONS });
     const list = await client.models.list();
 
     // Gemini's OpenAI-compat layer returns ids like "models/gemini-2.5-flash";
