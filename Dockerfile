@@ -4,7 +4,7 @@
 # bundles vulnerable brace-expansion/ip-address versions. Keep these targeted
 # replacements until an upstream npm release bundles brace-expansion >= 5.0.9
 # and ip-address >= 10.3.1.
-FROM node:24.19.0-alpine3.24 AS node-base
+FROM node:24.20.0-alpine3.24 AS node-base
 RUN set -eux; \
     npm install -g npm@12.0.2; \
     npm pack --silent --pack-destination /tmp brace-expansion@5.0.9; \
