@@ -1,6 +1,6 @@
 {
   "name": "ai-food-diary",
-  "version": "0.74.0",
+  "version": "0.75.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -21,6 +21,9 @@
     "encryption:stage-d:rollback": "tsx scripts/encryption-stage-d.ts rollback",
     "encryption:disk:check": "tsx scripts/disk-encryption-check.ts",
     "encryption:images": "tsx --conditions=react-server scripts/backfill-image-encryption.ts",
+    "admin:data:verify:export": "tsx scripts/admin-data-export-import-check.ts export",
+    "admin:data:verify:roundtrip": "tsx scripts/admin-data-export-import-check.ts roundtrip",
+    "admin:data:verify:wipe": "tsx scripts/admin-data-export-import-check.ts wipe",
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {

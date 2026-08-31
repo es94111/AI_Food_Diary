@@ -15,7 +15,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <div className="dashboard-app-shell">
       <TimezoneReporter serverTimezone={user.profile?.timezone ?? ""} />
-      <DashboardNav displayName={displayName} email={user.email} initials={initials} />
+      <DashboardNav displayName={displayName} email={user.email} initials={initials} isAdmin={user.isAdmin} />
       <div className="dashboard-main-column">
         <header className="dashboard-topbar">
           <div className="dashboard-breadcrumb" aria-label="目前位置">

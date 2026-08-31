@@ -110,6 +110,8 @@
 | Method | Path | 功能 | 認證 | 說明 |
 | --- | --- | --- | --- | --- |
 | GET/PATCH | `/api/admin/settings` | 舊版註冊設定（已停用） | Public | 永遠回 410；SSO 註冊不受舊設定切換。 |
+| GET | `/api/admin/data/export` | 匯出全庫資料（解密） | **Admin** | 下載全部使用者明文 JSON（含 AI 金鑰明文）；不含圖片、密碼雜湊、健康連線權杖。`no-store` 附件下載，限流 3 次／10 分。跨站導覽回 403 |
+| POST | `/api/admin/data/import` | 匯入資料（重新加密） | **Admin** | multipart `file`+`mode`（skip-existing 預設／overwrite 需 `confirm=true`）；以現行金鑰重加密寫回，逐表交易、upsert 不刪資料；部分失敗回 207 ＋逐表報告。限流 2 次／小時，檔案上限 50 MB |
 | GET | `/api/app/download` | 串流最新 APK | **Public** | 從 S3 `downloads/` 取，無檔則 404 |
 | GET | `/api/app/version` | 版本／更新資訊 | **Public** | 回 `{ webVersion, latestVersion, apkUrl, releaseNotes, googleClientId, turnstileSiteKey }`；Turnstile site key 為公開值 |
 
@@ -120,7 +122,8 @@
 | 首頁 | `/` | 行銷登入頁；**已登入自動轉到 `/dashboard`**；hero 文案＋預覽卡，按鈕連到 `/login` 使用 Google SSO |
 | 登入／註冊 | `/login` | **已登入自動轉到 `/dashboard`**；Google SSO 前先完成 Turnstile 人機驗證。首次成功登入自動建立帳號 |
 | 舊註冊網址 | `/register` | 導向 `/login`；不再提供帳密註冊表單 |
-| 儀表板殼 | `/dashboard` | 認證守門（未登入轉 `/login`）；`TimezoneReporter`、品牌 header、`DashboardNav`（飲食／健康／食物／設定） |
+| 管理 | `/dashboard/admin` | 僅管理員可見（側邊欄多出「管理」項；非管理員被導回儀表板）。`AdminDataForm`：匯出下載、匯入上傳（模式選擇＋備份確認勾選框）與逐表報告 |
+| 儀表板殼 | `/dashboard` | 認證守門（未登入轉 `/login`）；`TimezoneReporter`、品牌 header、`DashboardNav`（飲食／健康／食物／設定［／管理，admin]） |
 | 飲食 | `/dashboard` | 日／週切換；熱量目標卡（TDEE，Health Connect 體重身高覆蓋設定檔）＋巨量環；Health Connect 有 `TOTAL_CALORIES` 時顯示淨熱量卡；`WaterCard`；`MealCaptureForm`（照片／描述／手動／營養標示／條碼／下一餐建議）；`MealList`；週檢視；`DailySummaryPopup`；`AiInfoCard` |
 | 食物 | `/dashboard/foods` | 「我的食物」`SavedFoodsManager` |
 | 健康 | `/dashboard/health` | Health Connect 同步儀表板；`ActivityHero`；分組 `HealthGroupCard`（活動／睡眠／身體組成）；`HealthHistoryProvider`（點擊鑽取歷史）；BMR/TDEE 代謝卡（Mifflin-St Jeor） |

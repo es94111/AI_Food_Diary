@@ -126,6 +126,25 @@ export function enforceSavedFoodWriteRateLimit(userId: string): Promise<NextResp
   });
 }
 
+// The admin data export/import endpoints decrypt or rewrite the whole database,
+// so their budgets are far tighter than user endpoints — an accidental script
+// loop must not churn full-database reads/writes.
+export function enforceAdminDataExportRateLimit(adminId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`admin:data-export:${adminId}`, {
+    limit: 3,
+    windowSec: 600,
+    message: "匯出請求過於頻繁，請稍後再試。"
+  });
+}
+
+export function enforceAdminDataImportRateLimit(adminId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`admin:data-import:${adminId}`, {
+    limit: 2,
+    windowSec: 3600,
+    message: "匯入請求過於頻繁，請稍後再試。"
+  });
+}
+
 // Each sync batch can carry up to 500 metrics inside a transaction; a modest
 // hourly budget is far above any real Health Connect cadence.
 export function enforceHealthSyncRateLimit(userId: string): Promise<NextResponse | null> {
