@@ -82,16 +82,25 @@ export async function getCurrentUser() {
 
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { id: true, email: true, name: true, isAdmin: true, googleId: true, tokenVersion: true, profile: true }
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isAdmin: true,
+        isDisabled: true,
+        googleId: true,
+        tokenVersion: true,
+        profile: true
+      }
     });
-    if (!user) return null;
+    if (!user || user.isDisabled) return null;
 
     // Reject tokens issued before the current tokenVersion. Tokens minted before
     // this field existed carry no `tv`; treat them as 0 so existing logins survive.
     const tokenVersion = typeof payload.tv === "number" ? payload.tv : 0;
     if (tokenVersion !== user.tokenVersion) return null;
 
-    // Drop tokenVersion (internal) from the object handed to callers/responses.
+    // Drop tokenVersion / disabled state (internal) from the object handed to callers/responses.
     return {
       id: user.id,
       email: user.email,
