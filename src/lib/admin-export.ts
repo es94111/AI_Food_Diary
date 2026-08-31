@@ -619,16 +619,19 @@ type RowWriter = (
   tx: Prisma.TransactionClient,
   row: never,
   opts: ImportOptions,
-  ctx: { userIds: Set<string>; mealIds: Set<string> }
+  ctx: { userIds: Set<string>; mealIds: Set<string>; userIdMap: Map<string, string> }
 ) => Promise<"skip" | void>;
 
 const writers: Record<TableKey, RowWriter> = {
   users: async (tx, rawRow, opts, _ctx) => {
     const row = rawRow as unknown as ExportUser;
     const createdAt = toDate(row.createdAt);
+    // Exists by id (same-DB restore) or by email (cross-DB remap: the target's
+    // user has a different id — never create a duplicate or reassign its id).
+    const existingById = await tx.user.findUnique({ where: { id: row.id }, select: { id: true } });
+    const existingByEmail = existingById ? null : await tx.user.findUnique({ where: { email: row.email }, select: { id: true } });
     if (opts.mode === "skip-existing") {
-      const existing = await tx.user.findUnique({ where: { email: row.email }, select: { id: true } });
-      if (existing) return "skip";
+      if (existingById || existingByEmail) return "skip";
       await tx.user.create({
         data: {
           id: row.id,
@@ -670,7 +673,8 @@ const writers: Record<TableKey, RowWriter> = {
 
   userProfiles: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportUserProfile;
-    if (!ctx.userIds.has(row.userId)) {
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
       throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
     }
     const createdAt = toDate(row.createdAt);
@@ -703,26 +707,28 @@ const writers: Record<TableKey, RowWriter> = {
     };
     if (opts.mode === "overwrite") {
       await tx.userProfile.upsert({
-        where: { userId: row.userId },
-        create: { id: row.id, userId: row.userId, ...data },
+        where: { userId },
+        create: { id: row.id, userId, ...data },
         update: data
       });
       return;
     }
-    const existing = await tx.userProfile.findUnique({ where: { userId: row.userId }, select: { id: true } });
+    const existing = await tx.userProfile.findUnique({ where: { userId }, select: { id: true } });
     if (existing) return "skip";
-    await tx.userProfile.create({ data: { id: row.id, userId: row.userId, ...data } });
+    await tx.userProfile.create({ data: { id: row.id, userId, ...data } });
   },
 
   meals: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportMeal;
-    if (!ctx.userIds.has(row.userId)) {
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
       throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
     }
     const images = normalizeImageKeys(row.imageStorageKey, row.imageStorageKeys);
     // aiRawEncrypted intentionally not restored (derived data — see module note).
     const data = {
-      userId: row.userId,
+      id: row.id,
+      userId,
       mealType: row.mealType,
       imageStorageKey: images.imageStorageKey,
       imageStorageKeys: images.imageStorageKeys,
@@ -752,6 +758,7 @@ const writers: Record<TableKey, RowWriter> = {
       throw new Error(`mealId ${row.mealId} 找不到對應的餐點（孤兒列）`);
     }
     const data = {
+      id: row.id,
       mealId: row.mealId,
       name: null,
       encName: row.name == null ? Prisma.JsonNull : encryptJson(row.name),
@@ -776,11 +783,13 @@ const writers: Record<TableKey, RowWriter> = {
 
   waterLogs: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportWaterLog;
-    if (!ctx.userIds.has(row.userId)) {
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
       throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
     }
     const data = {
-      userId: row.userId,
+      id: row.id,
+      userId,
       amountMl: row.amountMl,
       drankAt: toDate(row.drankAt) ?? new Date(),
       ...(toDate(row.createdAt) ? { createdAt: toDate(row.createdAt) as Date } : {}),
@@ -797,7 +806,8 @@ const writers: Record<TableKey, RowWriter> = {
 
   savedFoods: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportSavedFood;
-    if (!ctx.userIds.has(row.userId)) {
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
       throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
     }
     // (userId, barcode) is unique for non-null barcodes. Upsert by id could
@@ -806,7 +816,7 @@ const writers: Record<TableKey, RowWriter> = {
     // cannot target a compound-nullable unique in a `where`, hence selectFirst.
     if (row.barcode) {
       const barcodeOwner = await tx.savedFood.findFirst({
-        where: { userId: row.userId, barcode: row.barcode, id: { not: row.id } },
+        where: { userId, barcode: row.barcode, id: { not: row.id } },
         select: { id: true }
       });
       if (barcodeOwner) {
@@ -814,7 +824,8 @@ const writers: Record<TableKey, RowWriter> = {
       }
     }
     const data = {
-      userId: row.userId,
+      id: row.id,
+      userId,
       barcode: row.barcode ?? null,
       imageStorageKey: row.imageStorageKey ?? null,
       name: null,
@@ -845,13 +856,15 @@ const writers: Record<TableKey, RowWriter> = {
 
   dailySummaries: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportDailySummary;
-    if (!ctx.userIds.has(row.userId)) {
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
       throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
     }
     const summaryDate = toDate(row.summaryDate);
     if (!summaryDate) throw new Error("summaryDate 缺少或格式不正確");
     const data = {
-      userId: row.userId,
+      id: row.id,
+      userId,
       summaryDate,
       totalCalories: new Prisma.Decimal(row.totalCalories ?? 0),
       totalProtein: new Prisma.Decimal(row.totalProtein ?? 0),
@@ -868,20 +881,21 @@ const writers: Record<TableKey, RowWriter> = {
       // Compound unique: an edited file with a different id but the same
       // (userId, summaryDate) merges instead of crashing with P2002.
       await tx.dailySummary.upsert({
-        where: { userId_summaryDate: { userId: row.userId, summaryDate } },
+        where: { userId_summaryDate: { userId, summaryDate } },
         create: data,
         update: data
       });
       return;
     }
-    const existing = await tx.dailySummary.findFirst({ where: { userId: row.userId, summaryDate }, select: { id: true } });
+    const existing = await tx.dailySummary.findFirst({ where: { userId, summaryDate }, select: { id: true } } as never);
     if (existing) return "skip";
     await tx.dailySummary.create({ data });
   },
 
   dailyRecommendations: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportDailyRecommendation;
-    if (!ctx.userIds.has(row.userId)) {
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
       throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
     }
     const recommendationDate = toDate(row.recommendationDate);
@@ -890,7 +904,8 @@ const writers: Record<TableKey, RowWriter> = {
     // see the module-level NOTE — this feature does not change the encryption
     // schema.
     const data = {
-      userId: row.userId,
+      id: row.id,
+      userId,
       recommendationDate,
       advice: row.advice ?? "",
       totalCalories: new Prisma.Decimal(row.totalCalories ?? 0),
@@ -902,14 +917,14 @@ const writers: Record<TableKey, RowWriter> = {
     };
     if (opts.mode === "overwrite") {
       await tx.dailyRecommendation.upsert({
-        where: { userId_recommendationDate: { userId: row.userId, recommendationDate } },
+        where: { userId_recommendationDate: { userId, recommendationDate } },
         create: data,
         update: data
       });
       return;
     }
     const existing = await tx.dailyRecommendation.findFirst({
-      where: { userId: row.userId, recommendationDate },
+      where: { userId, recommendationDate },
       select: { id: true }
     });
     if (existing) return "skip";
@@ -918,14 +933,16 @@ const writers: Record<TableKey, RowWriter> = {
 
   healthMetrics: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportHealthMetric;
-    if (!ctx.userIds.has(row.userId)) {
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
       throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
     }
     const measuredAt = toDate(row.measuredAt);
     if (!measuredAt) throw new Error("measuredAt 缺少或格式不正確");
     const source = row.source ?? "HEALTH_CONNECT";
     const data = {
-      userId: row.userId,
+      id: row.id,
+      userId,
       source,
       type: row.type,
       value: null,
@@ -939,7 +956,7 @@ const writers: Record<TableKey, RowWriter> = {
     if (opts.mode === "overwrite") {
       await tx.healthMetric.upsert({
         where: {
-          userId_source_type_measuredAt: { userId: row.userId, source, type: row.type, measuredAt }
+          userId_source_type_measuredAt: { userId, source, type: row.type, measuredAt }
         },
         create: data,
         update: data
@@ -947,7 +964,7 @@ const writers: Record<TableKey, RowWriter> = {
       return;
     }
     const existing = await tx.healthMetric.findFirst({
-      where: { userId: row.userId, source, type: row.type, measuredAt },
+      where: { userId, source, type: row.type, measuredAt },
       select: { id: true }
     });
     if (existing) return "skip";
@@ -976,14 +993,50 @@ const writers: Record<TableKey, RowWriter> = {
 
 // Loads parent id sets once per table (file ids ∪ existing DB ids) so orphan
 // checks don't need a query per row.
-async function importContext(envelope: ImportEnvelope): Promise<{ userIds: Set<string>; mealIds: Set<string> }> {
+async function importContext(
+  envelope: ImportEnvelope
+): Promise<{ userIds: Set<string>; mealIds: Set<string>; userIdMap: Map<string, string> }> {
   const [dbUsers, dbMeals] = await Promise.all([
-    prisma.user.findMany({ select: { id: true } }),
+    prisma.user.findMany({ select: { id: true, email: true } }),
     prisma.meal.findMany({ select: { id: true } })
   ]);
   const userIds = new Set<string>([...envelope.data.users.map((u) => u.id), ...dbUsers.map((u) => u.id)]);
   const mealIds = new Set<string>([...envelope.data.meals.map((m) => m.id), ...dbMeals.map((m) => m.id)]);
-  return { userIds, mealIds };
+  const userIdMap = buildUserIdMap(envelope, dbUsers);
+  return { userIds, mealIds, userIdMap };
+}
+
+// Cross-database import support: a user may exist in the target DB with the
+// same email but a different id (e.g. re-created by Google sign-in on a fresh
+// deployment). Children rows carry the SOURCE database's userId, so every
+// userId is rewritten through this map before writing. Resolution per export
+// user: same id → identity (same-DB restore); else same email → target id
+// (cross-DB remap); else → own id (fresh insert by the users writer).
+function buildUserIdMap(
+  envelope: ImportEnvelope,
+  dbUsers: Array<{ id: string; email: string }>
+): Map<string, string> {
+  const dbUserById = new Map(dbUsers.map((u) => [u.id, u]));
+  const dbUserByEmail = new Map(dbUsers.map((u) => [u.email, u]));
+  const map = new Map<string, string>();
+  for (const exportUser of envelope.data.users) {
+    const byId = dbUserById.get(exportUser.id);
+    if (byId) {
+      map.set(exportUser.id, exportUser.id);
+      continue;
+    }
+    const byEmail = dbUserByEmail.get(exportUser.email);
+    map.set(exportUser.id, byEmail ? byEmail.id : exportUser.id);
+  }
+  return map;
+}
+
+// Rewrites a child row's userId through the cross-DB map built above. The
+// mapped id is always resolvable in ctx.userIds (file ids ∪ DB ids): identity
+// for users about to be created, DB id for remapped ones. Returns null only
+// for a userId absent from the FILE's user list (true orphan row).
+function remapUserId(userId: string, ctx: { userIdMap: Map<string, string> }): string | null {
+  return ctx.userIdMap.get(userId) ?? null;
 }
 
 export async function applyImport(raw: string, opts: ImportOptions): Promise<ImportReport> {
@@ -1020,10 +1073,12 @@ export async function applyImport(raw: string, opts: ImportOptions): Promise<Imp
     const tableReport = { table, total: rows.length, imported: 0, skippedExisting: 0, failed: 0, errors: [] as string[] };
 
     // Per-table transaction: all rows of this table, or none. A mid-table
-    // failure marks the rest failed and stops at the first failing table —
-    // earlier tables stay committed; re-running the import (skip-existing)
-    // fills the gap. Errors never interrupt the whole run unless the
-    // transaction itself throws (connection loss etc.).
+    // failure aborts the rest of the table and stops at the first failing
+    // table — earlier tables stay committed; re-running the import
+    // (skip-existing) fills the gap. Within the transaction, a failed row
+    // throws immediately: PostgreSQL marks the transaction aborted after the
+    // first failed statement (25P02), so continuing would only produce noise
+    // errors for every remaining row.
     try {
       await prisma.$transaction(
         async (tx) => {
@@ -1046,8 +1101,10 @@ export async function applyImport(raw: string, opts: ImportOptions): Promise<Imp
               if (result === "skip") tableReport.skippedExisting += 1;
               else tableReport.imported += 1;
             } catch (err) {
-              tableReport.failed += 1;
+              // Tag the row id onto the error so the abort report stays
+              // id-scoped, then rethrow — the transaction is already aborted.
               tableReport.errors.push(`${table} id=${id}: ${shortError(err)}`);
+              throw err;
             }
           }
         },
@@ -1055,8 +1112,18 @@ export async function applyImport(raw: string, opts: ImportOptions): Promise<Imp
       );
     } catch (err) {
       report.ok = false;
+      // Rows processed before the failing one: pre-validated failures (missing
+      // / duplicate id) were counted along the way; successfully skipped /
+      // imported rows are counted too. The abort rolled back the whole
+      // transaction, so imported rows do NOT survive — reclassify them as
+      // failed and note which rows were never attempted.
+      const attempted = tableReport.imported + tableReport.skippedExisting + tableReport.failed;
+      tableReport.imported = 0;
+      tableReport.skippedExisting = 0;
       tableReport.failed = rows.length;
-      tableReport.errors.push(`資料表 ${table} 匯入失敗，已回滾：${shortError(err)}`);
+      tableReport.errors.push(
+        `資料表 ${table} 匯入失敗，整個資料表已回滾（嘗試 ${attempted} 筆後中止，其餘 ${rows.length - attempted} 筆未執行）：${shortError(err)}`
+      );
       report.tables.push(tableReport);
       // Stop at the first failing table; remaining tables are untouched.
       for (const remaining of IMPORT_ORDER.slice(IMPORT_ORDER.indexOf(table) + 1)) {

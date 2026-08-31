@@ -126,6 +126,7 @@ export function AdminDataForm() {
           上傳匯出檔，系統會以目前使用的加密金鑰重新加密後寫回。「略過已存在資料」不會更動任何既有資料；
           「覆寫已存在資料」會以檔案內容更新同 id／同鍵值的資料，<strong className="text-red-600">請務必先備份資料庫</strong>。
           匯入不會刪除檔案中沒有的資料；照片依 S3 金鑰對應，若匯入到不同儲存空間，照片連結會失效。
+          使用者以 id 或 email 對應：若目標資料庫已有同 email 但不同 id 的使用者（例如重新部署後重新登入），該使用者的資料會自動歸到目標使用者名下。
         </p>
         <form className="mt-4 space-y-4" onSubmit={handleImport}>
           <input
