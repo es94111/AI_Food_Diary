@@ -27,6 +27,7 @@ model User {
   name         String?
   googleId     String?        @unique
   isAdmin      Boolean        @default(false)
+  isDisabled   Boolean        @default(false)
   // Bumped to invalidate all outstanding JWTs for this user (logout / future
   // password change). Tokens embed this value as `tv` and are rejected on mismatch.
   tokenVersion Int            @default(0)
@@ -43,8 +44,10 @@ model User {
 }
 
 model AppConfig {
-  id               String  @id @default("singleton")
-  registrationOpen Boolean @default(true)
+  id               String   @id @default("singleton")
+  registrationOpen Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model UserProfile {

@@ -1,10 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
+import { AdminControlPanel } from "./admin-control-panel";
 import { AdminDataForm } from "./admin-data-form";
 
-// Admin-only data management: decrypted export / re-encrypting import.
-// The page-level redirect is defense-in-depth; the API routes also gate with
-// requireAdmin (403) so a stale client cannot reach the endpoints either way.
 export default async function AdminDataPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
@@ -14,9 +12,10 @@ export default async function AdminDataPage() {
     <>
       <header className="mt-6">
         <h1 className="text-4xl font-black tracking-tight">管理</h1>
-        <p className="mt-1 text-sm text-stone-500">資料匯出與匯入（僅限管理員）</p>
+        <p className="mt-1 text-sm text-stone-500">註冊、使用者與資料管理（僅限管理員）</p>
       </header>
-      <div className="mt-6">
+      <div className="mt-6 space-y-6">
+        <AdminControlPanel currentUserId={user.id} />
         <AdminDataForm />
       </div>
     </>
