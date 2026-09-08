@@ -12,6 +12,15 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function authorizationRedirect(
   authorization: Awaited<ReturnType<typeof verifyConsentToken>>,
   issuer: string,
@@ -21,7 +30,28 @@ function authorizationRedirect(
   for (const [key, value] of Object.entries(values)) target.searchParams.set(key, value);
   if (authorization.state) target.searchParams.set("state", authorization.state);
   target.searchParams.set("iss", issuer);
-  return Response.redirect(target, 303);
+  const href = target.toString();
+  // The site-wide CSP scopes `form-action` to 'self', and current Chrome,
+  // Firefox, and Safari all enforce that directive against the *entire*
+  // redirect chain following a form submission, not just its immediate
+  // target. A raw Response.redirect() here would therefore be silently
+  // blocked by the browser after this same-origin form POST, even though
+  // the server-side response looks like a normal 303. Hand off with a
+  // same-origin document instead: a script/meta-refresh bounce page is a
+  // plain navigation, not a form submission, so form-action does not apply.
+  const escapedHref = escapeHtml(href);
+  const body = `<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url=${escapedHref}">
+<title>正在返回</title></head>
+<body>
+<p>正在返回，如果沒有自動跳轉請點擊<a href="${escapedHref}">繼續</a>。</p>
+<script>location.replace(${JSON.stringify(href)});</script>
+</body></html>`;
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+  });
 }
 
 export async function POST(request: Request): Promise<Response> {
