@@ -1,712 +1,80 @@
-# Dashboard frontend implementation
+# Railway cost / API request / memory optimization
 
 ## Goal + Acceptance Criteria
 
-- [x] Replace the narrow dashboard shell with a distinctive, responsive Warm Evidence Desk workspace.
-- [x] Preserve existing dashboard data loading, routes, forms, and API behavior.
-- [x] Give the Today view a scannable summary, meal rhythm rail, and clear record action.
-- [x] Keep mobile layouts usable with 48px targets and no critical horizontal overflow.
-- [x] Verify with TypeScript/build checks and a diff review.
+- [x] Find the root cause of repeated `/api/meals` and `/api/water` requests observed in Railway HTTP logs (0.1–1s apart bursts).
+- [x] Implement GET single-flight/request coalescing in the Flutter `ApiClient`, separate from the existing on-disk response cache.
+- [ ] Verify rebuild/lifecycle/background paths don't cause extra request storms (mostly confirmed clean by code review; see Root Causes).
+- [ ] Evaluate Prisma singleton, Next.js standalone Docker output, image proxy streaming, Sentry overhead, `APP_PUBLIC_URL`.
+- [ ] Full verification: `flutter analyze`, `flutter test`, `npm run build`, `npx prisma generate`, Docker build/run smoke test.
+- [ ] Document before/after evidence; mark anything not measurable as `Not measured` / `NOT RUN`.
+
+## Baseline (given)
+
+- Railway `ai-food-diary` Web Service: RAM avg ≈230MB, peak ≈452MB; CPU avg ≈0.00014 vCPU, peak ≈0.048 vCPU; startup ≈416ms; Serverless sleep enabled, 1 replica.
+- Railway HTTP logs show bursts of `GET /api/meals` / `GET /api/water` 0.1–1s apart.
+- No Railway MCP/CLI project access available in this workspace — Railway-side before/after metrics are `Not measured`; instructions for the user to measure post-deploy are provided in the final report.
+
+## Root Causes (confirmed by code reading, not guesswork)
+
+### RC1 — Health sync fetches the same days' meals/water twice per sync (P0, primary suspect for the burst pattern)
+
+- **File**: `mobile/lib/services/health_service.dart` (`writeRecentMealsToHealth`, `writeRecentWaterToHealth`, `_mealNutritionMetrics`, `_waterIntakeMetrics`, `syncNow`), `mobile/lib/widgets/health_sync_card.dart` (`_HealthSyncCardState._sync`).
+- Every tap of "健康同步" (`_sync()`, always called with `mirrorMeals: true`, default `_syncDays = 7`) did:
+  1. `writeRecentMealsToHealth(days)` → loop `for i in 0..<days`, one `MealService.mealsForDay()` (`GET /api/meals`) per day, to mirror into Health Connect.
+  2. `writeRecentWaterToHealth(days)` → same loop pattern with `WaterService.forDay()` (`GET /api/water`) per day.
+  3. `syncNow(days)` → internally calls `_mealNutritionMetrics(days)` and `_waterIntakeMetrics(days)`, which **independently repeat the exact same per-day loops** to build the cloud-upload payload.
+- Net effect: one sync tap = 2× `GET /api/meals` + 2× `GET /api/water` per day in range — e.g. 14+14 requests for the default 7-day range, fired back-to-back in a sequential `await` loop (well within the observed 0.1–1s spacing).
+- `HealthService.syncNow(days: 2)` is also called once per foreground entry (30s after `_bootstrap`, via `_syncHealthAfterEntry` in `dashboard_screen.dart`) — that path only self-fetches once (no `writeRecentMealsToHealth`/`writeRecentWaterToHealth` there), so it wasn't double-fetching, just a normal 2+2 request cost per app open.
+
+### RC2 — No request coalescing existed for concurrent identical GETs (P1, defensive/required infra)
+
+- **File**: `mobile/lib/services/api_client.dart`. `ApiClient.get()` had an on-disk response cache (write-through + offline fallback) but no in-flight de-duplication: N concurrent callers asking for the same `path+query` each fired their own HTTP request. No live call site was found that concurrently double-calls the exact same GET today (guards like `_loadGeneration`/`_mealLoadGeneration`/`_busy` already prevent most of that in `dashboard_screen.dart` and `water_card.dart`), but this is exactly the infrastructure the task requires and protects future call sites (and covers Scenario G / Test 1-4 explicitly required below).
+
+### Reviewed and found clean (no code change needed)
+
+- `dashboard_screen.dart`: `didChangeAppLifecycleState` only triggers `_maybeShowYesterdaySummary()` on resume, guarded by `_summaryCheckRunning` + a once-per-local-day `SharedPreferences` flag. No meals/water refetch on resume.
+- `WaterCard` (`water_card.dart`): stable `ValueKey('water-$date')` so parent rebuilds reuse `State` (no `initState` re-fire); `didUpdateWidget` only reloads when `date` actually changes; `_busy` flag blocks double add/delete taps.
+- `MealAnalysisController` (`meal_analysis_controller.dart`): `Timer.periodic(2s)` only polls a **local file** written by the WorkManager isolate (`BackgroundAnalysis.pollResult`), not the backend; stops on completion/cancel.
+- `BackgroundAnalysis` (`background_analysis.dart`): uses `Workmanager().registerOneOffTask` (one-shot, user-triggered), never `registerPeriodicTask` — no periodic background HTTP.
+- `UpdateService.check()`: only called from foreground entry (`_refreshAfterEntry`, once) and the update-card UI; no periodic timer.
+- Home-screen widgets (`HomeWidgetUpdater.kt` + 5 `AppWidgetProvider`s): `onUpdate` (fired every `updatePeriodMillis=1800000` = 30 min by Android) only re-renders from a local `SharedPreferences` snapshot — **zero network calls**. `WaterQuickAddReceiver.kt` does 1 POST + 1 GET, but only on an explicit user tap of the widget's quick-add button.
+- No `addListener`/`ChangeNotifier` subscription found without a matching `dispose()`-time removal.
+- No `FutureBuilder` (or other rebuild-refetch anti-pattern) found anywhere in `mobile/lib`.
+
+## Planned Changes
+
+1. `mobile/lib/services/health_service.dart` — add `fetchRecentMeals(days)` / `fetchRecentWaterLogs(days)` shared fetch helpers; `writeRecentMealsToHealth`, `writeRecentWaterToHealth`, `syncNow` accept optional pre-fetched lists and skip their own fetch when provided.
+2. `mobile/lib/widgets/health_sync_card.dart` — `_sync()` fetches meals/water once (when mirroring) and passes the same lists to all three calls.
+3. `mobile/lib/services/api_client.dart` — add GET single-flight coalescing (`_inFlightGets` map keyed by normalized `path?query`), separate from `CacheService`; skip coalescing when per-call `headers` are supplied; clear the map in `clearSession()`; add `@visibleForTesting` hooks (`debugSetDioForTesting`, `debugResetForTesting`) so tests can inject a fake Dio adapter without needing secure-storage platform channels.
+4. `mobile/test/api_client_coalescing_test.dart` (new) — coalescing/cache/failure/logout regression tests (Tests 1–7 from the task spec, adapted to this codebase's existing test style: no mocking library, hand-rolled fake `HttpClientAdapter` + a minimal in-memory fake for the `flutter_secure_storage` method channel).
 
 ## Risk & Rollback
 
-- **Risk level**: medium; visual shell and dashboard composition change, data/API contracts do not.
-- **Rollback**: revert dashboard layout/nav/page and global style changes; no schema or dependency migration.
+- **Risk level**: low-medium. `health_service.dart` changes are additive (optional params, default `null` preserves old self-fetch behavior for every existing caller that doesn't pass the new params — e.g. `_syncHealthAfterEntry`'s `syncNow(days: 2)` is untouched). `api_client.dart` changes only affect GET; POST/PATCH/DELETE untouched.
+- **Affected components**: Health Connect sync UI/flow, all GET traffic through `ApiClient`.
+- **Rollback**: revert the 3 touched files; no schema/migration/dependency changes.
+- **Concurrency risk**: coalescing key excludes calls with custom `headers` (none currently exist) to avoid merging different request contexts; `clearSession()` clears in-flight map to prevent cross-account leakage.
 
-## Dependencies & Environment
+## Tests (planned)
 
-- Next.js App Router + TypeScript + Tailwind CSS v4.
-- Existing data contracts and client components remain the source of truth.
-- No new runtime dependency planned.
+- `cd mobile && flutter pub get`
+- `cd mobile && flutter analyze`
+- `cd mobile && flutter test`
+- Targeted: `flutter test test/api_client_coalescing_test.dart`
 
-## Working Notes
+## Verification (Web/Docker, if changed)
 
-- Direction: Warm Evidence Desk — warm paper canvas, charcoal workspace, amber action color, terracotta food accent, olive health accent.
-- Existing `/dashboard`, `/dashboard/health`, `/dashboard/foods`, and `/dashboard/settings` URLs must remain valid.
-- The existing page already computes totals, weekly data, water, meals, and target values; redesign should consume those values rather than duplicate business logic.
-
-## Release internal notes
-
-- Technical scope: replace the dashboard shell and today view composition with a responsive CSS workspace; keep existing server-side aggregation, routes, meal capture APIs, hydration actions, and AI summary actions intact; correct weekly multi-image counting; bump web/mobile release metadata to 0.71.0.
-- User-facing translation: present the change as a new workbench, faster daily scanning, clearer meal rhythm, and safer narrow-screen date controls without exposing implementation details.
+- `npm ci` (skip if already installed) / `npx prisma generate` / `npm run build`
+- `docker build` only if Dockerfile/next.config.ts change (standalone evaluation) — see report for outcome.
 
 ## Results
 
-- Replaced the narrow dashboard shell with a charcoal sidebar, responsive mobile navigation, editorial topbar, and a warm paper workspace.
-- Redesigned the Today view around a calorie hero, quick-read pulse, meal rhythm rail, logged-entry list, capture workspace, hydration, and summary modules.
-- Kept existing route/query/API contracts and improved weekly image counting for multi-image meals.
-
-## Verification
-
-- `npm run build` -> passed (Prisma generate, TypeScript, Next production build).
-- `npx tsc --noEmit` -> passed.
-- `git diff --check` -> passed; Git reports only existing LF/CRLF normalization warnings.
-- `npm run lint` -> blocked by the existing `next lint` script, which Next 16 treats as an invalid project directory; direct ESLint is also blocked because the repo has no `eslint.config.*`.
-
----
-
-# 2026-08-10 web-ui-workflow-spec
-
-## Goal + Acceptance Criteria
-
-- [x] 读取 `docs/ui-design-system-shared.md`，明确本轮只设计 Web。
-- [x] 确认执行模式与关键 Web 方向。
-- [x] 检查仓库入口与现有 Web 代码；记录实际路径为 `src/app/` 与 `src/components/`。
-- [x] 建立 `docs/ui-workflow/` 归档目录。
-- [x] 生成 Web-specific 需求摘要到兼容路径与归档路径。
-- [x] 选择参考搜索方式与额外分析范围：等效 Web 搜索兜底；IA + interaction + content 全选。
-- [x] 运行并保存研究报告到 `docs/ui-workflow/01-research-report.md`。
-- [x] 运行并保存需求报告到 `docs/ui-workflow/02-need-report.md`。
-- [x] 运行并保存形态报告到 `docs/ui-workflow/03-form-report.md`。
-- [x] 运行并保存视觉、IA、交互、内容专家报告到 `docs/ui-workflow/04-visual-report.md`、`05-ia-report.md`、`06-interaction-report.md`、`07-content-report.md`。
-- [x] 总审核并保存 Web-only 最终规范到 `docs/ui-design-spec.md` 与 `docs/ui-workflow/99-ui-design-spec.md`。
-- [ ] 询问是否生成 HTML 原型；未经确认不得生成。
-- [ ] 验证文档完整性与生产代码未修改。
-
-## Risk & Rollback
-
-- **Risk level**：低；仅新增/更新设计文档和任务记录，不改变运行时行为。
-- **Affected components**：后续 Web UI 实现指导；不影响 Android 原生实现。
-- **Rollback**：还原或删除本轮生成的 `docs/ui-workflow/*.md`、`docs/ui-design-spec.md` 与 `docs/ui-need-summary.md`；不需要应用回滚。
-
-## Dependencies & Environment
-
-- Web：Next.js App Router + TypeScript。
-- 共享设计基础：`docs/ui-design-system-shared.md`。
-- Web 事实来源：`src/app/`、`src/components/`、`src/app/globals.css`、`README.md`。
-- 用户选择：深度模式；全域工作台；桌面高信息密度；纳入明暗主题。
-- 生产代码约束：本轮不修改 `src/`、依赖、配置或数据库。
-
-## Working Notes
-
-- 仓库不存在 `web/` 目录；不要虚构路径，Web 实际代码在 `src/`。
-- 共享规范中有跨平台内容；最终报告必须明确排除 Mobile App，只保留对 Web 有用的共享 token/语义。
-- 现有 Web 仍以窄容器、胶囊顶栏和玻璃卡片为主；设计重点是桌面侧栏、可扫描高密度布局、表格/抽屉/状态中心和响应式降级。
-- 现有路由以 `/dashboard/*` 为主；任何更细的 IA 路由建议须标注实现迁移成本。
-
-## Results
-
-- 已完成模式确认、仓库探索、共享设计系统读取和 Web 需求方向确认。
-- 已写入 `docs/ui-need-summary.md` 与 `docs/ui-workflow/00-need-summary.md`。
-- 尚未运行外部研究或专家 Agent，尚未生成最终规范。
-
-## Verification
-
-- 已检查：README、package.json、src/app、src/components、共享设计系统与当前任务记录。
-- 观察到：仓库没有 `web/` 目录；当前 Web 代码位于 `src/`。
-- 生产代码未修改；后续需用 `git status --short` 与 `git diff --check` 验证。
-
----
-
-# 2026-08-22 mobile-ui-workflow-spec
-
-## Goal + Acceptance Criteria
-
-- [x] 读取 `docs/ui-design-system-shared.md`，明确本轮只设计 Android 手机原生体验。
-- [x] 确认深度模式、目标用户与完整 App 范围。
-- [x] 检查 `mobile/` 的 Flutter 入口、主题、饮食记录、健康同步、我的食物与测试/流程。
-- [x] 建立 `docs/ui-workflow/` 归档目录。
-- [x] 生成 Mobile-App-specific 需求摘要到兼容路径与归档路径。
-- [x] 选择参考搜索方式与额外分析范围：TinyFish 选项；当前环境无 TinyFish 工具，使用等效 Web 搜索/抓取兜底；IA + interaction + content 全选。
-- [x] 运行并保存研究报告、需求报告、形态报告、视觉报告、IA、交互与内容报告。
-- [x] 总审核并保存移动端最终规范到 `docs/ui-design-spec.md` 与 `docs/ui-workflow/99-ui-design-spec.md`。
-- [ ] 询问是否生成 HTML 原型；未经确认不得生成。
-- [ ] 完成最终文档完整性与生产代码未修改验证。
-
-## Results
-
-- 已完成深度模式 Mobile-App-specific UI/UX 规范；覆盖 Android 导航、触控、安全区、Sheet、全屏表单、键盘、离线、同步、权限、冲突、无障碍与内容策略。
-- 已记录冲突处理：复杂 AI 审核使用全屏；根级 CTA 使用 `記錄飲食`；昨日总结改为可召回；负面 AI 评级改为中性方向。
-- 未生成 HTML 原型，等待用户二次确认。
-
-## Verification plan
-
-- [x] `git diff --check`（通过；仅有 Git 的 LF/CRLF 提示）
-- [x] `git status --short -- mobile src`（无生产路径变更）
-- [x] 检查 `docs/ui-workflow/00-need-summary.md` 至 `07-content-report.md`、`99-ui-design-spec.md` 和兼容规范均存在且非空
-
-## Risk & Rollback
-
-- **Risk level**：低；本轮仅新增/更新设计文档和任务记录，不改变 Flutter/Web 运行时行为。
-- **Affected components**：后续 Android UI 实现指导；不影响现有生产代码。
-- **Rollback**：还原或删除本轮新增的 `docs/ui-workflow/*.md`、`docs/ui-design-spec.md`、`docs/ui-need-summary.md` 及本段任务记录。
-
-## Dependencies & Environment
-
-- Android：Flutter，Material 3；具体版本见 `mobile/pubspec.yaml`。
-- 共享设计基础：`docs/ui-design-system-shared.md`。
-- 移动端事实来源：`mobile/lib/screens/dashboard_screen.dart`、`mobile/lib/theme/app_theme.dart`、`mobile/lib/widgets/meal_capture_form.dart`、`mobile/lib/widgets/health_sync_card.dart`、`mobile/lib/widgets/saved_foods_manager.dart`、`mobile/.maestro/flows/`。
-- 生产代码约束：不修改 `mobile/`、`src/`、依赖、配置或数据库。
-
-## Working Notes
-
-- Android 当前已实现三项底部导航、缓存优先启动、后台 AI 分析和 Health Connect；设计报告需区分“现状”与“建议”。
-- 共享规范是跨平台语义基础，不应直接复制 Web 的布局；最终报告必须只保留移动端交互、状态和安全区规则。
-- 深度模式需严格按 `need → form → visual → ia → interaction → content` 传递报告。
-
-## 2026-07-11 Android UI refinement
-
-### Goal and acceptance criteria
-
-- [x] Keep the root navigation as `飲食 / 健康 / 設定`.
-- [x] Make Today prioritize summary, persistent task state, one primary `記錄飲食` action, and meal review.
-- [x] Use a mobile-native source bottom sheet and focused capture/review pages without changing capture or API contracts.
-- [x] Apply shared warm amber/terracotta/olive tokens and accessible Material 3 touch targets.
-- [x] Preserve Health Connect, background AI, image picker/camera, saved foods, notifications, Google auth, and persistence.
-
-### Risk and rollback
-
-- Medium risk: the authenticated shell and capture entry changed; service/controller boundaries remain intact.
-- Roll back by reverting the Android UI/theme/widget changes only; no backend, schema, dependency, or platform integration changes are planned.
-
-### Verification
-
-- [x] Targeted Flutter analyzer: `flutter analyze lib/screens/dashboard_screen.dart lib/screens/meal_capture_screen.dart lib/theme/app_theme.dart lib/widgets/health_sync_card.dart lib/widgets/meal_capture_form.dart lib/widgets/meal_list.dart`.
-- [x] Flutter tests: `flutter test` (72 passed).
-- [x] `git diff --check` and changed-file scope review.
-- [ ] Android APK build: blocked by the workspace/toolchain path mismatch; Kotlin incremental caches reject `C:\Users\...` pub-cache files relative to the `D:\SynologyDrive\...` project, even after `flutter clean`.
-
-### Results
-
-- Refined the authenticated Android shell and moved capture/review into focused native pages.
-- Added persistent AI task feedback, session-safe logout cancellation, responsive Health metric grids, accessible capture controls, and shared theme tokens.
-
----
-
-# 2026-08-22 mobile-ui-release-0.72.0
-
-## Goal + acceptance criteria
-
-- [x] Translate the Android UI refinement into a user-facing Traditional Chinese changelog entry.
-- [x] Synchronize web/mobile version metadata to `0.72.0`.
-- [x] Commit the scoped changes, squash merge them into `main`, push GitHub, and create the release tag.
-- [x] Create the GitHub Release from the verified changelog entry.
-
-## Release internal notes
-
-- Technical scope: publish the existing Android Flutter UI refinement, including focused capture/review routes, persistent background-analysis state, logout cleanup, responsive Health cards, accessibility semantics, and updated tests/flows; no API, schema, dependency, or platform integration changes.
-- User-facing translation: describe the new capture entry and full-screen review, clearer Today/Health feedback, larger accessible controls, and safer account switching without exposing implementation names.
-
-## Dependencies and environment
-
-- GitHub CLI is expected at `C:\Program Files\GitHub CLI\gh.exe`.
-- No `SRS.md` exists in this repository; README version badge and package/mobile metadata are the available version surfaces.
-- Existing untracked `docs/ui-*` design artifacts are preserved but excluded from this release commit because they predate the implementation handoff.
-
-## Verification plan
-
-- [x] Validate `changelog.json` JSON and public-language forbidden-term checks.
-- [x] Run web type/build checks if affected by version metadata.
-- [x] Run targeted Flutter analyzer and full Flutter tests.
-- [x] Review staged scope, commit, PR squash merge, tag, and GitHub Release.
-
-## Results
-
-- Version metadata is synchronized at `0.72.0`; `v0.72.0` points to the squash-merged feature commit on `main`.
-- PR #116 was squash-merged, and GitHub Release `v0.72.0` was created from `changelog.json`.
-- Existing untracked `docs/ui-*` design artifacts remain intentionally outside the release commits.
-
----
-
-# 2026-08-22 fix AI meal review keyboard overlap
-
-## Goal and acceptance criteria
-
-- [x] Keep the AI meal review text field visible when the Android keyboard opens.
-- [x] Do not change meal editing, re-analysis, save, or navigation behavior.
-- [x] Verify the focused field can be edited without the fixed save area covering it.
-
-## Risk and rollback
-
-- **Risk level**: low; scoped to the AI review page keyboard/layout behavior.
-- **Rollback**: revert the change in `mobile/lib/widgets/meal_capture_form.dart`; no data or API changes.
-
-## Working notes
-
-- The issue is isolated to `_ConfirmSheet` in `mobile/lib/widgets/meal_capture_form.dart`.
-- The current full-screen review adds `viewInsets.bottom` to the scroll body while also rendering the save action as `Scaffold.bottomNavigationBar`; this is the likely double keyboard adjustment/overlap source.
-
-## Results
-
-- Removed the extra keyboard inset from the full-screen AI review body; `Scaffold` now performs the keyboard resize once, so focused fields are not shifted under the lower action area.
-- Meal editing, re-analysis, save, and navigation code paths are unchanged.
-
-## Verification
-
-- [x] `cd mobile && flutter analyze lib/widgets/meal_capture_form.dart lib/widgets/meal_list.dart` — passed.
-- [x] `cd mobile && flutter test` — 73 tests passed.
-- [x] `git diff --check` and final diff review — passed.
-
----
-
-# 2026-08-22 fix Android in-app update background download
-
-## Goal and acceptance criteria
-
-- [x] APK download completion remains successful when the update dialog is dismissed, another app is opened, or the notification shade is pulled down.
-- [x] A temporarily interrupted/resumed download receives a proper partial response instead of becoming a false failure.
-- [x] Completed downloads still open the Android installer through the existing foreground/notification flow.
-- [x] Existing update permission, retry, and foreground-fallback behavior remains intact.
-
-## Risk and rollback
-
-- **Risk level**: medium; affects mobile update delivery and the APK download endpoint.
-- **Rollback**: revert only the update service and range-response changes; no data or schema migration.
-
-## Working notes
-
-- The Android downloader uses WorkManager and resumes partial files with an HTTP `Range` request.
-- The deployed `/api/app/download` returned `200 OK` for `Range: bytes=0-0`, confirming that resumed downloads could be rejected by `flutter_downloader`.
-- The background completion callback tried to launch the installer while the Activity was inactive; Android can reject that launch and the app then marked a completed download as failed.
-- Preserve unrelated working-tree changes in `README.md`, auth/home-widget services, `mobile/lib/services/update_service.dart`, and this task log.
-
-## Plan / checkpoints
-
-- [x] Reproduce/trace the background and resume failure paths.
-- [x] Make the smallest client/server fix for interruption-safe download and installer launch.
-- [x] Add focused regression coverage where practical; existing analyzer/build checks cover the changed code because this repo has no route integration-test harness.
-- [x] Run Flutter analyzer/tests, web type/build checks for the route, and diff/diagnostic verification.
-
-## Results
-
-- `/api/app/download` now forwards validated single-range requests to S3 and returns `206`, `Content-Range`, `Content-Length`, and `Accept-Ranges` for resumable APK downloads.
-- Android only attempts the installer while the Activity is resumed; background completion remains successful and the existing download notification handles installation. Lifecycle state is rechecked around the async file/installer handoff.
-- No dependency, schema, or API authentication changes were introduced.
-- Release metadata is synchronized to `0.72.2` across the Web, Android, README, and changelog surfaces.
-
-## Verification
-
-- `npm run build` — passed (Prisma generate, TypeScript, Next production build).
-- `cd mobile && flutter analyze lib/services/update_service.dart` — passed.
-- `cd mobile && flutter test` — 73 tests passed.
-- `git diff --check` and final pi-lens diagnostics — passed.
-- `curl -H "Range: bytes=0-0" https://aifood.shao.one/api/app/download` — current deployment baseline returned `200 OK`; deploy this change and expect `206 Partial Content` with `Content-Range`.
-- `flutter build apk --debug` — blocked by the pre-existing Kotlin incremental-cache registration failure across plugin modules on the Synology `D:` workspace, reproduced after `flutter clean` and Gradle daemon stop attempt.
-
----
-
-# 2026-08-23 fix health sync 500
-
-## Goal + acceptance criteria
-
-- [ ] Health sync POST accepts the existing 92-metric batch instead of returning a generic 500 (requires deployment verification).
-- [x] Existing encrypted HealthMetric writes remain compatible with legacy production databases.
-- [x] The Android sync path continues to report actionable errors without exposing secrets; no client behavior change was needed.
-- [x] Preserve unrelated working-tree changes in `mobile/pubspec.yaml`, `src/app/api/app/download/route.ts`, and `src/lib/storage.ts`.
-
-## Risk & rollback
-
-- **Risk level**: medium; touches the health-sync persistence schema/deployment path.
-- **Rollback**: revert the new migration and README change; take a database backup before applying the migration.
-
-## Working notes
-
-- The mobile log proves permission, aggregation, token lookup, and request construction succeeded; the failure starts inside `POST /api/health/sync`.
-- The route writes `HealthMetric.value = null` and `encValue`, while the repository had no migration for the encryption columns/nullability. The Dockerfile recently changed from `prisma db push` to `prisma migrate deploy`, making schema drift the leading root cause.
-- No `tasks/lessons.md` exists in this repository; no correction/postmortem was required.
-
-## Plan / checkpoints
-
-- [x] Reproduce/trace the API failure path and confirm the smallest schema-compatible fix.
-- [x] Add the minimal backward-compatible migration and deployment guidance.
-- [x] Add focused regression coverage or a deterministic validation for the changed path.
-- [x] Run TypeScript/build, Flutter analyzer/tests as applicable, `git diff --check`, and diagnostics.
-
-## Results
-
-- Added an idempotent migration that adds the HealthMetric encrypted JSON columns and makes the legacy value nullable, covering databases previously maintained by `prisma db push`.
-- Updated README deployment guidance to match `prisma migrate deploy`.
-- No unrelated working-tree files were changed or reverted; the Flutter dependency-lock change caused by verification was restored.
-
-## Verification
-
-- `npx prisma validate` — passed.
-- `npm run build` — passed.
-- `cd mobile && flutter analyze lib/services/health_service.dart lib/widgets/health_sync_card.dart` — passed.
-- `cd mobile && flutter test` — 72 tests passed.
-- Migration assertions — passed; `git diff --check` — passed.
-- Live 92-metric sync verification — not run because deployment/database access is not available in this workspace; deploy the image, then retry sync.
-
----
-
-# 2026-08-23 fix mobile yesterday summary
-
-## Goal + acceptance criteria
-
-- [x] On the first app entry of a new local day, a stored yesterday summary is shown once.
-- [x] If the worker did not precompute it, the app retries by generating the past-day summary once; no summary/AI-key/network failure blocks the dashboard.
-- [x] Widget summary publishing and current-day dashboard behavior remain unchanged.
-- [x] Preserve the previous health-sync migration and unrelated working-tree changes.
-
-## Risk & rollback
-
-- **Risk level**: low; restores the existing summary popup flow in the Android dashboard only.
-- **Rollback**: revert the dashboard import/state/helper/call changes; no data or schema changes.
-
-## Working notes
-
-- `mobile/lib/widgets/daily_summary_popup.dart` still implemented the popup, but v0.72.0 removed its dashboard import, the once-per-day guard, and the call from `_refreshAfterEntry`.
-- `_loadYesterdaySummaryForWidget` only fetched data for the home widget; it never displayed a summary.
-- The server endpoint already supports peek and past-date `generate=1`; the worker remains the preferred path.
-
-## Plan / checkpoints
-
-- [x] Reproduce the missing-display path and compare the previous known-good implementation.
-- [x] Restore the smallest once-per-local-day popup flow with safe fallback behavior.
-- [x] Add/adjust focused regression coverage where practical; the existing model/widget suite covers the summary contract, and the dashboard analyzer covers the restored path (the overnight UI flow still needs a device repro).
-- [x] Run Flutter analyzer/tests, web checks only if touched, `git diff --check`, and diagnostics.
-
-## Results
-
-- Restored the once-per-local-day `昨日總結` popup and the on-demand fallback when the worker has not generated a stored summary.
-- Added a lifecycle resume check so returning to an app that stayed open overnight also evaluates the new local day; stale cached summaries are not reused across dates.
-- Kept widget publishing and the existing health-sync migration/working-tree changes intact.
-- Recorded the missing-call-site regression and prevention rule in `tasks/lessons.md`.
-
-## Verification
-
-- `cd mobile && flutter analyze lib/screens/dashboard_screen.dart lib/widgets/daily_summary_popup.dart` — passed.
-- `cd mobile && flutter test` — 72 tests passed.
-- `git diff --check` and pi-lens diagnostics — passed.
-- Physical overnight/device repro — not run in this workspace; install the updated APK and test once after crossing midnight.
-
----
-
-# 2026-08-23 release 0.72.3
-
-## Goal + acceptance criteria
-
-- [ ] Bump Web and Android versions to `0.72.3` / Android build `115`.
-- [ ] Add a user-facing Traditional Chinese changelog entry for the health-sync and yesterday-summary fixes.
-- [ ] Keep the existing migration, summary fix, lessons, and prior working-tree changes in the release commit without silently discarding user edits.
-- [ ] Verify, commit on a feature branch, squash-merge into `main`, push GitHub, and create the GitHub Release/tag.
-
-## Risk & rollback
-
-- **Risk level**: medium; release includes an additive database migration and Android behavior fix.
-- **Rollback**: revert the release commit and deploy the previous image/APK; the migration is additive and does not delete data.
-
-## Dependencies & environment
-
-- GitHub CLI at `C:\Program Files\GitHub CLI\gh.exe`.
-- No `SRS.md` exists in this repository; synchronize the available version surfaces only.
-- Docker/Android release workflows run from the pushed version tag.
-
-## Working notes
-
-- Current version is `0.72.2`; this is a patch release (`0.72.3`).
-- The repository is currently on `main`; create a release branch and squash-merge it back.
-- Existing pre-release changes in `mobile/pubspec.yaml`, `src/app/api/app/download/route.ts`, and `src/lib/storage.ts` must be reviewed and preserved; only the version change to `mobile/pubspec.yaml` is part of this release change.
-
-## Plan / checkpoints
-
-- [x] Update changelog, version metadata, README badge, and release notes.
-- [x] Run JSON, forbidden-term, build/analyzer/test, and diff checks.
-- [x] Commit and push the release branch; create and squash-merge the PR.
-- [x] Confirm the tag and create/update the GitHub Release from the changelog entry.
-
-## Results
-
-- Version surfaces are released as `0.72.3` with Android build `115`.
-- PR `#121` was squash-merged into `main` at `d5a9e0b`.
-- Annotated tag `v0.72.3` was pushed from the merged `main` commit.
-- GitHub Release `v0.72.3` was created from the `changelog.json` entry.
-- Existing pre-release formatting changes in `src/app/api/app/download/route.ts` and `src/lib/storage.ts` were intentionally preserved outside this release commit.
-
-## Verification
-
-- `node -e "require('./changelog.json')"` and version/title/length checks — passed.
-- Forbidden-term checks for internal IDs, API paths, filenames, review markers — passed.
-- `npx prisma validate` — passed.
-- `npm run build` — passed.
-- Flutter analyzer/tests — passed (72 tests).
-- PR checks — passed: Application Build, Android APK, CodeQL.
-- Tag checks — passed: Docker image build/push, Android APK, Application Build, CodeQL.
-- `git diff --check` — passed.
-
----
-
-# 2026-08-23 fix health sync raw payload limit
-
-## Goal and acceptance criteria
-
-- [x] Health sync accepts the existing Android metric batch when each metric is valid but `raw` is larger than the server limit.
-- [x] The request remains protected by an explicit per-metric size limit and does not persist unbounded payloads.
-- [x] Existing metric values, encryption, upsert behavior, and actionable client errors remain unchanged.
-- [x] Add the smallest regression check for the validation boundary.
-
-## Risk and rollback
-
-- **Risk level**: medium; changes the health-sync API validation boundary and can affect persisted raw health data size.
-- **Rollback**: revert the validation change; no schema or dependency migration is required.
-
-## Working notes
-
-- The reported failure is a server-side `ZodError` at `metrics[57].raw`, not an Android permission or transport failure.
-- `raw` is the Android sleep-stage timeline generated by `_appendSleep`; the server intentionally caps its JSON at 32 KiB.
-- Preserve the server cap for the security boundary; both the mobile client and server omit only an oversized optional timeline so totals/stage metrics still sync, including for older APKs.
-- Preserve existing working-tree changes in `src/app/api/app/download/route.ts`, `src/lib/storage.ts`, and prior task records.
-
-## Plan / checkpoints
-
-- [x] Trace the request producer, schema, route, and all callers.
-- [x] Reproduce/measure the oversized raw payload and choose the smallest safe boundary fix.
-- [x] Add the focused regression check and implement the fix.
-- [x] Run TypeScript/build, relevant Flutter checks if needed, diff checks, and diagnostics.
-
-## Results
-
-- The Android payload builder now omits only oversized optional sleep timelines; aggregate sleep and stage metrics continue to upload.
-- The API applies the same 32 KiB cap server-side by dropping oversized legacy `raw` values instead of rejecting the entire batch.
-- Zod validation failures from `POST /api/health/sync` now return 400 rather than falling through as a generic 500.
-
-## Verification
-
-- `npm run build` — passed.
-- `cd mobile && flutter analyze lib/services/health_service.dart lib/services/health_sync_validation.dart test/health_sync_validation_test.dart` — passed.
-- `cd mobile && flutter test` — 73 tests passed.
-- `git diff --check` — passed; only existing LF/CRLF normalization warnings remain.
-- LSP/pi-lens diagnostics — no blocking errors for the changed code.
-- Live deployed sync — not run; deploy the API and retry the existing Android sync to confirm production behavior.
-
----
-
-# 2026-08-23 release 0.72.4
-
-## Goal and acceptance criteria
-
-- [ ] Publish the health-sync bug fix as Web/App version `0.72.4` / Android build `116`.
-- [ ] Add a user-facing Traditional Chinese changelog entry and synchronize available version surfaces.
-- [ ] Verify the scoped release commit, push the feature branch, squash-merge into `main`, and create the GitHub Release.
-
-## Risk and rollback
-
-- **Risk level**: medium; release includes a backend compatibility fix and Android payload behavior change.
-- **Rollback**: revert the release commit and redeploy `0.72.3`; the change is additive and does not require a schema migration.
-
-## Dependencies and environment
-
-- GitHub CLI: `/c/Program Files/GitHub CLI/gh.exe`.
-- `SRS.md` and `.specify/memory/changelog-style.md` are absent; use the repository's existing changelog conventions and the update-docs rules.
-- Docker and Android release workflows run from the version tag.
-
-## Working notes
-
-- `changelog.json` was `0.72.3`; this bug fix uses patch version `0.72.4` and Android build `116`.
-- Do not stage the pre-existing formatting-only changes in `src/app/api/app/download/route.ts` and `src/lib/storage.ts`; preserve them in the working tree.
-
-## Plan / checkpoints
-
-- [x] Update changelog, package/mobile versions, and README badge.
-- [x] Validate changelog wording/JSON and release checks.
-- [ ] Commit the scoped changes and push the feature branch. **In progress**
-- [ ] Squash-merge into `main`, confirm the tag, and create the GitHub Release.
-
-## Results
-
-- Version metadata and user-facing changelog are prepared for `0.72.4`; deployment/release publication is pending.
-
-## Verification
-
-- Changelog JSON, wording constraints, `npm run build`, Flutter analyzer, and 73 Flutter tests passed.
-
----
-
-# 2026-08-24 restrict authentication to SSO
-
-## Goal and acceptance criteria
-
-- [x] Remove all user-facing email/password login and registration flows from Web and Android.
-- [x] Enforce the same restriction server-side so direct calls to the legacy password endpoints cannot authenticate or create accounts.
-- [x] Keep Google SSO account creation/login working, including the existing Google-only mobile flow and current-session account linking for legacy users.
-- [x] Remove obsolete registration toggles, Turnstile/password auth plumbing, and stale documentation/tests without changing authenticated diary behavior.
-- [x] Preserve existing unrelated working-tree and staged changes.
-
-## Risk & rollback
-
-- **Risk level**: high; authentication and account access behavior changes.
-- **Affected components**: Web/Android auth entry points, auth APIs, legacy user migration path, admin registration settings, auth documentation.
-- **Rollback**: revert only this task's auth/UI/docs changes. Do not drop the existing `passwordHash` column or delete legacy users; current sessions and existing data remain recoverable.
-- **Migration policy**: retain `passwordHash` as an unused compatibility field for existing rows and keep explicit Google linking for legacy sessions; do not auto-link by email.
-
-## Dependencies & environment
-
-- Next.js App Router + TypeScript; Flutter mobile client.
-- Google ID-token verification remains the supported identity provider in this repository.
-- No new dependency or database migration planned.
-
-## Working notes
-
-- Existing staged auth changes are user work and must not be reset; edit the current working tree on top of them.
-- Google login currently creates accounts with an unusable random password hash and rejects unlinked legacy password accounts by email; preserve the safe no-auto-link behavior but update the user-facing recovery message.
-- `registrationOpen` only controls local/public registration today, so it should not gate Google SSO account creation after password registration is removed.
-
-## Plan / checkpoints
-
-- [x] Checkpoint A: map Web/Android auth surfaces, current Google behavior, legacy-account constraints, and baseline diagnostics.
-- [x] Checkpoint B: remove password UI/client paths and make legacy password API endpoints non-authenticating.
-- [x] Checkpoint C: simplify obsolete registration settings/plumbing and update docs; add focused regression coverage where practical.
-- [x] Checkpoint D: run TypeScript/build, Flutter analyzer/tests, diff/diagnostic checks, and review the final auth blast radius; unavailable checks are documented below.
-
-## Results
-
-- Web and Android now expose Google SSO as the only interactive authentication path; first Google sign-in creates the account.
-- Legacy password login/registration and admin registration settings return 410 without parsing credentials or mutating data.
-- Removed the registration toggle, Turnstile client/server plumbing, password auth client methods, unlink actions, and stale password-based smoke-flow setup while retaining the legacy schema field and explicit current-session Google linking.
-- Added trusted-proxy-aware Google rate limiting and aligned Google client-id fallback behavior across UI, mobile config, and backend verification.
-
-## Verification
-
-- `npm run lint` — passed (no lint output/errors).
-- `lsp_diagnostics` on changed Web auth files — primary diagnostics clean; only pre-existing auxiliary style hints remain.
-- `lens_diagnostics mode=all --severity error` — no error issues across 17 diagnosed files.
-- Follow-up security review — no blockers/high-risk findings after trusted-proxy rate-limit and client-id fallback fixes.
-- PowerShell UTF-8 parser for `scripts/smoke-test-web.ps1` — passed.
-- Standard `git diff --check` — blocked by the pre-existing corrupt staged index (missing object `bf01e4d...` for `mobile/lib/screens/dashboard_screen.dart`); a temporary HEAD-based index ran `git diff --cached --check` successfully. Only existing LF/CRLF warnings remain.
-- `npx tsc --noEmit` / `npm run build` — blocked by this Synology-backed Windows workspace: TypeScript/Prisma native executables fail with `UNKNOWN` spawn/read errors; rerun from a local filesystem checkout.
-- Flutter analyzer/tests — unavailable because `flutter`/`dart` are not installed in this environment.
-
----
-
-# 2026-08-24 release 0.73.0
-
-## Goal and acceptance criteria
-
-- [x] Publish the Web/Android Google-SSO-only authentication policy and preserve explicit legacy-account linking.
-- [x] Synchronize `changelog.json`, package/mobile version metadata, README, and the release notes.
-- [x] Commit the scoped release changes on a feature branch and push GitHub as PR #124.
-- [ ] Squash-merge into `main`, confirm the CI-created tag, and create the GitHub Release from the verified changelog entry.
-
-## Risk and rollback
-
-- **Risk level**: high; authentication entry points and legacy account access behavior change.
-- **Rollback**: revert the release commit and redeploy the previous version; do not delete legacy users, sessions, diary data, or the compatibility password field.
-- **Operational note**: existing legacy users must bind Google from an active session; do not auto-link by email.
-
-## Internal release notes
-
-- Technical scope: disable password UI and endpoints, retain Google ID-token verification and current-session linking, remove registration toggles/Turnstile/unlink paths, align client-id fallback and trusted-proxy rate limiting, and bump Web/App versions to `0.73.0` / build `117`.
-- User-facing translation: explain Google-only sign-in, first-use account creation, explicit legacy-account migration, and removal of password authentication without exposing implementation paths.
-
-## Results
-
-- Version metadata is prepared as `0.73.0` with Android build `117`.
-- The scoped release commit is pushed to branch `feat/google-sso-only-0.73.0`; PR #124 is open.
-
-## Verification
-
-- Changelog JSON, title/change-length checks, and public-language forbidden-term checks — passed.
-- `npx prisma validate` and `npm run build` (Prisma generate, TypeScript, Next production build) — passed in the local temporary clone.
-- `git diff --check` — passed; only existing LF/CRLF normalization warnings remain.
-- PR #124 checks — passed: Build, Android APK, and all Analyze jobs; CodeQL was skipped by workflow conditions.
-- `npm run lint` — blocked because the existing `next lint` script is invalid under Next 16; no ESLint config is present for a direct replacement.
-- Flutter analyzer/tests — unavailable locally because `flutter`/`dart` are not installed; Android CI passed the APK build.
-
----
-
-# 2026-08-24 Turnstile login integration
-
-## Goal and acceptance criteria
-
-- [x] Require a fresh Turnstile token for every real Google SSO login from Web and Android.
-- [x] Verify `success`, exact action, and exact hostname before Google authentication or session creation.
-- [x] Reset single-use tokens after every login attempt and preserve the existing Google SSO/account policy.
-- [x] Document the public site key and deployment-only secret/hostname configuration without storing a secret in Git.
-
-## Risk & rollback
-
-- **Risk level**: high; authentication gates and the Android login dependency are affected.
-- **Rollback**: revert the Turnstile login commit and remove the deployment secret/hostname settings; no database migration is required.
-
-## Working notes
-
-- The existing widget site key is `0x4AAAAAADYFeQGVNASty2ls`.
-- The server verifier fails closed when `TURNSTILE_SECRET` or `TURNSTILE_HOSTNAMES` is missing, when Siteverify fails, or when action/hostname does not match.
-- Google account linking remains separate from login and intentionally keeps its existing authenticated-session flow.
-- Existing-widget secret retrieval/e2e validation remains a deployment step; no Wrangler executable or secret-write confirmation was available in this coding workspace.
-
-## Results
-
-- Added explicit Web rendering and Android same-origin WebView rendering for the existing widget.
-- Wired the one-time `cf-turnstile-response` token through Google SSO and reset it after success, rejection, provider failure, cancellation, or network failure.
-- Added public configuration, release/docs updates, and smoke-test coverage for missing tokens.
-
-## Verification
-
-- `lsp_diagnostics` on changed Web TypeScript files — clean.
-- `npm run lint` — passed locally.
-- `npx tsc --noEmit` / `npm run build` — blocked in the Synology-backed checkout by `tsc.exe UNKNOWN` / Prisma native file-read errors; rerun in a local filesystem checkout or CI.
-- PowerShell UTF-8 parser — passed.
-- Flutter analyzer/tests — unavailable because `flutter`/`dart` are not installed locally.
-- Real Siteverify success/replay validation — pending deployment secret configuration and a fresh real token.
-# 2026-09-07 ChatGPT MCP 2026-07-28 integration
-
-## Goal + Acceptance Criteria
-
-- [x] Analyze current Web, Flutter App, authentication, authorization, data, and service/repository architecture.
-- [x] Verify the official MCP `2026-07-28` transport, lifecycle, authorization, tool, schema, and error requirements against the current official TypeScript SDK.
-- [x] Select an explicit read/create-only MCP resource and tool allowlist; exclude update, patch, delete, upsert, restore, admin, health-sync, and generated-summary paths.
-- [x] Implement a stateless, modern-only Remote MCP `/mcp` endpoint with OAuth, Origin/host validation, protocol metadata validation, limits, and safe errors.
-- [x] Add shared read/create services and server-enforced default-deny `CREATE_ONLY` policy; MCP tools must never access Prisma or generic mutation APIs directly.
-- [x] Add strict input/output schemas, annotations, owner-scoped authorization, least-privilege scopes, duplicate rejection, and structured tool errors.
-- [x] Add immutable AI audit events and AI provenance fields for MCP-created Meal, SavedFood, and WaterLog records.
-- [x] Add authenticated human-only restore preview/confirmation with optimistic version conflict detection and compensating immutable audit events.
-- [x] Add searchable/filterable Web AI Activity list/detail/restore UI.
-- [x] Add searchable/filterable Flutter AI Activity list/detail/restore UI.
-- [x] Add database migration, protocol/policy/schema/auth/service/audit/restore tests, and full Web/App verification.
-- [x] Complete a correctness, security/privacy, performance/complexity, and forbidden-operation diff review.
-
-## Selected MCP Tools
-
-- Read: `list_meals`, `get_meal`, `search_meals`, `list_saved_foods`, `search_saved_foods`, `list_water_logs`.
-- Create: `create_meal`, `create_saved_food`, `create_water_log`.
-- Explicitly absent: every update/edit/patch/delete/remove/replace/upsert/restore/admin/raw-query tool.
-
-## Risk & Rollback
-
-- **Risk level:** high; authentication, authorization, security boundary, database schema, immutable audit data, and compensating deletes are affected.
-- **Affected components:** Next.js `/mcp` and OAuth routes, food-record service/repository boundary, Prisma schema/migration, dashboard, and Flutter settings/activity screens.
-- **Rollback:** disable the connector by removing its public route/production OAuth configuration first; revert application code while retaining the additive tables/columns; do not roll back by deleting audit events. The schema migration is additive, and provenance columns retain human-compatible defaults.
-- **Rollout:** deploy migration before application; configure HTTPS canonical resource URL, dedicated signing secret, trusted Origin/client/redirect allowlists, and Redis; connect a test ChatGPT client before broad enablement.
-- **Monitoring:** MCP auth failures, rejected protocol/header mismatches, rate-limit responses, tool error codes, create/audit transaction failures, and restore conflicts.
-
-## Dependencies & Environment
-
-- Next.js 16 App Router, Prisma 7/PostgreSQL, Redis rate limiter, Zod 4, `jose`, Flutter/Dio.
-- Pin official split SDK `@modelcontextprotocol/server` v2 and use its Web-standard handler with `legacy: "reject"`.
-- Required production configuration: `MCP_PUBLIC_URL` (HTTPS), `MCP_OAUTH_SECRET`, `MCP_ALLOWED_ORIGINS`, allowed OAuth client IDs and redirect URIs.
-- Protocol authority: official MCP `2026-07-28` specification and schema. Current OpenAI connector examples that still describe legacy initialization do not override it.
-
-## Working Notes / Invariants
-
-- MCP `2026-07-28` is stateless: no `initialize`, `initialized`, `Mcp-Session-Id`, GET event stream, or legacy fallback.
-- SDK v2.0.0 has a known required-version-header validation gap; the application must pre-validate `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and body `_meta` before invoking the SDK, with regression coverage.
-- The authenticated user always comes from a verified server-side bearer token; tool input cannot supply user/owner/tenant/role/permission identity.
-- MCP business writes are create-only and use generated IDs plus `create`, never `update`, `delete`, `upsert`, `replace`, or conflict-update SQL.
-- Read/search outputs use explicit DTO allowlists; encrypted/internal fields, credentials, SQL, stack traces, and arbitrary stored instructions never cross the MCP boundary.
-- Audit events are insert-only and DB-trigger protected against update/delete. Resource creation and success audit event are atomic.
-- Restore is a cookie-authenticated Web/App human operation, never a tool. It rechecks ownership/RBAC and the original immutable resource version immediately before compensation; newer changes cause a conflict instead of overwrite.
-
-## Checkpoints
-
-- **A — understand/reproduce:** architecture and official spec/SDK compatibility mapped; existing untracked MCP policy/schema tests preserved as user-owned contract.
-- **B — minimal implementation:** protocol/auth boundary, policy, services, schemas, tools, migration, and targeted tests.
-- **C — product completion:** immutable audit/restore APIs plus Web/Flutter UI and regression coverage.
-- **D — verification/rollout:** Prisma validation/migration smoke, Node tests, TypeScript/build, Flutter analyze/tests, forbidden-pattern scans, diff/security review, and deployment notes.
-
-## Verification
-
-- `npx tsc --noEmit` -> passed.
-- `npm run build` -> passed; `/mcp`, `/oauth/authorize`, `/oauth/token`, `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource(/mcp)`, `/api/ai-activity`, `/api/ai-activity/[id]`, `/api/ai-activity/[id]/restore`, `/dashboard/ai-activity(/[id])` all built.
-- `npm run test:mcp` -> 31/31 passed (transport/legacy-rejection, allowlist/policy, schema strictness, create-only + duplicate rejection, audit event creation, restore authorization/conflict/version-check, restore-not-an-MCP-tool).
-- `flutter analyze` (AI Activity screens/service/widget/model) -> no issues.
-- `flutter test test/ai_activity_models_test.dart test/ai_activity_navigation_test.dart` -> 7/7 passed.
-
-## Results
-
-- Shipped the `/mcp` Remote MCP server (9 tools: 6 read-only, 3 create-only) on the official `2026-07-28` stateless protocol, with a pre-SDK guard enforcing required protocol headers/`_meta` and rejecting `initialize`/`Mcp-Session-Id`.
-- Enforced create-only server-side via `src/lib/mcp/policy.ts` (default-deny allowlist) plus a repository layer that only ever calls Prisma `create`; duplicate/replay attempts are rejected via unique `(user, aiSource, requestId)` constraints, never upserted.
-- Added `AiAuditEvent` as an event-sourced, append-only audit log (DB trigger blocks UPDATE/DELETE/TRUNCATE) capturing actor, tool, request/correlation IDs, before/after state (encrypted), and restore linkage; AI-created Meal/SavedFood/WaterLog rows carry `createdByType/AiSource/RequestId` provenance.
-- Added a cookie-authenticated (never MCP-exposed) human restore flow with optimistic version + provenance conflict detection, implemented as a compensating delete plus a new immutable `USER_RESTORE_*` event chain.
-- Added Web (`/dashboard/ai-activity`, list + detail/restore pages) and Flutter (`ai_activity_screen.dart`, `ai_activity_detail_screen.dart`) AI Activity UIs with search/filter and a full restore confirmation flow.
-- Added first-party OAuth 2.1 + PKCE authorization server (`/oauth/*`, `/.well-known/*`) reusing the app's existing session/user model; least-privilege `*:read`/`*:create` scopes only, no `*:write`.
+- **RC1 confirmed against real Railway logs** (not just code reading): pulled 7-day HTTP proxy logs via Railway MCP for the `ai-food-diary` service and found repeated bursts of exactly 14 `GET /api/meals` + 14 `GET /api/water` within a few seconds (e.g. `2026-09-07T14:54:26`–`14:54:32`, two back-to-back 14+14 cycles). 14 = 2× the default `_syncDays = 7` in `health_sync_card.dart` — exact match for the "fetch each day twice" bug. Fixed by sharing one fetch per sync (`HealthService.fetchRecentMeals`/`fetchRecentWaterLogs`), verified by new tests in `mobile/test/health_service_recent_fetch_test.dart`.
+- Implemented GET single-flight coalescing in `ApiClient` (`mobile/lib/services/api_client.dart`), separate from the on-disk cache; cleared on `clearSession()` to prevent cross-account reuse. Covered by 8 tests in `mobile/test/api_client_coalescing_test.dart`.
+- `flutter analyze`: only the pre-existing `app_logger.dart` warning remains (baseline, not introduced by this change). `flutter test`: 91/91 passed.
+- `npm run build` (Prisma generate + `tsc --noEmit` + `next build`) passed. `npm run test:mcp`: 31/31 passed (unaffected, unchanged area).
+- Docker: found and fixed a **local-only** container-start blocker (`prisma.config.ts`/`tsconfig.json` copied without `--chown=node:node`, so an un-world-readable source file broke `prisma migrate deploy` under `USER node`) — confirmed via a clean `git clone` that HEAD's actual committed file modes are normal `644`, so this specific failure would not reproduce from a real CI/Railway build; hardened it anyway (all runner-stage `COPY --from=builder` lines now use `--chown=node:node`) since it's free, safe, and matches the existing `.next` copy's pattern.
+- Discovered (not fixed — pre-existing, unrelated, out of scope): `npm run worker` fails to start on both the baseline and optimized images (`Error: Transform failed... Top-level await is currently not supported with the "cjs" output format` at `src/worker.ts:82`). Reproduces identically on the untouched baseline image. The Railway project has no separate worker service deployed, consistent with this. Flagged as a follow-up, not touched.
+- Evaluated and **declined** (documented reasons, no code change): Next.js `output: "standalone"` (breaks the shared app/worker/maintenance-script image architecture; primary benefit is disk size, not RAM, since unrequired files were never loaded into memory anyway), image-proxy streaming (incompatible with the existing whole-blob AES-256-GCM authenticated encryption — GCM requires the full ciphertext+tag before releasing any plaintext), Sentry sampling-rate reduction (given CPU is already ~0 in measured Railway metrics, no evidence profiling is the RAM driver), Prisma connection pool / singleton changes (already correct, single instance, no N+1 queries found in `/api/meals` or `/api/water`).
+- `APP_PUBLIC_URL` was already documented in `.env.example` and correctly wired with a graceful fallback + startup warning (`src/instrumentation.ts`, `src/app/api/app/version/route.ts`) — no code change needed; only a deployment-time action remains (set it on the Railway service).

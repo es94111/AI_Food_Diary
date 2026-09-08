@@ -202,23 +202,38 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
       // otherwise the meal just logged isn't visible to this sync and today's
       // nutrition lags one sync behind. Best-effort: a write failure must not
       // block the core health-data sync.
+      //
+      // Fetch the app's own meals/water once up front and hand the same lists
+      // to both the Health Connect mirror and the cloud sync below — without
+      // this, each independently re-fetched the same days over the network,
+      // doubling `/api/meals` and `/api/water` traffic on every sync tap.
       var meals = 0;
       var water = 0;
+      List<Meal>? sharedMeals;
+      List<WaterLog>? sharedWaterLogs;
       if (mirrorMeals) {
+        sharedMeals = await HealthService.fetchRecentMeals(syncDays);
+        sharedWaterLogs = await HealthService.fetchRecentWaterLogs(syncDays);
         try {
-          meals = await HealthService.writeRecentMealsToHealth(days: syncDays);
+          meals = await HealthService.writeRecentMealsToHealth(
+              days: syncDays, meals: sharedMeals);
         } catch (e) {
           debugPrint('HealthSync: meal mirror failed $e');
           AppLogger.log('HealthCard', '餐點寫入 Health Connect 失敗：$e');
         }
         try {
-          water = await HealthService.writeRecentWaterToHealth(days: syncDays);
+          water = await HealthService.writeRecentWaterToHealth(
+              days: syncDays, waterLogs: sharedWaterLogs);
         } catch (e) {
           debugPrint('HealthSync: water mirror failed $e');
           AppLogger.log('HealthCard', '喝水寫入 Health Connect 失敗：$e');
         }
       }
-      final report = await HealthService.syncNow(days: syncDays);
+      final report = await HealthService.syncNow(
+        days: syncDays,
+        meals: sharedMeals,
+        waterLogs: sharedWaterLogs,
+      );
       // When mirroring, check whether Health Connect actually granted nutrition
       // write — if not, the meals never reach Samsung Health and we should say so.
       final nutritionWriteOk = mirrorMeals

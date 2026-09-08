@@ -51,6 +51,16 @@ RUN --mount=type=secret,id=sentry_auth_token \
 # TypeScript compiler binaries are only needed during build; remove them from
 # the production image so their bundled Go stdlib isn't flagged by Trivy.
 RUN rm -rf node_modules/@typescript
+# These devDependencies are only used by `next build` (Tailwind's PostCSS
+# plugin, already baked into the compiled .next output) or by `npm run lint`
+# (never run in this image). `tsx` (used at runtime by `npm run worker` and
+# the maintenance scripts) does its own on-the-fly transpilation and does not
+# need the `typescript` package installed. None of these are `require()`d by
+# `next start`, `tsx`-run scripts, or the worker — safe to drop before the
+# image ships. `@types/*` are type-only (`.d.ts`), never loaded at runtime.
+RUN rm -rf node_modules/eslint node_modules/eslint-config-next \
+           node_modules/typescript node_modules/tailwindcss \
+           node_modules/@tailwindcss node_modules/@types
 
 FROM node-base AS runner
 WORKDIR /app
@@ -60,17 +70,24 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # pinned Alpine base, so Trivy doesn't fail on already-fixed CVEs.
 RUN apk upgrade --no-cache
 # .next is owned by node so `next start` can write its runtime cache; the rest
-# stays read-only (root-owned, world-readable) for the unprivileged user.
+# is owned by node but effectively read-only in practice (nothing under USER
+# node ever writes to it). --chown here only changes ownership, not the mode
+# bits copied from the builder stage — this is deliberately not `chmod`, just
+# what makes the unprivileged `node` user able to read these regardless of the
+# source checkout's exact permission bits (a plain `COPY` without --chown
+# preserves root:root ownership, which breaks `prisma migrate deploy` reading
+# prisma.config.ts under any umask/sync tool that doesn't leave root-owned
+# files world-readable).
 COPY --from=builder --chown=node:node /app/.next ./.next
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/prisma.config.ts ./prisma.config.ts
-COPY --from=builder /app/src ./src
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/package.json ./package.json
+COPY --from=builder --chown=node:node /app/prisma ./prisma
+COPY --from=builder --chown=node:node /app/prisma.config.ts ./prisma.config.ts
+COPY --from=builder --chown=node:node /app/src ./src
 # Maintenance scripts (encryption rotation/backfill, etc.) run via `tsx` in the
 # running container, e.g. `docker compose run --rm app npm run encryption:images`.
-COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder --chown=node:node /app/scripts ./scripts
+COPY --from=builder --chown=node:node /app/tsconfig.json ./tsconfig.json
 # Drop root: run the app as the built-in unprivileged `node` user.
 USER node
 EXPOSE 3000

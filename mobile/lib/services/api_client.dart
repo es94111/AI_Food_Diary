@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:sentry_dio/sentry_dio.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
@@ -27,6 +28,19 @@ class ApiClient {
   /// Number of requests currently awaiting a response, reported to Sentry as a
   /// gauge so we can see request concurrency over time.
   int _inFlight = 0;
+
+  /// GET requests currently in flight, keyed by normalized `path?query`, so
+  /// concurrent callers asking for the exact same resource share one network
+  /// round trip instead of each firing their own request (e.g. several
+  /// widgets independently reading `/api/meals` for the same day at once).
+  ///
+  /// This is deliberately separate from [CacheService]: the cache serves
+  /// already-completed data (including across app restarts); this map only
+  /// ever holds requests that are *currently* executing, and is emptied as
+  /// soon as each one finishes (success or failure) — the next call after
+  /// that always starts a fresh request, coalesced or not. GET-only; POST /
+  /// PATCH / DELETE are never deduplicated since they can have side effects.
+  final Map<String, Future<Response<dynamic>>> _inFlightGets = {};
 
   Future<Dio> _client() async {
     if (_dio != null) return _dio!;
@@ -124,6 +138,12 @@ class ApiClient {
   Future<void> clearSession() async {
     _sessionCookie = null;
     await _storage.delete(key: _sessionKey);
+    // Drop any requests still in flight under the old session so a request
+    // the next signed-in user makes for the same path+query can never join
+    // (and be resolved by) a stale in-flight future started by the previous
+    // account. The dropped requests themselves still complete for whoever
+    // originally awaited them; they just stop being shared.
+    _inFlightGets.clear();
     // Cached responses belong to the signed-out account; drop them so the
     // next sign-in never briefly shows stale data from a previous user.
     await CacheService.clearAll();
@@ -131,6 +151,24 @@ class ApiClient {
     // so without clearing it the next account could load a previous user's
     // authenticated photos straight from disk.
     await ImageCacheService.clearAll();
+  }
+
+  /// Test-only: swaps in a pre-configured [Dio] (e.g. one wired to a fake
+  /// [HttpClientAdapter]) so tests can exercise [get]'s coalescing/cache
+  /// behavior without a real network or secure-storage-backed session lookup.
+  @visibleForTesting
+  void debugSetDioForTesting(Dio dio) {
+    _dio = dio;
+  }
+
+  /// Test-only: resets all in-memory state between tests so [ApiClient.instance]
+  /// (a singleton) doesn't leak in-flight requests or a session cookie across
+  /// otherwise-independent test cases.
+  @visibleForTesting
+  void debugResetForTesting() {
+    _dio = null;
+    _sessionCookie = null;
+    _inFlightGets.clear();
   }
 
   /// GET, optionally backed by a local cache (keyed on [path] + [query]).
@@ -142,6 +180,36 @@ class ApiClient {
   /// DNS, timeout) and a cached copy exists, that cached copy is returned
   /// instead of throwing, so callers degrade gracefully rather than failing.
   Future<Response<dynamic>> get(
+    String path, {
+    Map<String, dynamic>? query,
+    Map<String, String>? headers,
+    bool cache = false,
+  }) {
+    // Every caller in this app authenticates via the cookie interceptor, so
+    // nothing currently passes per-call headers — but a caller that does is
+    // asking for something request-specific and must not be silently shared
+    // with other callers, so skip coalescing rather than key on headers too.
+    if (headers != null) {
+      return _getUncoalesced(path, query: query, headers: headers, cache: cache);
+    }
+    final key = _cacheKey(path, query);
+    final inFlight = _inFlightGets[key];
+    if (inFlight != null) return inFlight;
+    final future = _getUncoalesced(path, query: query, cache: cache);
+    _inFlightGets[key] = future;
+    // Only clear our own entry on completion — clearSession() or a same-key
+    // request that started after us may already own (or have removed) this
+    // key. Registered with an onError handler (rather than .whenComplete on a
+    // dropped future) so this cleanup never surfaces as an unhandled error
+    // for callers that already catch the returned [future] themselves.
+    void clearIfCurrent([Object? _]) {
+      if (identical(_inFlightGets[key], future)) _inFlightGets.remove(key);
+    }
+    future.then((_) => clearIfCurrent(), onError: clearIfCurrent);
+    return future;
+  }
+
+  Future<Response<dynamic>> _getUncoalesced(
     String path, {
     Map<String, dynamic>? query,
     Map<String, String>? headers,

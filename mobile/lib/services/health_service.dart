@@ -403,35 +403,61 @@ class HealthService {
     });
   }
 
+  /// Fetches the app's own logged meals for the last [days] days (one
+  /// `/api/meals` request per day, capped at [appDataMaxDays]), as a flat
+  /// list. Shared by [writeRecentMealsToHealth] and [_mealNutritionMetrics] —
+  /// both used to independently re-fetch this same range over the network on
+  /// every sync, doubling `/api/meals` traffic for no reason. Callers that
+  /// already have this list (e.g. a sync that also mirrors to Health Connect)
+  /// should fetch it once and pass it to both instead of calling this twice.
+  static Future<List<Meal>> fetchRecentMeals(int days) async {
+    final now = DateTime.now();
+    final span = min(days, appDataMaxDays);
+    final meals = <Meal>[];
+    for (var i = 0; i < span; i++) {
+      try {
+        meals.addAll(await MealService.mealsForDay(now.subtract(Duration(days: i))));
+      } catch (_) {
+        // Skip days that fail to load; keep building the rest.
+      }
+    }
+    return meals;
+  }
+
+  /// Fetches the app's own logged water intake for the last [days] days (one
+  /// `/api/water` request per day, capped at [appDataMaxDays]), as a flat
+  /// list. Shared by [writeRecentWaterToHealth] and [_waterIntakeMetrics] for
+  /// the same reason as [fetchRecentMeals].
+  static Future<List<WaterLog>> fetchRecentWaterLogs(int days) async {
+    final now = DateTime.now();
+    final span = min(days, appDataMaxDays);
+    final logs = <WaterLog>[];
+    for (var i = 0; i < span; i++) {
+      try {
+        final day = await WaterService.forDay(now.subtract(Duration(days: i)));
+        logs.addAll(day.logs);
+      } catch (_) {
+        // Skip days that fail to load; keep building the rest.
+      }
+    }
+    return logs;
+  }
+
   /// Builds NUTRITION metrics straight from the app's own logged meals, summed
   /// (calories) per local day. The Health Connect write→read round-trip for
   /// nutrition is unreliable — and redundant, since the app already owns the
   /// meal data — so we upload calories directly rather than reading them back.
+  ///
+  /// Pass [meals] (from [fetchRecentMeals]) when the caller already fetched
+  /// the range, so this doesn't re-fetch the same days over the network.
   static Future<List<Map<String, dynamic>>> _mealNutritionMetrics(
-      {int days = 7}) async {
+      {int days = 7, List<Meal>? meals}) async {
     AppLogger.log('Nutrition', '開始彙整營養：讀取近 $days 天的餐點熱量');
-    final now = DateTime.now();
+    final all = meals ?? await fetchRecentMeals(days);
     final byDay = <DateTime, double>{};
-    var totalMeals = 0;
-    var failedDays = 0;
-    for (var i = 0; i < days; i++) {
-      final target = now.subtract(Duration(days: i));
-      try {
-        final meals = await MealService.mealsForDay(target);
-        totalMeals += meals.length;
-        var dayKcal = 0.0;
-        for (final meal in meals) {
-          final day = _localDayStart(meal.eatenAt);
-          byDay[day] = (byDay[day] ?? 0) + meal.totalCalories;
-          dayKcal += meal.totalCalories;
-        }
-        AppLogger.log('Nutrition',
-            '${_isoDay(target)}: ${meals.length} 筆餐點，合計 ${dayKcal.round()} kcal');
-      } catch (e) {
-        failedDays++;
-        // Skip days that fail to load; keep building the rest.
-        AppLogger.log('Nutrition', '${_isoDay(target)}: 讀取餐點失敗，略過：$e');
-      }
+    for (final meal in all) {
+      final day = _localDayStart(meal.eatenAt);
+      byDay[day] = (byDay[day] ?? 0) + meal.totalCalories;
     }
     final out = <Map<String, dynamic>>[];
     byDay.forEach((day, kcal) {
@@ -442,7 +468,7 @@ class HealthService {
       }
     });
     AppLogger.log('Nutrition',
-        '營養彙整完成：共讀到 $totalMeals 筆餐點、失敗 $failedDays 天，'
+        '營養彙整完成：共讀到 ${all.length} 筆餐點，'
         '產生 ${out.length} 筆 NUTRITION 指標');
     return out;
   }
@@ -451,20 +477,16 @@ class HealthService {
   /// summed (millilitres → litres) per local day. Like nutrition, the Health
   /// Connect round-trip is unreliable — and the app already owns the water data
   /// — so we upload it directly rather than reading it back from Health Connect.
+  ///
+  /// Pass [waterLogs] (from [fetchRecentWaterLogs]) when the caller already
+  /// fetched the range, so this doesn't re-fetch the same days over the network.
   static Future<List<Map<String, dynamic>>> _waterIntakeMetrics(
-      {int days = 7}) async {
-    final now = DateTime.now();
+      {int days = 7, List<WaterLog>? waterLogs}) async {
+    final logs = waterLogs ?? await fetchRecentWaterLogs(days);
     final byDay = <DateTime, int>{};
-    for (var i = 0; i < days; i++) {
-      try {
-        final day = await WaterService.forDay(now.subtract(Duration(days: i)));
-        for (final log in day.logs) {
-          final d = _localDayStart(log.drankAt);
-          byDay[d] = (byDay[d] ?? 0) + log.amountMl;
-        }
-      } catch (_) {
-        // Skip days that fail to load; keep building the rest.
-      }
+    for (final log in logs) {
+      final d = _localDayStart(log.drankAt);
+      byDay[d] = (byDay[d] ?? 0) + log.amountMl;
     }
     final out = <Map<String, dynamic>>[];
     byDay.forEach((day, ml) {
@@ -556,8 +578,15 @@ class HealthService {
   /// Ensures a sync device token exists, requests permissions, reads the last
   /// [days] days, uploads (in ≤500-metric batches), then re-reads the server to
   /// verify each uploaded metric type actually landed. Returns a [HealthSyncReport].
+  ///
+  /// Pass [meals]/[waterLogs] (from [fetchRecentMeals]/[fetchRecentWaterLogs])
+  /// when the caller already fetched the same range for another purpose (e.g.
+  /// mirroring into Health Connect first) — otherwise this fetches them itself.
   static Future<HealthSyncReport> syncNow(
-      {String deviceName = 'Android', int days = 7}) async {
+      {String deviceName = 'Android',
+      int days = 7,
+      List<Meal>? meals,
+      List<WaterLog>? waterLogs}) async {
     AppLogger.log('HealthSync', '===== 開始同步（範圍 $days 天）=====');
     final granted = await requestPermissions();
     AppLogger.log('HealthSync', 'Health Connect 讀取權限：${granted ? "已授予" : "未授予"}');
@@ -570,8 +599,10 @@ class HealthService {
     // always land in the first batch — otherwise on a long range a failing
     // later Health Connect batch could abort the upload before nutrition is
     // ever sent (the symptom of "everything synced except nutrition").
-    final nutrition = await _mealNutritionMetrics(days: appDays);
-    final water = await _waterIntakeMetrics(days: appDays);
+    final nutrition =
+        await _mealNutritionMetrics(days: appDays, meals: meals);
+    final water =
+        await _waterIntakeMetrics(days: appDays, waterLogs: waterLogs);
     final hc = await _fetchRecent(days);
     final metrics = <Map<String, dynamic>>[...nutrition, ...water, ...hc];
 
@@ -848,7 +879,11 @@ class HealthService {
   /// Called as part of the health-data sync so meals always flow into Health
   /// Connect during sync (no opt-in switch); requests the NUTRITION write
   /// permission once up front and silently no-ops if it isn't granted.
-  static Future<int> writeRecentMealsToHealth({int days = 7}) async {
+  ///
+  /// Pass [meals] (from [fetchRecentMeals]) when the caller already fetched
+  /// the range, so this doesn't re-fetch the same days over the network.
+  static Future<int> writeRecentMealsToHealth(
+      {int days = 7, List<Meal>? meals}) async {
     await _health.configure();
     final granted = await _health.requestAuthorization(
       [HealthDataType.NUTRITION],
@@ -861,21 +896,10 @@ class HealthService {
       return 0;
     }
 
-    final now = DateTime.now();
-    final meals = <Meal>[];
-    // App-owned data is backfilled one request per day, so cap the window even
-    // when a long Health Connect range is selected (see appDataMaxDays).
-    final span = min(days, appDataMaxDays);
-    for (var i = 0; i < span; i++) {
-      try {
-        meals.addAll(await MealService.mealsForDay(now.subtract(Duration(days: i))));
-      } catch (_) {
-        // Skip days that fail to load; keep writing the rest.
-      }
-    }
+    final all = meals ?? await fetchRecentMeals(days);
 
     var count = 0;
-    for (final meal in meals) {
+    for (final meal in all) {
       if (meal.totalCalories <= 0) continue;
       final name =
           meal.items.map((e) => e.name).where((n) => n.isNotEmpty).join('、');
@@ -894,12 +918,12 @@ class HealthService {
 
     debugPrint('HealthWrite: mirrored $count meals to Health Connect');
     AppLogger.log('HealthWrite',
-        '寫入 Health Connect：$count/${meals.length} 筆餐點營養');
+        '寫入 Health Connect：$count/${all.length} 筆餐點營養');
     // Permission was granted up front (we'd have returned above otherwise), yet
     // nothing landed — so every writeMeal was rejected by Health Connect. The
     // real cause is only in Android logcat (FLUTTER_HEALTH::ERROR); surface an
     // actionable hint here so it shows in the in-app sync log too.
-    final attempted = meals.where((m) => m.totalCalories > 0).length;
+    final attempted = all.where((m) => m.totalCalories > 0).length;
     if (count == 0 && attempted > 0) {
       AppLogger.log('HealthWrite',
           '⚠️ $attempted 筆餐點全部寫入失敗（權限已授予）。Health Connect 拒絕了寫入，'
@@ -961,7 +985,11 @@ class HealthService {
   /// Called as part of the health-data sync so logged water always flows into
   /// Health Connect during sync (no opt-in switch); requests the WATER write
   /// permission once up front and silently no-ops if it isn't granted.
-  static Future<int> writeRecentWaterToHealth({int days = 7}) async {
+  ///
+  /// Pass [waterLogs] (from [fetchRecentWaterLogs]) when the caller already
+  /// fetched the range, so this doesn't re-fetch the same days over the network.
+  static Future<int> writeRecentWaterToHealth(
+      {int days = 7, List<WaterLog>? waterLogs}) async {
     await _health.configure();
     final granted = await _health.requestAuthorization(
       [HealthDataType.WATER],
@@ -976,19 +1004,7 @@ class HealthService {
     final written =
         (prefs.getStringList(_writtenWaterKey) ?? const <String>[]).toSet();
 
-    final now = DateTime.now();
-    final logs = <WaterLog>[];
-    // App-owned data is backfilled one request per day, so cap the window even
-    // when a long Health Connect range is selected (see appDataMaxDays).
-    final span = min(days, appDataMaxDays);
-    for (var i = 0; i < span; i++) {
-      try {
-        final day = await WaterService.forDay(now.subtract(Duration(days: i)));
-        logs.addAll(day.logs);
-      } catch (_) {
-        // Skip days that fail to load; keep writing the rest.
-      }
-    }
+    final logs = waterLogs ?? await fetchRecentWaterLogs(days);
 
     var count = 0;
     for (final log in logs) {
