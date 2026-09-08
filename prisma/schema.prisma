@@ -21,26 +21,28 @@ enum MealType {
 }
 
 model User {
-  id           String         @id @default(cuid())
-  email        String         @unique
-  passwordHash String
-  name         String?
-  googleId     String?        @unique
-  isAdmin      Boolean        @default(false)
-  isDisabled   Boolean        @default(false)
+  id                         String                      @id @default(cuid())
+  email                      String                      @unique
+  passwordHash               String
+  name                       String?
+  googleId                   String?                     @unique
+  isAdmin                    Boolean                     @default(false)
+  isDisabled                 Boolean                     @default(false)
   // Bumped to invalidate all outstanding JWTs for this user (logout / future
   // password change). Tokens embed this value as `tv` and are rejected on mismatch.
-  tokenVersion Int            @default(0)
-  profile      UserProfile?
-  meals        Meal[]
-  waterLogs    WaterLog[]
-  summaries    DailySummary[]
-  savedFoods   SavedFood[]
-  recommendations DailyRecommendation[]
-  healthConnections HealthConnection[]
-  healthMetrics HealthMetric[]
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  tokenVersion               Int                         @default(0)
+  profile                    UserProfile?
+  meals                      Meal[]
+  waterLogs                  WaterLog[]
+  summaries                  DailySummary[]
+  savedFoods                 SavedFood[]
+  recommendations            DailyRecommendation[]
+  healthConnections          HealthConnection[]
+  healthMetrics              HealthMetric[]
+  aiAuditEvents              AiAuditEvent[]
+  mcpOAuthAuthorizationCodes McpOAuthAuthorizationCode[]
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
 }
 
 model AppConfig {
@@ -51,179 +53,196 @@ model AppConfig {
 }
 
 model UserProfile {
-  id                   String   @id @default(cuid())
-  userId               String   @unique
+  id                   String    @id @default(cuid())
+  userId               String    @unique
   // Legacy plaintext columns. Kept nullable for backward-compatible migration;
   // new writes go to the enc* columns and these are cleared. Removed in a later step.
   gender               String?
   birthDate            DateTime?
   heightCm             Int?
-  weightKg             Decimal? @db.Decimal(5, 2)
+  weightKg             Decimal?  @db.Decimal(5, 2)
   // Encrypted (AES-256-GCM) counterparts of the body fields above.
   encGender            Json?
   encBirthDate         Json?
   encHeightCm          Json?
   encWeightKg          Json?
   activityLevel        String?
-  goal                 Goal     @default(MAINTAIN)
-  calorieTarget        Int      @default(2000)
-  waterGoalMl          Int      @default(2000)
+  goal                 Goal      @default(MAINTAIN)
+  calorieTarget        Int       @default(2000)
+  waterGoalMl          Int       @default(2000)
   timezone             String?
   encryptedPreferences Json?
   encryptedAllergies   Json?
   // Per-user AI provider config (BYO key). Key is stored encrypted at rest.
-  aiProvider           String?  // "openai" | "gemini" | "compatible"
-  aiBaseUrl            String?  // only used for "compatible"; others use provider defaults
+  aiProvider           String? // "openai" | "gemini" | "compatible"
+  aiBaseUrl            String? // only used for "compatible"; others use provider defaults
   aiVisionModel        String?
   aiTextModel          String?
   encryptedAiApiKey    Json?
-  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 }
 
 model Meal {
-  id              String     @id @default(cuid())
-  userId          String
-  mealType        MealType
+  id                 String     @id @default(cuid())
+  userId             String
+  mealType           MealType
   // Representative (first) image — kept for backward compatibility with existing
   // rows and single-image code paths. Mirrors imageStorageKeys[0].
-  imageStorageKey String?
+  imageStorageKey    String?
   // All uploaded images for the meal (a batch of the same meal / different dishes).
-  imageStorageKeys String[] @default([])
-  totalCalories   Decimal    @default(0) @db.Decimal(8, 2)
-  totalProtein    Decimal    @default(0) @db.Decimal(8, 2)
-  totalFat        Decimal    @default(0) @db.Decimal(8, 2)
-  totalCarbs      Decimal    @default(0) @db.Decimal(8, 2)
-  aiConfidence    Decimal?   @db.Decimal(4, 3)
+  imageStorageKeys   String[]   @default([])
+  totalCalories      Decimal    @default(0) @db.Decimal(8, 2)
+  totalProtein       Decimal    @default(0) @db.Decimal(8, 2)
+  totalFat           Decimal    @default(0) @db.Decimal(8, 2)
+  totalCarbs         Decimal    @default(0) @db.Decimal(8, 2)
+  aiConfidence       Decimal?   @db.Decimal(4, 3)
   // Legacy plaintext AI notes. Kept nullable while B2 rows are backfilled.
-  aiNotes         String?
-  encAiNotes      Json?
-  aiRawEncrypted  Json?
-  items           MealItem[]
-  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  eatenAt         DateTime   @default(now())
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  aiNotes            String?
+  encAiNotes         Json?
+  aiRawEncrypted     Json?
+  items              MealItem[]
+  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eatenAt            DateTime   @default(now())
+  createdByType      String     @default("human")
+  createdByUserId    String?
+  createdByAiSource  String?
+  createdByRequestId String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
+  @@unique([userId, createdByAiSource, createdByRequestId])
   @@index([userId, eatenAt])
 }
 
 model MealItem {
-  id              String   @id @default(cuid())
-  mealId          String
+  id                 String   @id @default(cuid())
+  mealId             String
   // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
-  name            String?
-  estimatedAmount String?
-  encName         Json?
+  name               String?
+  estimatedAmount    String?
+  encName            Json?
   encEstimatedAmount Json?
-  calories        Decimal  @default(0) @db.Decimal(8, 2)
-  protein         Decimal  @default(0) @db.Decimal(8, 2)
-  fat             Decimal  @default(0) @db.Decimal(8, 2)
-  carbs           Decimal  @default(0) @db.Decimal(8, 2)
-  aiRating        String   @default("MANUAL")
-  meal            Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  calories           Decimal  @default(0) @db.Decimal(8, 2)
+  protein            Decimal  @default(0) @db.Decimal(8, 2)
+  fat                Decimal  @default(0) @db.Decimal(8, 2)
+  carbs              Decimal  @default(0) @db.Decimal(8, 2)
+  aiRating           String   @default("MANUAL")
+  meal               Meal     @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model WaterLog {
-  id        String   @id @default(cuid())
-  userId    String
-  amountMl  Int
-  drankAt   DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String
+  amountMl           Int
+  drankAt            DateTime @default(now())
+  createdByType      String   @default("human")
+  createdByUserId    String?
+  createdByAiSource  String?
+  createdByRequestId String?
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
+  @@unique([userId, createdByAiSource, createdByRequestId])
   @@index([userId, drankAt])
 }
 
 model SavedFood {
-  id              String   @id @default(cuid())
-  userId          String
-  barcode         String?
+  id                   String    @id @default(cuid())
+  userId               String
+  barcode              String?
   // Optional photo for the food (object-storage key), shown in food management
   // and the quick-pick list, and reused as the meal photo when picked.
-  imageStorageKey String?
+  imageStorageKey      String?
   // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
-  name            String?
-  estimatedAmount String?
-  encName         Json?
-  encEstimatedAmount Json?
+  name                 String?
+  estimatedAmount      String?
+  encName              Json?
+  encEstimatedAmount   Json?
   // Brand name, field-level encrypted (no legacy plaintext column — this is a
   // new field with no pre-existing unencrypted rows to stay compatible with).
-  encBrand        Json?
-  calories        Decimal  @default(0) @db.Decimal(8, 2)
-  protein         Decimal  @default(0) @db.Decimal(8, 2)
-  fat             Decimal  @default(0) @db.Decimal(8, 2)
-  carbs           Decimal  @default(0) @db.Decimal(8, 2)
-  source          String   @default("MANUAL")
-  isFavorite      Boolean  @default(false)
-  useCount        Int      @default(0)
-  lastUsedAt      DateTime?
-  archivedAt      DateTime?
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  encBrand             Json?
+  calories             Decimal   @default(0) @db.Decimal(8, 2)
+  protein              Decimal   @default(0) @db.Decimal(8, 2)
+  fat                  Decimal   @default(0) @db.Decimal(8, 2)
+  carbs                Decimal   @default(0) @db.Decimal(8, 2)
+  source               String    @default("MANUAL")
+  isFavorite           Boolean   @default(false)
+  useCount             Int       @default(0)
+  lastUsedAt           DateTime?
+  archivedAt           DateTime?
+  createdByType        String    @default("human")
+  createdByUserId      String?
+  createdByAiSource    String?
+  createdByRequestId   String?
+  mcpCreateFingerprint String?
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
+  @@unique([userId, barcode])
+  @@unique([userId, createdByAiSource, createdByRequestId])
+  @@unique([userId, mcpCreateFingerprint])
   @@index([userId, name])
   @@index([userId, archivedAt, isFavorite, lastUsedAt])
-  @@unique([userId, barcode])
 }
 
 model DailySummary {
-  id               String   @id @default(cuid())
-  userId           String
-  summaryDate      DateTime
-  totalCalories    Decimal  @default(0) @db.Decimal(8, 2)
-  totalProtein     Decimal  @default(0) @db.Decimal(8, 2)
-  totalFat         Decimal  @default(0) @db.Decimal(8, 2)
-  totalCarbs       Decimal  @default(0) @db.Decimal(8, 2)
+  id                  String   @id @default(cuid())
+  userId              String
+  summaryDate         DateTime
+  totalCalories       Decimal  @default(0) @db.Decimal(8, 2)
+  totalProtein        Decimal  @default(0) @db.Decimal(8, 2)
+  totalFat            Decimal  @default(0) @db.Decimal(8, 2)
+  totalCarbs          Decimal  @default(0) @db.Decimal(8, 2)
   // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
-  aiSummary        String?
-  aiRecommendation String?
-  encAiSummary     Json?
+  aiSummary           String?
+  aiRecommendation    String?
+  encAiSummary        Json?
   encAiRecommendation Json?
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
   @@unique([userId, summaryDate])
 }
 
 model DailyRecommendation {
-  id             String   @id @default(cuid())
-  userId         String
+  id                 String   @id @default(cuid())
+  userId             String
   recommendationDate DateTime
-  advice         String
-  totalCalories  Decimal  @default(0) @db.Decimal(8, 2)
-  totalProtein   Decimal  @default(0) @db.Decimal(8, 2)
-  totalFat       Decimal  @default(0) @db.Decimal(8, 2)
-  totalCarbs     Decimal  @default(0) @db.Decimal(8, 2)
-  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  advice             String
+  totalCalories      Decimal  @default(0) @db.Decimal(8, 2)
+  totalProtein       Decimal  @default(0) @db.Decimal(8, 2)
+  totalFat           Decimal  @default(0) @db.Decimal(8, 2)
+  totalCarbs         Decimal  @default(0) @db.Decimal(8, 2)
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@unique([userId, recommendationDate])
 }
 
 model HealthMetric {
-  id         String   @id @default(cuid())
-  userId     String
-  source     String
-  type       String
+  id           String   @id @default(cuid())
+  userId       String
+  source       String
+  type         String
   // Legacy plaintext value; nullable during migration. New writes use encValue
   // and leave this null. type/unit/measuredAt stay plaintext (needed for the
   // unique key and for filtering/queries).
-  value      Float?
-  unit       String
-  measuredAt DateTime
+  value        Float?
+  unit         String
+  measuredAt   DateTime
   rawEncrypted Json?
-  encValue   Json?
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  encValue     Json?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([userId, source, type, measuredAt])
   @@index([userId, measuredAt])
@@ -231,16 +250,76 @@ model HealthMetric {
 }
 
 model HealthConnection {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   userId       String
-  provider     String   @default("HEALTH_CONNECT")
+  provider     String    @default("HEALTH_CONNECT")
   deviceName   String?
-  tokenHash    String   @unique
+  tokenHash    String    @unique
   lastSyncedAt DateTime?
   revokedAt    DateTime?
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([userId, revokedAt])
+}
+
+// Security audit stream for AI/MCP activity and human compensating restores.
+// The database migration installs a trigger that rejects UPDATE and DELETE;
+// all current state (including whether an action was restored) is derived from
+// this immutable event history.
+model AiAuditEvent {
+  id                 String    @id @default(cuid())
+  occurredAt         DateTime  @default(now())
+  userId             String
+  actorType          String
+  actorSource        String
+  action             String
+  resourceType       String
+  resourceId         String?
+  mcpToolName        String?
+  beforeState        Json?
+  afterState         Json?
+  requestId          String
+  correlationId      String
+  status             String
+  errorCode          String?
+  errorMessage       String?
+  originalAiActionId String?
+  resourceVersion    DateTime?
+  restoredAt         DateTime?
+  restoredByUserId   String?
+  restoreReason      String?
+  createdAt          DateTime  @default(now())
+
+  user             User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  originalAiAction AiAuditEvent?  @relation("AiAuditRestoreChain", fields: [originalAiActionId], references: [id], onDelete: Restrict)
+  restoreEvents    AiAuditEvent[] @relation("AiAuditRestoreChain")
+
+  @@index([userId, occurredAt])
+  @@index([resourceType, resourceId, occurredAt])
+  @@index([requestId])
+  @@index([correlationId])
+  @@index([originalAiActionId, occurredAt])
+}
+
+// One-time PKCE authorization grants for the first-party OAuth 2.1
+// authorization server. This is authentication state, not an MCP session.
+model McpOAuthAuthorizationCode {
+  id            String    @id @default(cuid())
+  codeHash      String    @unique
+  userId        String
+  clientId      String
+  redirectUri   String
+  resource      String
+  codeChallenge String
+  scopes        String[]  @default([])
+  expiresAt     DateTime
+  redeemedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, redeemedAt])
 }

@@ -13,6 +13,7 @@ import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../services/update_service.dart';
 import '../utils/metabolism.dart';
+import '../widgets/ai_activity_settings_entry.dart';
 import '../widgets/ai_settings_form.dart';
 import '../widgets/health_sync_card.dart';
 import '../widgets/daily_summary_popup.dart';
@@ -863,6 +864,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         _bodyDataCard(metabolism),
         const SizedBox(height: 12),
         const AiSettingsCard(),
+        const SizedBox(height: 12),
+        const AiActivitySettingsEntry(),
         const SizedBox(height: 12),
         Card(
           child: ListTile(

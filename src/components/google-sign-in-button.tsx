@@ -27,9 +27,11 @@ const SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 export function GoogleSignInButton({
   clientId,
   turnstileSiteKey,
+  nextPath = "/dashboard",
 }: {
   clientId?: string;
   turnstileSiteKey: string;
+  nextPath?: string;
 }) {
   const router = useRouter();
   const ref = useRef<HTMLDivElement>(null);
@@ -69,7 +71,7 @@ export function GoogleSignInButton({
           setError(data.error ?? "Google 登入失敗");
           return;
         }
-        router.push("/dashboard");
+        router.push(nextPath);
         router.refresh();
       } catch {
         setError("Google 登入失敗，請稍後再試。");
@@ -117,7 +119,7 @@ export function GoogleSignInButton({
     script.onload = render;
     document.head.appendChild(script);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clientId]);
+  }, [clientId, nextPath]);
 
   if (!clientId) {
     return (

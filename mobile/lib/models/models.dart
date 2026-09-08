@@ -1,6 +1,9 @@
 // Plain data models mirroring the web app's API JSON shapes.
 
+import 'dart:convert';
+
 part 'saved_food.dart';
+part 'ai_activity.dart';
 
 double _toDouble(dynamic v) {
   if (v is num) return v.toDouble();

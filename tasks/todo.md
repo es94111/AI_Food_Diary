@@ -639,3 +639,74 @@
 - PowerShell UTF-8 parser — passed.
 - Flutter analyzer/tests — unavailable because `flutter`/`dart` are not installed locally.
 - Real Siteverify success/replay validation — pending deployment secret configuration and a fresh real token.
+# 2026-09-07 ChatGPT MCP 2026-07-28 integration
+
+## Goal + Acceptance Criteria
+
+- [x] Analyze current Web, Flutter App, authentication, authorization, data, and service/repository architecture.
+- [x] Verify the official MCP `2026-07-28` transport, lifecycle, authorization, tool, schema, and error requirements against the current official TypeScript SDK.
+- [x] Select an explicit read/create-only MCP resource and tool allowlist; exclude update, patch, delete, upsert, restore, admin, health-sync, and generated-summary paths.
+- [x] Implement a stateless, modern-only Remote MCP `/mcp` endpoint with OAuth, Origin/host validation, protocol metadata validation, limits, and safe errors.
+- [x] Add shared read/create services and server-enforced default-deny `CREATE_ONLY` policy; MCP tools must never access Prisma or generic mutation APIs directly.
+- [x] Add strict input/output schemas, annotations, owner-scoped authorization, least-privilege scopes, duplicate rejection, and structured tool errors.
+- [x] Add immutable AI audit events and AI provenance fields for MCP-created Meal, SavedFood, and WaterLog records.
+- [x] Add authenticated human-only restore preview/confirmation with optimistic version conflict detection and compensating immutable audit events.
+- [x] Add searchable/filterable Web AI Activity list/detail/restore UI.
+- [x] Add searchable/filterable Flutter AI Activity list/detail/restore UI.
+- [x] Add database migration, protocol/policy/schema/auth/service/audit/restore tests, and full Web/App verification.
+- [x] Complete a correctness, security/privacy, performance/complexity, and forbidden-operation diff review.
+
+## Selected MCP Tools
+
+- Read: `list_meals`, `get_meal`, `search_meals`, `list_saved_foods`, `search_saved_foods`, `list_water_logs`.
+- Create: `create_meal`, `create_saved_food`, `create_water_log`.
+- Explicitly absent: every update/edit/patch/delete/remove/replace/upsert/restore/admin/raw-query tool.
+
+## Risk & Rollback
+
+- **Risk level:** high; authentication, authorization, security boundary, database schema, immutable audit data, and compensating deletes are affected.
+- **Affected components:** Next.js `/mcp` and OAuth routes, food-record service/repository boundary, Prisma schema/migration, dashboard, and Flutter settings/activity screens.
+- **Rollback:** disable the connector by removing its public route/production OAuth configuration first; revert application code while retaining the additive tables/columns; do not roll back by deleting audit events. The schema migration is additive, and provenance columns retain human-compatible defaults.
+- **Rollout:** deploy migration before application; configure HTTPS canonical resource URL, dedicated signing secret, trusted Origin/client/redirect allowlists, and Redis; connect a test ChatGPT client before broad enablement.
+- **Monitoring:** MCP auth failures, rejected protocol/header mismatches, rate-limit responses, tool error codes, create/audit transaction failures, and restore conflicts.
+
+## Dependencies & Environment
+
+- Next.js 16 App Router, Prisma 7/PostgreSQL, Redis rate limiter, Zod 4, `jose`, Flutter/Dio.
+- Pin official split SDK `@modelcontextprotocol/server` v2 and use its Web-standard handler with `legacy: "reject"`.
+- Required production configuration: `MCP_PUBLIC_URL` (HTTPS), `MCP_OAUTH_SECRET`, `MCP_ALLOWED_ORIGINS`, allowed OAuth client IDs and redirect URIs.
+- Protocol authority: official MCP `2026-07-28` specification and schema. Current OpenAI connector examples that still describe legacy initialization do not override it.
+
+## Working Notes / Invariants
+
+- MCP `2026-07-28` is stateless: no `initialize`, `initialized`, `Mcp-Session-Id`, GET event stream, or legacy fallback.
+- SDK v2.0.0 has a known required-version-header validation gap; the application must pre-validate `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and body `_meta` before invoking the SDK, with regression coverage.
+- The authenticated user always comes from a verified server-side bearer token; tool input cannot supply user/owner/tenant/role/permission identity.
+- MCP business writes are create-only and use generated IDs plus `create`, never `update`, `delete`, `upsert`, `replace`, or conflict-update SQL.
+- Read/search outputs use explicit DTO allowlists; encrypted/internal fields, credentials, SQL, stack traces, and arbitrary stored instructions never cross the MCP boundary.
+- Audit events are insert-only and DB-trigger protected against update/delete. Resource creation and success audit event are atomic.
+- Restore is a cookie-authenticated Web/App human operation, never a tool. It rechecks ownership/RBAC and the original immutable resource version immediately before compensation; newer changes cause a conflict instead of overwrite.
+
+## Checkpoints
+
+- **A — understand/reproduce:** architecture and official spec/SDK compatibility mapped; existing untracked MCP policy/schema tests preserved as user-owned contract.
+- **B — minimal implementation:** protocol/auth boundary, policy, services, schemas, tools, migration, and targeted tests.
+- **C — product completion:** immutable audit/restore APIs plus Web/Flutter UI and regression coverage.
+- **D — verification/rollout:** Prisma validation/migration smoke, Node tests, TypeScript/build, Flutter analyze/tests, forbidden-pattern scans, diff/security review, and deployment notes.
+
+## Verification
+
+- `npx tsc --noEmit` -> passed.
+- `npm run build` -> passed; `/mcp`, `/oauth/authorize`, `/oauth/token`, `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource(/mcp)`, `/api/ai-activity`, `/api/ai-activity/[id]`, `/api/ai-activity/[id]/restore`, `/dashboard/ai-activity(/[id])` all built.
+- `npm run test:mcp` -> 31/31 passed (transport/legacy-rejection, allowlist/policy, schema strictness, create-only + duplicate rejection, audit event creation, restore authorization/conflict/version-check, restore-not-an-MCP-tool).
+- `flutter analyze` (AI Activity screens/service/widget/model) -> no issues.
+- `flutter test test/ai_activity_models_test.dart test/ai_activity_navigation_test.dart` -> 7/7 passed.
+
+## Results
+
+- Shipped the `/mcp` Remote MCP server (9 tools: 6 read-only, 3 create-only) on the official `2026-07-28` stateless protocol, with a pre-SDK guard enforcing required protocol headers/`_meta` and rejecting `initialize`/`Mcp-Session-Id`.
+- Enforced create-only server-side via `src/lib/mcp/policy.ts` (default-deny allowlist) plus a repository layer that only ever calls Prisma `create`; duplicate/replay attempts are rejected via unique `(user, aiSource, requestId)` constraints, never upserted.
+- Added `AiAuditEvent` as an event-sourced, append-only audit log (DB trigger blocks UPDATE/DELETE/TRUNCATE) capturing actor, tool, request/correlation IDs, before/after state (encrypted), and restore linkage; AI-created Meal/SavedFood/WaterLog rows carry `createdByType/AiSource/RequestId` provenance.
+- Added a cookie-authenticated (never MCP-exposed) human restore flow with optimistic version + provenance conflict detection, implemented as a compensating delete plus a new immutable `USER_RESTORE_*` event chain.
+- Added Web (`/dashboard/ai-activity`, list + detail/restore pages) and Flutter (`ai_activity_screen.dart`, `ai_activity_detail_screen.dart`) AI Activity UIs with search/filter and a full restore confirmation flow.
+- Added first-party OAuth 2.1 + PKCE authorization server (`/oauth/*`, `/.well-known/*`) reusing the app's existing session/user model; least-privilege `*:read`/`*:create` scopes only, no `*:write`.

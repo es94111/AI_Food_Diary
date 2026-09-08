@@ -52,6 +52,15 @@ export default async function SettingsPage() {
             前往獨立頁面搜尋、整理、批次封存與處理重複資料。
           </p>
         </Link>
+        <Link
+          className="glass glass-lift block rounded-[2rem] p-6"
+          href="/dashboard/ai-activity"
+        >
+          <h2 className="text-xl font-black">AI 操作紀錄</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            查看 ChatGPT MCP 操作、不可變 audit events 與人類確認還原。
+          </p>
+        </Link>
         <GoogleLinkPanel
           clientId={
             process.env.GOOGLE_CLIENT_ID ??

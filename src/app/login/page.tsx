@@ -3,9 +3,26 @@ import { getCurrentUser } from "@/lib/auth";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { TURNSTILE_SITE_KEY } from "@/lib/turnstile-config";
 
-export default async function LoginPage() {
+function safeNextPath(value: string | string[] | undefined): string {
+  if (
+    typeof value === "string" &&
+    value.startsWith("/oauth/authorize?") &&
+    !value.startsWith("//") &&
+    value.length <= 8_192
+  ) {
+    return value;
+  }
+  return "/dashboard";
+}
+
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string | string[] }>;
+}) {
+  const nextPath = safeNextPath((await searchParams).next);
   const user = await getCurrentUser();
-  if (user) redirect("/dashboard");
+  if (user) redirect(nextPath);
 
   return (
     <main className="flex min-h-dvh items-center justify-center px-6 py-12">
@@ -21,6 +38,7 @@ export default async function LoginPage() {
             process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
           }
           turnstileSiteKey={TURNSTILE_SITE_KEY}
+          nextPath={nextPath}
         />
       </div>
     </main>
