@@ -228,6 +228,7 @@ export async function sumWaterLogs(userId: string, start: Date, end: Date) {
 export async function createMealAndAudit(
   invocation: McpInvocation,
   input: CreateMealInput,
+  imageStorageKeys: string[] = [],
 ) {
   assertMcpInvocationActive(invocation);
   const totals = input.items.reduce(
@@ -246,6 +247,8 @@ export async function createMealAndAudit(
       data: {
         userId: invocation.userId,
         mealType: input.mealType,
+        imageStorageKey: imageStorageKeys[0] ?? null,
+        imageStorageKeys,
         eatenAt: input.eatenAt ? new Date(input.eatenAt) : new Date(),
         totalCalories: totals.calories,
         totalProtein: totals.protein,

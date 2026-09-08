@@ -112,7 +112,8 @@ test("tool discovery exposes exactly the read/create allowlist", async () => {
     assert.equal(tool.outputSchema.type, "object");
     assert.equal(tool.outputSchema.additionalProperties, false);
     assert.equal(tool.annotations.destructiveHint, false);
-    assert.equal(tool.annotations.openWorldHint, false);
+    // create_meal is the sole exception: it fetches caller-supplied image URLs.
+    assert.equal(tool.annotations.openWorldHint, tool.name === "create_meal");
     assert.equal(tool.annotations.readOnlyHint, !tool.name.startsWith("create_"));
     assert.equal(tool.annotations.idempotentHint, !tool.name.startsWith("create_"));
     assert.equal(tool._meta.securitySchemes[0].type, "oauth2");

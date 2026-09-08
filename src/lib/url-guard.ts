@@ -31,7 +31,7 @@ function isPrivateIpv4(parts: number[]): boolean {
   return false;
 }
 
-function isBlockedHost(rawHost: string): boolean {
+export function isBlockedHost(rawHost: string): boolean {
   const host = rawHost.toLowerCase().replace(/^\[|\]$/g, "");
 
   // Hostnames that are inherently internal.

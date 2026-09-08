@@ -11,6 +11,7 @@ import { z } from "zod";
 export const MCP_DEFAULT_PAGE_SIZE = 25;
 export const MCP_MAX_PAGE_SIZE = 100;
 export const MCP_MAX_SEARCH_WINDOW_DAYS = 31;
+export const MCP_MAX_MEAL_IMAGES = 5;
 
 const resourceIdSchema = z.string().trim().min(1).max(128);
 const cursorSchema = z.string().trim().min(1).max(512);
@@ -71,6 +72,20 @@ const mealItemInputSchema = z
     aiRating: aiRatingSchema.optional()
   })
   .strict();
+
+// The server fetches each URL itself and stores the bytes in the app's own
+// object storage — the URL is never persisted or echoed back. https-only, so a
+// caller can't point the server's outbound fetch at a plaintext-downgraded or
+// internal endpoint via protocol alone (host safety is enforced when fetched).
+const mealImageUrlSchema = z
+  .string()
+  .trim()
+  .url()
+  .max(2_048)
+  .refine((value) => value.startsWith("https://"), "Image URL must use https://")
+  .describe(
+    "An https URL the server will fetch and store as a meal photo. Must be publicly reachable (not an internal/private address).",
+  );
 
 function validateSearchDateWindow(
   value: { dateFrom?: string; dateTo?: string },
@@ -157,6 +172,7 @@ export const createMealInputSchema = z
   .object({
     mealType: mealTypeSchema,
     items: z.array(mealItemInputSchema).min(1).max(50),
+    imageUrls: z.array(mealImageUrlSchema).max(MCP_MAX_MEAL_IMAGES).optional(),
     eatenAt: boundedDiaryDateTimeSchema.optional()
   })
   .strict()
@@ -239,7 +255,7 @@ export const mealOutputSchema = z
     totalCarbs: macroSchema,
     aiConfidence: z.number().finite().min(0).max(1).nullable(),
     aiNotes: z.string().max(4_000).nullable(),
-    imageCount: z.number().int().min(0).max(5),
+    imageCount: z.number().int().min(0).max(MCP_MAX_MEAL_IMAGES),
     eatenAt: isoDateTimeSchema,
     createdAt: isoDateTimeSchema,
     updatedAt: isoDateTimeSchema,

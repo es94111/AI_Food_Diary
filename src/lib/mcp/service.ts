@@ -3,6 +3,7 @@ import "server-only";
 import { createHmac } from "node:crypto";
 import { addDaysStr, dayRangeUtc, dayStartUtc, todayStr } from "@/lib/dates";
 import { isPrismaErrorCode } from "@/lib/db";
+import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import {
   canonicalBarcode,
   findSavedFoodMatches,
@@ -13,6 +14,7 @@ import { appendAiAuditEvent, AI_ACTOR_SOURCE } from "./audit";
 import { getMcpOAuthSecret } from "./config";
 import { mealToMcpOutput, savedFoodToMcpOutput, waterLogToMcpOutput } from "./dto";
 import { McpApplicationError } from "./errors";
+import { resolveMealImageUrls } from "./meal-images";
 import { assertMcpCreateOnlyOperation } from "./policy";
 import {
   createMealAndAudit,
@@ -255,10 +257,14 @@ export async function createMealService(
       "Meal input is invalid or its nutrition totals exceed the supported limits.",
     );
   }
+  const imageStorageKeys = validated.data.imageUrls?.length
+    ? await resolveMealImageUrls(invocation, validated.data.imageUrls)
+    : [];
   try {
-    const result = await createMealAndAudit(invocation, validated.data);
+    const result = await createMealAndAudit(invocation, validated.data, imageStorageKeys);
     return { ...result, requestId: invocation.requestId, correlationId: invocation.correlationId };
   } catch (error) {
+    await Promise.all(imageStorageKeys.map((key) => deleteImageIfUnreferenced(key).catch(() => undefined)));
     if (isPrismaErrorCode(error, "P2002")) {
       throw new McpApplicationError(
         "RESOURCE_ALREADY_EXISTS",

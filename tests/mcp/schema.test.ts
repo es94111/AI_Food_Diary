@@ -42,6 +42,27 @@ test("meal create rejects aggregate nutrition totals outside its output contract
   assert.equal(result.success, false);
 });
 
+test("meal create image URLs must be https, well-formed, and bounded in count", () => {
+  const base = {
+    mealType: "DINNER" as const,
+    items: [{ name: "Tofu", estimatedAmount: "100 g", calories: 90, protein: 10, fat: 5, carbs: 2 }],
+  };
+  assert.equal(
+    createMealInputSchema.safeParse({ ...base, imageUrls: ["https://example.com/a.jpg"] }).success,
+    true,
+  );
+  assert.equal(
+    createMealInputSchema.safeParse({ ...base, imageUrls: ["http://example.com/a.jpg"] }).success,
+    false,
+  );
+  assert.equal(createMealInputSchema.safeParse({ ...base, imageUrls: ["not-a-url"] }).success, false);
+  assert.equal(
+    createMealInputSchema.safeParse({ ...base, imageUrls: Array(6).fill("https://example.com/a.jpg") })
+      .success,
+    false,
+  );
+});
+
 test("restore API requires an explicit human confirmation field", () => {
   assert.equal(restoreAiActivitySchema.safeParse({ reason: "not enough" }).success, false);
   assert.equal(restoreAiActivitySchema.safeParse({ confirm: true, reason: "user confirmed" }).success, true);

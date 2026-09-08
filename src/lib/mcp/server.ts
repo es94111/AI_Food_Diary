@@ -59,6 +59,15 @@ const CREATE_ANNOTATIONS = {
   openWorldHint: false,
 } as const;
 
+// create_meal alone reaches outside the server: it fetches caller-supplied
+// image URLs (guarded in ./meal-images.ts) before storing the meal.
+const CREATE_MEAL_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: true,
+} as const;
+
 function safeRequestIdentifier(value: string | null): string | null {
   return value && value.length <= 128 && /^[A-Za-z0-9._:-]+$/.test(value)
     ? value
@@ -272,10 +281,11 @@ export function createAiFoodMcpServer(context: McpRequestContext): McpServer {
     "create_meal",
     {
       title: "Create meal",
-      description: "Create a new meal. Existing meals can never be changed or overwritten.",
+      description:
+        "Create a new meal, optionally attaching photos by https URL (the server fetches and stores them; the URL itself is never kept). Existing meals can never be changed or overwritten.",
       inputSchema: createMealInputSchema,
       outputSchema: createMealOutputSchema,
-      annotations: CREATE_ANNOTATIONS,
+      annotations: CREATE_MEAL_ANNOTATIONS,
       _meta: securityMeta("meals:create"),
     },
     (args) => {
