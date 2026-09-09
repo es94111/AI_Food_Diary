@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import OpenAI from "openai";
 import { z } from "zod";
+import { fetchWithPinnedPublicAddress } from "@/lib/url-guard";
 
 const foodAnalysisSchema = z.object({
   foods: z.array(
@@ -140,14 +141,11 @@ function completionOptions(opts: { json?: boolean; temperature?: number; seed?: 
   return options;
 }
 
-// Node's fetch (undici) follows 3xx redirects, including cross-origin and even
-// https→http downgrades. A malicious OpenAI-compatible base URL could otherwise
-// 302 the server into internal services / cloud metadata and have the response
-// body surface through error messages (SSRF). Disabling redirect following makes
-// any redirect attempt fail loudly as a normal APIError instead. Official
-// providers never redirect API calls, so this changes nothing legitimate.
+// Keep redirects disabled and pin every outbound connection to a DNS-validated
+// public address. This protects user-configured OpenAI-compatible endpoints
+// against both redirect-based SSRF and DNS rebinding.
 export function noRedirectFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return fetch(input, { ...init, redirect: "manual" });
+  return fetchWithPinnedPublicAddress(input, { ...init, redirect: "manual" });
 }
 
 function client(config: AiConfig) {

@@ -8,6 +8,7 @@ process.env.MCP_OAUTH_SECRET =
 
 import { assertSafeImageUrl } from "../../src/lib/mcp/meal-images";
 import { McpApplicationError } from "../../src/lib/mcp/errors";
+import { fetchWithPinnedPublicAddress } from "../../src/lib/url-guard";
 
 function rejects(url: string) {
   assert.throws(() => assertSafeImageUrl(url), McpApplicationError);
@@ -31,6 +32,19 @@ test("assertSafeImageUrl rejects internal/reserved literal hosts", () => {
   rejects("https://10.0.0.5/meal.jpg");
   rejects("https://192.168.1.1/meal.jpg");
   rejects("https://[::1]/meal.jpg");
+  rejects("https://[::ffff:7f00:1]/meal.jpg");
+  rejects("https://[2001:db8::1]/meal.jpg");
   rejects("https://metadata.google.internal/meal.jpg");
   rejects("https://foo.internal/meal.jpg");
+});
+
+test("pinned outbound fetch rejects blocked targets before opening a connection", async () => {
+  await assert.rejects(
+    fetchWithPinnedPublicAddress("http://127.0.0.1/metadata"),
+    /Unsafe outbound URL/
+  );
+  await assert.rejects(
+    fetchWithPinnedPublicAddress("https://localhost/metadata"),
+    /Unsafe outbound URL/
+  );
 });

@@ -1,10 +1,8 @@
 import "server-only";
 
-import { lookup } from "node:dns/promises";
-import { isIP } from "node:net";
 import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import { uploadImage } from "@/lib/storage";
-import { isBlockedHost } from "@/lib/url-guard";
+import { fetchWithPinnedPublicAddress, isBlockedHost } from "@/lib/url-guard";
 import { McpApplicationError } from "./errors";
 import { assertMcpInvocationActive, type McpInvocation } from "./repository";
 
@@ -13,9 +11,8 @@ import { assertMcpInvocationActive, type McpInvocation } from "./repository";
 // has been fed (prompt injection), not just the account owner. Every layer
 // below is defense in depth, not redundancy:
 //   1. https-only, literal hostname not in a private/reserved range.
-//   2. the hostname's *resolved* address isn't private either (catches a
-//      public-looking domain that points at 169.254.169.254, etc.) — (1) alone
-//      only inspects the string in the URL, same limitation as url-guard.ts.
+//   2. the hostname is resolved inside the socket connector and the connection
+//      is pinned to a validated public address (closing the DNS-rebinding gap).
 //   3. no redirects followed (a redirect could retarget an internal host).
 //   4. response must declare a real image content-type and stay under the
 //      size cap while streaming, with a fetch timeout bounded by the MCP
@@ -53,34 +50,16 @@ export function assertSafeImageUrl(raw: string): URL {
   return url;
 }
 
-// DNS-rebinding note: this resolves once, ahead of the fetch, and does not pin
-// the later connection to the address checked here — a TTL=0 attacker could
-// still rebind between the two. That gap matches the one already accepted in
-// url-guard.ts; full protection would require pinning the socket to the
-// resolved address, which isn't worth the complexity for this feature.
-async function assertResolvesToPublicAddress(hostname: string): Promise<void> {
-  const stripped = hostname.replace(/^\[|\]$/, "").replace(/\]$/, "");
-  if (isIP(stripped)) return; // literal IP already checked by isBlockedHost
-  let records: Array<{ address: string }>;
-  try {
-    records = await lookup(stripped, { all: true });
-  } catch {
-    throw new McpApplicationError("INVALID_INPUT", "Image URL host could not be resolved.");
-  }
-  if (records.length === 0 || records.some((record) => isBlockedHost(record.address))) {
-    throw new McpApplicationError("INVALID_INPUT", "Image URL resolves to a blocked address.");
-  }
-}
-
+// DNS validation and connection pinning are performed by
+// fetchWithPinnedPublicAddress immediately before the socket is opened.
 async function fetchImageAsDataUrl(url: URL, timeoutMs: number): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await fetchWithPinnedPublicAddress(url, {
         signal: controller.signal,
-        redirect: "error",
         headers: { Accept: "image/jpeg,image/png,image/webp,image/gif,image/avif" },
       });
     } catch {
@@ -148,7 +127,6 @@ export async function resolveMealImageUrls(
     for (const raw of urls) {
       const remaining = assertMcpInvocationActive(invocation);
       const url = assertSafeImageUrl(raw);
-      await assertResolvesToPublicAddress(url.hostname);
       const timeout = Number.isFinite(remaining)
         ? Math.max(1_000, Math.min(IMAGE_FETCH_TIMEOUT_MS, remaining - 500))
         : IMAGE_FETCH_TIMEOUT_MS;

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptMetricValue } from "@/lib/field-crypto";
+import { enforceHealthHistoryRateLimit } from "@/lib/rate-limit";
 
 // Returns the historical time series for one or more metric types so the health
 // dashboard can show a per-metric trend when a tile is tapped. The latest value
@@ -43,20 +44,31 @@ const ALLOWED_TYPES = new Set([
   "NUTRITION",
   "WATER"
 ]);
+const MAX_HISTORY_TYPES = 5;
+const MAX_TYPES_QUERY_LENGTH = 256;
 
 export async function GET(request: Request) {
   try {
     const user = await requireUser();
+    const limited = await enforceHealthHistoryRateLimit(user.id);
+    if (limited) return limited;
     const url = new URL(request.url);
 
     // `types` is comma-separated: a single type for most tiles, or every sleep
     // stage together for the sleep drill-down.
-    const types = (url.searchParams.get("types") ?? "")
+    const rawTypes = url.searchParams.get("types") ?? "";
+    if (rawTypes.length > MAX_TYPES_QUERY_LENGTH) {
+      return NextResponse.json({ error: "健康指標類型清單過長。" }, { status: 400 });
+    }
+    const types = [...new Set(rawTypes
       .split(",")
       .map((t) => t.trim())
-      .filter((t) => ALLOWED_TYPES.has(t));
+      .filter((t) => ALLOWED_TYPES.has(t)))];
     if (types.length === 0) {
       return NextResponse.json({ error: "缺少有效的健康指標類型。" }, { status: 400 });
+    }
+    if (types.length > MAX_HISTORY_TYPES) {
+      return NextResponse.json({ error: "一次最多查詢 5 種健康指標。" }, { status: 400 });
     }
 
     // How many readings back to plot, per type. Clamped so the chart stays

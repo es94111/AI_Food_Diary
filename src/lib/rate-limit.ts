@@ -126,6 +126,33 @@ export function enforceSavedFoodWriteRateLimit(userId: string): Promise<NextResp
   });
 }
 
+// Water entries are small, but each one is a durable database row and is
+// returned by the daily water views. Keep the budget generous for normal
+// logging while bounding scripted write loops.
+export function enforceWaterWriteRateLimit(userId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`write:water:${userId}`, {
+    limit: 120,
+    windowSec: 600,
+    message: "飲水紀錄建立過於頻繁，請稍後再試。"
+  });
+}
+
+export function enforceWaterReadRateLimit(userId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`read:water:${userId}`, {
+    limit: 120,
+    windowSec: 600,
+    message: "飲水紀錄讀取過於頻繁，請稍後再試。"
+  });
+}
+
+export function enforceHealthHistoryRateLimit(userId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`read:health-history:${userId}`, {
+    limit: 120,
+    windowSec: 600,
+    message: "健康歷史資料讀取過於頻繁，請稍後再試。"
+  });
+}
+
 // The admin data export/import endpoints decrypt or rewrite the whole database,
 // so their budgets are far tighter than user endpoints — an accidental script
 // loop must not churn full-database reads/writes.

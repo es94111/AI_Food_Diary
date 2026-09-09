@@ -9,6 +9,7 @@ import { decryptProfile } from "@/lib/profile-crypto";
 import { decryptMetricValue } from "@/lib/field-crypto";
 import { decryptMeal } from "@/lib/b2-crypto";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
+import { MAX_WATER_LOGS_PER_DAY } from "@/lib/water-limits";
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { DailySummaryPopup } from "@/components/daily-summary-popup";
 import { AiInfoCard } from "@/components/ai-info-card";
@@ -131,14 +132,22 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   const title = view === "week" ? `${weekStartStrValue} — ${addDaysStr(weekStartStrValue, 6)}` : selectedDateStr;
 
   // Water tracking is a daily habit metric, so the card only shows in day view.
-  const waterLogs =
+  const waterData =
     view === "day"
-      ? await prisma.waterLog.findMany({
-          where: { userId: user.id, drankAt: { gte: start, lt: end } },
-          orderBy: { drankAt: "desc" }
-        })
-      : [];
-  const waterTotalMl = waterLogs.reduce((sum, log) => sum + log.amountMl, 0);
+      ? await Promise.all([
+          prisma.waterLog.findMany({
+            where: { userId: user.id, drankAt: { gte: start, lt: end } },
+            orderBy: { drankAt: "desc" },
+            take: MAX_WATER_LOGS_PER_DAY
+          }),
+          prisma.waterLog.aggregate({
+            where: { userId: user.id, drankAt: { gte: start, lt: end } },
+            _sum: { amountMl: true }
+          })
+        ])
+      : null;
+  const waterLogs = waterData?.[0] ?? [];
+  const waterTotalMl = waterData?.[1]?._sum.amountMl ?? 0;
   const waterGoalMl = decProfile?.waterGoalMl ?? 2000;
   const waterLogsView = waterLogs.map((log) => ({
     id: log.id,
