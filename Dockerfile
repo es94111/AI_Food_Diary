@@ -1,27 +1,37 @@
 # Base stage: pin the current Node 24 Alpine image and patch npm's bundled
 # dependencies so every derived stage (deps/builder/runner) passes Trivy.
-# As of 2026-08-17, Node 24.19.0 ships npm 11.17.0 and npm 12.0.2 still
-# bundles vulnerable brace-expansion/ip-address versions. Keep these targeted
-# replacements until an upstream npm release bundles brace-expansion >= 5.0.9
-# and ip-address >= 10.3.1.
+# As of 2026-09-15, Node 24.21.0 ships npm 11.19.0, and npm 12.0.2 still
+# bundles vulnerable brace-expansion/ip-address/tar versions. Keep these
+# targeted replacements until an upstream npm release bundles
+# brace-expansion >= 5.0.9, ip-address >= 10.3.1 and tar >= 7.5.21
+# (CVE-2026-73566). Every replacement is asserted below — the tar one
+# round-trips an archive, since npm unpacks each dependency with it.
 FROM node:24.21.0-alpine3.24 AS node-base
 RUN set -eux; \
     npm install -g npm@12.0.2; \
     npm pack --silent --pack-destination /tmp brace-expansion@5.0.9; \
     npm pack --silent --pack-destination /tmp ip-address@10.3.1; \
+    npm pack --silent --pack-destination /tmp tar@7.5.22; \
     rm -rf /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
-           /usr/local/lib/node_modules/npm/node_modules/ip-address; \
+           /usr/local/lib/node_modules/npm/node_modules/ip-address \
+           /usr/local/lib/node_modules/npm/node_modules/tar; \
     mkdir -p /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
-             /usr/local/lib/node_modules/npm/node_modules/ip-address; \
+             /usr/local/lib/node_modules/npm/node_modules/ip-address \
+             /usr/local/lib/node_modules/npm/node_modules/tar; \
     tar -xzf /tmp/brace-expansion-5.0.9.tgz \
         -C /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
         --strip-components=1; \
     tar -xzf /tmp/ip-address-10.3.1.tgz \
         -C /usr/local/lib/node_modules/npm/node_modules/ip-address \
         --strip-components=1; \
-    rm /tmp/brace-expansion-5.0.9.tgz /tmp/ip-address-10.3.1.tgz; \
+    tar -xzf /tmp/tar-7.5.22.tgz \
+        -C /usr/local/lib/node_modules/npm/node_modules/tar \
+        --strip-components=1; \
+    rm /tmp/brace-expansion-5.0.9.tgz /tmp/ip-address-10.3.1.tgz \
+       /tmp/tar-7.5.22.tgz; \
     node -e "const p='/usr/local/lib/node_modules/npm/node_modules/brace-expansion'; const v=require(p + '/package.json').version; const out=require(p).expand('{a,b}'); if (v !== '5.0.9' || out.join(',') !== 'a,b') throw new Error('invalid npm bundled brace-expansion: ' + v)"; \
     node -e "const p='/usr/local/lib/node_modules/npm/node_modules/ip-address'; const v=require(p + '/package.json').version; if (v !== '10.3.1') throw new Error('invalid npm bundled ip-address: ' + v)"; \
+    node -e "const p='/usr/local/lib/node_modules/npm/node_modules/tar'; const v=require(p + '/package.json').version; if (v !== '7.5.22') throw new Error('invalid npm bundled tar: ' + v); const tar=require(p); const fs=require('fs'); const path=require('path'); const dir=fs.mkdtempSync('/tmp/tar-check-'); const file=path.join(dir, 'a.txt'); const tgz=path.join(dir, 'a.tgz'); fs.writeFileSync(file, 'ok'); tar.c({ cwd: dir, file: tgz, gzip: true, sync: true }, ['a.txt']); fs.rmSync(file); tar.x({ cwd: dir, file: tgz, sync: true }); if (fs.readFileSync(file, 'utf8') !== 'ok') throw new Error('npm bundled tar failed to round-trip an archive'); fs.rmSync(dir, { recursive: true, force: true })"; \
     test "$(npm --version)" = "12.0.2"; \
     test "$(npx --version)" = "12.0.2"
 
