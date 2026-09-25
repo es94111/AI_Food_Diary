@@ -127,3 +127,44 @@
 - Discovered (not fixed — pre-existing, unrelated, out of scope): `npm run worker` fails to start on both the baseline and optimized images (`Error: Transform failed... Top-level await is currently not supported with the "cjs" output format` at `src/worker.ts:82`). Reproduces identically on the untouched baseline image. The Railway project has no separate worker service deployed, consistent with this. Flagged as a follow-up, not touched.
 - Evaluated and **declined** (documented reasons, no code change): Next.js `output: "standalone"` (breaks the shared app/worker/maintenance-script image architecture; primary benefit is disk size, not RAM, since unrequired files were never loaded into memory anyway), image-proxy streaming (incompatible with the existing whole-blob AES-256-GCM authenticated encryption — GCM requires the full ciphertext+tag before releasing any plaintext), Sentry sampling-rate reduction (given CPU is already ~0 in measured Railway metrics, no evidence profiling is the RAM driver), Prisma connection pool / singleton changes (already correct, single instance, no N+1 queries found in `/api/meals` or `/api/water`).
 - `APP_PUBLIC_URL` was already documented in `.env.example` and correctly wired with a graceful fallback + startup warning (`src/instrumentation.ts`, `src/app/api/app/version/route.ts`) — no code change needed; only a deployment-time action remains (set it on the Railway service).
+
+# 2026-09-25 套件版本更新（npm / Flutter / Actions / Android）
+
+## Goal + acceptance criteria
+
+- [x] 把專案有使用的套件更新到「最新版本號」；本 repo 定義為**通過 7 天供應鏈冷卻期**的最新版（`.npmrc` `min-release-age=7`、`.github/dependabot.yml` `cooldown: default-days: 7`）。
+- [x] `npm outdated` 與 `flutter pub outdated` 的直相依皆為空。
+- [x] 不引入 breaking regression；所有既有測試、build、audit 需通過。
+
+## Risk & rollback
+
+- **Risk level:** medium（lockfile、Android toolchain、CI action pin）。
+- **Affected components:** npm 依賴樹與 overrides、Flutter 相依、GitHub Actions pin、Android Gradle plugin/deps。
+- **Rollback:** 還原 `package.json` / `package-lock.json` / `mobile/pubspec.yaml` / `mobile/pubspec.lock` / `mobile/android/{settings,app/build}.gradle.kts` / `.github/workflows/{docker-image,trivy}.yml` 即可（codeql.yml 已還原為 baseline）；未動任何 runtime 程式碼或 schema。
+
+## Working notes
+
+- [x] 以 registry `time` 欄位（非 dist-tags）逐一套件計算「冷卻期內最新版」，避免抓到剛發布的版本。
+- [x] **Flutter 端未套用冷卻期（已決策：維持）。** `.npmrc` 的 `min-release-age=7` 只作用於 npm，`.github/dependabot.yml` 也只為 `npm`/`github-actions`/`docker` 宣告 cooldown（無 `pub` 生態）。`flutter pub upgrade --major-versions` 因此取到數個未滿 7 天的新版（`cached_network_image@4.0.2` 1.66d、`sentry_flutter@9.30.1` 2.98d、`flutter_cache_manager@3.4.5` 6.36d 等）。經確認使用者選擇**維持真正最新版**（Flutter 端不套用冷卻期）；`flutter analyze` / `flutter test` / `flutter build apk` 皆已驗證通過。註：`cached_network_image` 回退到 4.0.0 亦無法消除較新的 `material_ui`/`cupertino_ui` 傳遞依賴（實測 4.0.0 的 dependencies 與 4.0.2 完全相同）。
+- [x] 冷卻期內無法升級而保留者：`@modelcontextprotocol/server` 2.1.0、`openai` 7.23.0、`next` 16.3.6、`bullmq` 6.3.8、`undici` 8.11.2、`eslint` 10.11.0、`dotenv` 18.0.3、`fast-uri` 4.2.1、`@types/node` 26.6.2。
+- [x] Android：AGP 9.2+ 需 Gradle >= 9.4.1，而 Flutter 3.47.2 支援上限為 Gradle 9.3.1（實測 `Minimum supported Gradle version is 9.4.1`），故 AGP 維持 9.1.1（相容範圍內最新）。
+- [x] Dockerfile base image 未動：`node:24.21.0-alpine3.24` 已是冷卻期內最新；npm 12.1.0 未滿 7 天且 bundled `brace-expansion` 未達註解門檻，patch 機制須保留。
+- [x] compose 服務映像（postgres:17 / redis:7 / minio）**刻意未動**：屬本地開發基礎設施且為資料卷層級變更（PG18 `PGDATA` 改為 `/var/lib/postgresql/18/docker`，與現有掛載不相容；`minio/minio` 已從 Docker Hub 下架、quay 需認證）。
+
+## Bugfix / 自我複查發現並修正
+
+- **Repro:** `node -e 'require("minimatch")("a/b.txt","**/*.txt")'` → `TypeError: mm is not a function`。
+- **Root cause:** 初版把 `eslint-config-next` → `minimatch` override 由 `^10.0.3` 提升為 `^10.2.6`，並一度收斂為全域 `minimatch` override，導致 npm 把 minimatch **10** hoist 給 `eslint-plugin-import` / `eslint-plugin-react` / `eslint-plugin-jsx-a11y`。這些 plugin 以**函式**方式呼叫 minimatch（v3 API），而 minimatch 10 的 CJS 匯出是 namespaced 物件（入口 `dist/commonjs/index.js`），故所有 pattern 規則呼叫都會 throw。
+- **Baseline evidence:** 對 HEAD 做 `npm ci` 後由各 consumer 目錄解析：`eslint-config-next` → `v3.1.5 callable=true`；`eslint`/root → `v10.2.5 callable=false`。顯示該 override 在 baseline **未生效**。
+- **Fix:** 移除該 override（一般 semver 已正確解析出 3.x for plugins、10.x for glob/eslint），回復 baseline 語意。（`@hono/node-server` override 同樣在 baseline 未生效，但未被引用且非本次目標，保留不動以免擴大變更範圍。）
+- **Regression guard:** 修正後逐 consumer 目錄解析驗證 —— plugins `v3.1.5 callable=true works=true`、glob/eslint `v10.2.6` 以 `new Minimatch()` 正常運作。
+- **另修:** `mobile/pubspec.yaml` 環境約束提升為 `sdk: ^3.13.0` + `flutter: ">=3.47.0"`（cached_network_image 4.x 經 material_ui/cupertino_ui 帶來的新下限），使 lockfile 的 `sdks` 變更成為明示而非隱含。
+
+## Results
+
+- **npm:** `npm outdated` 空；`npm audit` 0 vulnerabilities；`npm ci --dry-run` up to date；`npm run build`（prisma generate + tsc + next build）通過；`npm run test:mcp` 36/36；`npm ls --all` 與 baseline 同為既有 `webpack`/`typescript` 問題，且少一個 baseline 既有的 `invalid` minimatch 節點。
+- **Flutter:** 直相依 all up-to-date；`flutter analyze` 僅既有 1 個 warning（`app_logger.dart:84`）；`flutter test` 91/91；`flutter build apk --debug` 與 `--release` 皆成功（含清空 Gradle build-cache 後重跑）。
+- **Docker:** `docker build`（正式映像，含新 npm 依賴）成功。
+- **CI:** 所有 workflow `actionlint` 通過。codeql-action 因 `v4.38.1` 僅 6.98 天（未滿 repo 7 天 cooldown）而**還原**為 baseline 的 `v4.38.0`（15.95 天，`b96794f…`）；docker-image.yml / trivy.yml 的兩個 SHA 則以 `git ls-remote` 驗證對應註解所述 tag（build-push-action v7.4.0、setup-buildx-action v4.4.1）。
+- **Major bump 驗證:** `dotenv` 18（`dotenv/config` 匯出保留、實測載入 .env）；`fast-uri` 3→4（parse/serialize/resolve/equal 輸出鍵與 v3 相同，ajv 僅用這四者，$id/相對 $ref 解析實測正確）。
+- **Android build 假警報:** 中途多次 `cannot find symbol` 失敗，經清空 `mobile/build` + `~/.gradle/caches/build-cache-1` + `gradlew --stop` 後完全重跑即成功，確認為本機陳舊 Gradle 快取狀態，非相依變更造成（CI 使用全新快取）。

@@ -28,20 +28,20 @@
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1131.0",
-    "@aws-sdk/s3-request-presigner": "^3.1131.0",
+    "@aws-sdk/client-s3": "^3.1135.0",
+    "@aws-sdk/s3-request-presigner": "^3.1135.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
-    "@sentry/nextjs": "^10.74.0",
-    "@sentry/profiling-node": "^10.74.0",
+    "@sentry/nextjs": "^10.75.0",
+    "@sentry/profiling-node": "^10.75.0",
     "argon2": "^0.45.1",
-    "bullmq": "^6.3.5",
-    "dotenv": "^17.4.2",
+    "bullmq": "^6.3.7",
+    "dotenv": "^18.0.0",
     "ioredis": "^6.0.0",
     "jose": "^6.2.12",
     "next": "^16.3.5",
-    "openai": "^7.15.0",
+    "openai": "^7.18.0",
     "prisma": "^7.10.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
@@ -51,7 +51,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
@@ -62,18 +62,15 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "postcss": "^8.5.18",
+    "postcss": "^8.5.28",
     "@hono/node-server": "^1.19.13",
-    "esbuild": "^0.28.1",
-    "brace-expansion": "^5.0.9",
-    "fast-uri": "^3.1.7",
-    "eslint-config-next": {
-      "minimatch": "^10.0.3"
-    },
-    "valibot": "^1.4.2",
-    "find-my-way": "^9.7.0",
+    "esbuild": "^0.28.2",
+    "brace-expansion": "^5.0.12",
+    "fast-uri": "^4.2.0",
+    "valibot": "^1.5.0",
+    "find-my-way": "^9.9.0",
     "sharp": "^0.35.4",
-    "mysql2": "^3.23.1",
-    "deepmerge-ts": "^8.0.0"
+    "mysql2": "^3.24.4",
+    "deepmerge-ts": "^8.0.2"
   }
 }
