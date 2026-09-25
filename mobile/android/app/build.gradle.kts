@@ -78,7 +78,7 @@ flutter {
 
 dependencies {
     // Core library desugaring runtime, required by flutter_local_notifications.
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     // AES-256 EncryptedSharedPreferences for the widget session cookie.
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.security:security-crypto:1.1.0")
 }
