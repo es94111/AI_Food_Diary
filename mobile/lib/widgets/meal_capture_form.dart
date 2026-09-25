@@ -8,6 +8,7 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
 import '../services/background_analysis.dart';
+import '../services/health_auto_sync.dart';
 import '../services/image_cache_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
@@ -643,15 +644,14 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         },
         onSave: (confirmedItems) async {
           final saveItems = confirmedItems.map((e) => e.toMealItem()).toList();
-          // Nutrition is mirrored into Health Connect later, during the
-          // "健康同步" flow (HealthService.syncNow), not at save time.
-          await MealService.createMeal(
+          final eatenAt = await MealService.createMeal(
             mealType: mealType,
             imageDataUrls: images.isNotEmpty ? images : null,
             savedFoodImageIds: pickedFoodIds.isNotEmpty ? pickedFoodIds : null,
             description: mode == 'describe' && desc.isNotEmpty ? desc : null,
             items: saveItems,
           );
+          HealthAutoSync.instance.nutritionChanged(eatenAt);
           final usedFoodIds = confirmedItems
               .map((item) => item.savedFoodId)
               .whereType<String>()

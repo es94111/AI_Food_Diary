@@ -64,6 +64,14 @@ class ApiClient {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
+          final expectedSession = options.extra['expectedSessionCookie'];
+          if (expectedSession != null && expectedSession != _sessionCookie) {
+            handler.reject(DioException(
+              requestOptions: options,
+              error: 'Session changed before request',
+            ));
+            return;
+          }
           if (_sessionCookie != null) {
             options.headers['Cookie'] = _sessionCookie;
           }
@@ -192,7 +200,9 @@ class ApiClient {
     if (headers != null) {
       return _getUncoalesced(path, query: query, headers: headers, cache: cache);
     }
-    final key = _cacheKey(path, query);
+    // Fresh health reads cannot join a cache-enabled request that might
+    // return stale data when the network fails.
+    final key = '${cache ? 'cached' : 'fresh'}:${_cacheKey(path, query)}';
     final inFlight = _inFlightGets[key];
     if (inFlight != null) return inFlight;
     final future = _getUncoalesced(path, query: query, cache: cache);
@@ -270,12 +280,18 @@ class ApiClient {
     String path, {
     Object? data,
     Map<String, String>? headers,
+    String? expectedSessionCookie,
   }) async {
     final dio = await _client();
     return dio.post(
       path,
       data: data,
-      options: headers == null ? null : Options(headers: headers),
+      options: Options(
+        headers: headers,
+        extra: {
+          'expectedSessionCookie': ?expectedSessionCookie,
+        },
+      ),
     );
   }
 

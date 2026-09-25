@@ -37,7 +37,7 @@ class AppVersionInfo {
 /// Coarse state of the in-flight update download, surfaced to the UI through
 /// [UpdateService.status] so the progress sheet can react without knowing
 /// anything about flutter_downloader.
-enum DownloadStatus { idle, running, complete, failed }
+enum DownloadStatus { idle, running, complete, failed, canceled }
 
 /// Checks for newer app releases and installs the APK in one tap.
 ///
@@ -126,7 +126,7 @@ class UpdateService {
       final pr = data[2] as int;
       // Ignore callbacks for any earlier/stale task.
       if (_taskId != null && id == _taskId) {
-        unawaited(_onBackgroundUpdate(st, pr));
+        unawaited(handleBackgroundUpdate(st, pr));
       }
     });
     await FlutterDownloader.registerCallback(downloadCallback, step: 2);
@@ -286,7 +286,11 @@ class UpdateService {
     await Future<void>.delayed(const Duration(seconds: 1));
   }
 
-  static Future<void> _onBackgroundUpdate(DownloadTaskStatus st, int pr) async {
+  @visibleForTesting
+  static Future<void> handleBackgroundUpdate(
+    DownloadTaskStatus st,
+    int pr,
+  ) async {
     if (st == DownloadTaskStatus.running || st == DownloadTaskStatus.enqueued) {
       status.value = DownloadStatus.running;
       if (pr >= 0) progress.value = pr / 100.0;
@@ -353,30 +357,26 @@ class UpdateService {
         return;
       }
       status.value = DownloadStatus.complete;
-    } else if (st == DownloadTaskStatus.failed ||
-        st == DownloadTaskStatus.canceled) {
-      if (st == DownloadTaskStatus.failed &&
-          await _recoverBackgroundFailure(pr)) {
+    } else if (st == DownloadTaskStatus.canceled) {
+      // WorkManager also reports canceled when a worker is stopped. A canceled
+      // task is not evidence of a download error and needs no global alert.
+      lastError = null;
+      status.value = DownloadStatus.canceled;
+    } else if (st == DownloadTaskStatus.failed) {
+      if (await _recoverBackgroundFailure(pr)) {
         return;
       }
 
       lastError = '下載未完成，請稍後再試';
       status.value = DownloadStatus.failed;
-      // A *canceled* download is a user/expected action (canceled from the
-      // system download notification, or superseded by a re-enqueue), not an
-      // app fault — don't report it to Sentry, the same way connectivity
-      // failures are filtered out in beforeSend. Genuine failures are still
-      // reported so real install problems surface.
-      if (st == DownloadTaskStatus.failed) {
-        await _reportFailure(
-          'Background APK download failed',
-          downloaderContext: _downloaderContext(
-            status: st,
-            rawProgress: pr,
-            recovery: 'unavailable',
-          ),
-        );
-      }
+      await _reportFailure(
+        'Background APK download failed',
+        downloaderContext: _downloaderContext(
+          status: st,
+          rawProgress: pr,
+          recovery: 'unavailable',
+        ),
+      );
     }
   }
 
@@ -398,20 +398,10 @@ class UpdateService {
         return true;
       }
 
-      await _removeStaleUpdateTasks();
-      lastError = null;
-      progress.value = 0;
-      status.value = DownloadStatus.running;
-      await _foregroundDownloadAndInstall(
-        apkUrl,
-        failureMessage: 'APK download failed after Android background retry',
-        downloaderContext: _downloaderContext(
-          status: DownloadTaskStatus.failed,
-          rawProgress: pr,
-          recovery: 'foreground_fallback',
-        ),
-      );
-      return true;
+      // Keep Android updates on the OS-managed worker. Falling back to an
+      // in-process Dio download here silently stopped background progress as
+      // soon as the user switched away or the process was killed.
+      return false;
     } catch (e, st) {
       lastError = '$e';
       status.value = DownloadStatus.failed;
@@ -467,11 +457,7 @@ class UpdateService {
 
   // ---- Non-Android foreground fallback ----
 
-  static Future<void> _foregroundDownloadAndInstall(
-    String apkUrl, {
-    String failureMessage = 'Foreground APK download failed',
-    Map<String, Object?>? downloaderContext,
-  }) async {
+  static Future<void> _foregroundDownloadAndInstall(String apkUrl) async {
     try {
       final dir = await _backgroundDir();
       if (!await dir.exists()) {
@@ -491,12 +477,7 @@ class UpdateService {
     } catch (e, st) {
       lastError = '$e';
       status.value = DownloadStatus.failed;
-      await _reportFailure(
-        failureMessage,
-        error: e,
-        stack: st,
-        downloaderContext: downloaderContext,
-      );
+      await _reportFailure('Foreground APK download failed', error: e, stack: st);
     }
   }
 

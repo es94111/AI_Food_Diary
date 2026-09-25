@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
@@ -22,6 +24,8 @@ const _amberGradient = LinearGradient(
 /// Settings card showing the current/latest version with a one-tap update.
 class UpdateCard extends StatefulWidget {
   const UpdateCard({super.key});
+
+  static bool _dialogOpen = false;
 
   /// Checks on startup and, if a newer version exists, prompts the user
   /// with a polished update sheet.
@@ -48,28 +52,23 @@ class UpdateCard extends StatefulWidget {
     }
   }
 
-  /// Kicks off the (background, on Android) download and shows a progress sheet
-  /// that reflects [UpdateService.status]. The sheet can be dismissed while the
-  /// download keeps running, so switching away from the app never fails the
-  /// update — the OS finishes it and notifies the user to install.
+  /// Shows the download sheet before starting the update, so an asynchronous
+  /// start cannot surface an error after the user has moved to another page.
   static Future<void> runUpdate(BuildContext context, String apkUrl) async {
-    if (!await _ensureInstallPermission(context)) return;
-
+    if (_dialogOpen) return;
+    _dialogOpen = true;
     try {
-      await UpdateService.start(apkUrl);
-    } catch (e, st) {
-      await Sentry.captureException(e, stackTrace: st,
-          withScope: (scope) => scope.setTag('feature', 'app_update'));
-      if (context.mounted) _showError(context, '無法開始下載：$e');
-      return;
+      if (!await _ensureInstallPermission(context)) return;
+      if (!context.mounted || !Visibility.of(context)) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        barrierColor: Colors.black54,
+        builder: (_) => UpdateDownloadDialog(apkUrl: apkUrl),
+      );
+    } finally {
+      _dialogOpen = false;
     }
-    if (!context.mounted) return;
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black54,
-      builder: (_) => const _DownloadDialog(),
-    );
   }
 
   static Future<bool> _ensureInstallPermission(BuildContext context) async {
@@ -611,21 +610,36 @@ class _UpdatePromptDialog extends StatelessWidget {
   }
 }
 
-/// Animated download dialog: a circular progress ring with the percentage in
-/// the center, plus a subtle status line. Reflects [UpdateService.status] and
-/// can be dismissed while the (background) download keeps running.
-class _DownloadDialog extends StatefulWidget {
-  const _DownloadDialog();
+/// Download progress and errors stay in this route. Android can keep the task
+/// running after the route is dismissed; late callbacks must not navigate or
+/// show a snackbar on an unrelated page.
+class UpdateDownloadDialog extends StatefulWidget {
+  const UpdateDownloadDialog({
+    super.key,
+    required this.apkUrl,
+    this.startDownload,
+  });
+
+  final String apkUrl;
+  @visibleForTesting
+  final Future<void> Function(String)? startDownload;
 
   @override
-  State<_DownloadDialog> createState() => _DownloadDialogState();
+  State<UpdateDownloadDialog> createState() => _UpdateDownloadDialogState();
 }
 
-class _DownloadDialogState extends State<_DownloadDialog> {
+class _UpdateDownloadDialogState extends State<UpdateDownloadDialog> {
+  bool _starting = false;
+  bool _closing = false;
+  String? _startError;
+
   @override
   void initState() {
     super.initState();
     UpdateService.status.addListener(_onStatus);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_start());
+    });
   }
 
   @override
@@ -635,106 +649,180 @@ class _DownloadDialogState extends State<_DownloadDialog> {
   }
 
   void _onStatus() {
-    final status = UpdateService.status.value;
-    if (status == DownloadStatus.complete) {
-      // Installer is launched by UpdateService; just close the sheet.
-      if (mounted) Navigator.of(context).pop();
-    } else if (status == DownloadStatus.failed) {
-      if (mounted) {
-        Navigator.of(context).pop();
-        UpdateCard._showError(
-            context, '更新失敗：${UpdateService.lastError ?? '請稍後再試'}');
-      }
+    if (!mounted || _closing || ModalRoute.of(context)?.isCurrent != true) {
+      return;
     }
+    if (UpdateService.status.value == DownloadStatus.complete) {
+      // The installer has been launched, or the completion notification can
+      // open it after this app moves to the background.
+      _close();
+    } else {
+      setState(() {});
+    }
+  }
+
+  Future<void> _start() async {
+    if (_starting || _closing) return;
+    setState(() {
+      _starting = true;
+      _startError = null;
+    });
+    try {
+      await (widget.startDownload ?? UpdateService.start)(widget.apkUrl);
+    } catch (e, st) {
+      if (mounted && !_closing) {
+        setState(() => _startError = '無法開始下載：$e');
+      }
+      try {
+        await Sentry.captureException(
+          e,
+          stackTrace: st,
+          withScope: (scope) => scope.setTag('feature', 'app_update'),
+        );
+      } catch (_) {
+        // Reporting cannot hide the actionable error in the dialog.
+      }
+    } finally {
+      if (mounted && !_closing) setState(() => _starting = false);
+    }
+  }
+
+  void _close() {
+    if (_closing) return;
+    _closing = true;
+    Navigator.of(context).pop();
   }
 
   @override
   Widget build(BuildContext context) {
     final canBackground = UpdateService.backgroundSupported;
     final p = context.palette;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 48),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
-        decoration: BoxDecoration(
-          color: p.surface,
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.25),
-              blurRadius: 40,
-              offset: const Offset(0, 20),
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ValueListenableBuilder<double>(
-              valueListenable: UpdateService.progress,
-              builder: (_, value, _) {
-                final indeterminate = value == 0;
-                return SizedBox(
-                  width: 96,
-                  height: 96,
-                  child: Stack(
-                    alignment: Alignment.center,
-                    children: [
-                      SizedBox(
-                        width: 96,
-                        height: 96,
-                        child: CircularProgressIndicator(
-                          value: indeterminate ? null : value,
-                          strokeWidth: 7,
-                          backgroundColor: p.surfaceAlt,
-                          valueColor:
-                              const AlwaysStoppedAnimation<Color>(_amber500),
-                          strokeCap: StrokeCap.round,
-                        ),
+    final status = UpdateService.status.value;
+    final failed = _startError != null ||
+        (!_starting && status == DownloadStatus.failed);
+    final canceled = !_starting && status == DownloadStatus.canceled && !failed;
+    return PopScope(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _closing = true;
+      },
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 48),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
+          decoration: BoxDecoration(
+            color: p.surface,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 40,
+                offset: const Offset(0, 20),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ValueListenableBuilder<double>(
+                valueListenable: UpdateService.progress,
+                builder: (_, value, _) {
+                  if (failed || canceled) {
+                    return SizedBox(
+                      width: 96,
+                      height: 96,
+                      child: Icon(
+                        failed ? Icons.error_outline : Icons.cancel_outlined,
+                        color: failed ? const Color(0xFFB91C1C) : p.inkSoft,
+                        size: 48,
                       ),
-                      indeterminate
-                          ? Icon(Icons.download_rounded,
-                              color: p.amberAccent, size: 30)
-                          : Text('${(value * 100).toStringAsFixed(0)}%',
-                              style: TextStyle(
+                    );
+                  }
+                  final indeterminate = value == 0;
+                  return SizedBox(
+                    width: 96,
+                    height: 96,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 96,
+                          height: 96,
+                          child: CircularProgressIndicator(
+                            value: indeterminate ? null : value,
+                            strokeWidth: 7,
+                            backgroundColor: p.surfaceAlt,
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              _amber500,
+                            ),
+                            strokeCap: StrokeCap.round,
+                          ),
+                        ),
+                        indeterminate
+                            ? Icon(
+                                Icons.download_rounded,
+                                color: p.amberAccent,
+                                size: 30,
+                              )
+                            : Text(
+                                '${(value * 100).toStringAsFixed(0)}%',
+                                style: TextStyle(
                                   fontSize: 22,
                                   fontWeight: FontWeight.w900,
-                                  color: p.ink)),
-                    ],
-                  ),
-                );
-              },
-            ),
-            const SizedBox(height: 24),
-            Text('下載更新中',
+                                  color: p.ink,
+                                ),
+                              ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+              Text(
+                failed
+                    ? '更新失敗'
+                    : canceled
+                    ? '下載已取消'
+                    : '下載更新中',
                 style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                    color: p.ink)),
-            const SizedBox(height: 6),
-            Text(
-                canBackground
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: p.ink,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                failed
+                    ? (_startError ?? UpdateService.lastError ?? '請稍後再試')
+                    : canceled
+                    ? '可重新開始下載'
+                    : canBackground
                     ? '可切換到其他 App，下載會在背景繼續，完成後會通知你安裝'
                     : '請稍候，完成後將自動開啟安裝程式',
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 12.5,
-                    height: 1.4,
-                    color: p.inkSoft)),
-            if (canBackground) ...[
-              const SizedBox(height: 18),
-              TextButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.south_east_rounded, size: 18),
-                label: const Text('在背景繼續下載'),
-                style: TextButton.styleFrom(
-                  foregroundColor: p.amberAccent,
-                  textStyle: const TextStyle(fontWeight: FontWeight.w700),
-                ),
+                style: TextStyle(fontSize: 12.5, height: 1.4, color: p.inkSoft),
               ),
+              if (failed || canceled) ...[
+                const SizedBox(height: 18),
+                TextButton(
+                  onPressed: _starting ? null : _start,
+                  child: const Text('重試下載'),
+                ),
+                TextButton(onPressed: _close, child: const Text('關閉')),
+              ] else if (canBackground) ...[
+                const SizedBox(height: 18),
+                TextButton.icon(
+                  onPressed: _close,
+                  icon: const Icon(Icons.south_east_rounded, size: 18),
+                  label: const Text('在背景繼續下載'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: p.amberAccent,
+                    textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

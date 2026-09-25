@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
+import '../services/health_auto_sync.dart';
 import '../services/health_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/meal_analysis_controller.dart';
@@ -97,7 +98,17 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _dashboardReady) {
+      _queueRecentHealthTotals();
       unawaited(_maybeShowYesterdaySummary());
+    }
+  }
+
+  void _queueRecentHealthTotals() {
+    if (_user == null) return;
+    final today = DateTime.now();
+    for (final day in [today, DateTime(today.year, today.month, today.day - 1)]) {
+      HealthAutoSync.instance.nutritionChanged(day);
+      HealthAutoSync.instance.waterChanged(day);
     }
   }
 
@@ -109,6 +120,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     await _loadFromCache();
     try {
       _user = await AuthService.fetchMe();
+      await HealthAutoSync.instance.activateForUser(_user!.id);
       await _loadMeals();
       await _loadSyncedWeight();
     } catch (e) {
@@ -125,6 +137,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     final handledWidgetAction = await _consumeInitialWidgetAction();
     if (!mounted) return;
     _dashboardReady = true;
+
+    // The Android water widget writes straight to the API. Reconcile recent
+    // totals on entry, including uploads interrupted when the app was closed.
+    _queueRecentHealthTotals();
 
     // These jobs do not affect the first usable dashboard frame. Start them
     // after entry so they cannot serialise startup or compete with hidden-tab
@@ -318,6 +334,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _logout() async {
     // Never carry an in-flight or completed draft across account sessions.
     await _analysis.cancel();
+    HealthAutoSync.instance.deactivate();
     await GoogleAuth.signOut();
     await AuthService.logout();
     await HomeWidgetService.clearCalorieProgress();

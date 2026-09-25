@@ -98,6 +98,8 @@
 | POST | `/api/health/sync` | 上傳量測 | Authed **或** Bearer | `{ source?, metrics[1-500]{ type, value≥0, unit≤32, measuredAt(ISO), raw? } }`，依 user+source+type+measuredAt upsert |
 | GET | `/api/health/history` | 時間序列 | Authed | `?types=STEPS,WEIGHT,…`，`?limit=7-120`（預設 30） |
 
+Android APP 餐點新增／修改／刪除或飲水新增／刪除後，會合併更新受影響日期的雲端 NUTRITION／WATER 日總；刪除最後一筆也會送出 0。離線失敗會重試，待補日期會依帳號保存在本機，重新開啟 APP 可續傳；健康卡會顯示重試提示。開啟或恢復 APP 時也會補對今天與昨天（含桌面飲水小工具）。手動健康同步的 APP 餐點／飲水回補範圍最多 31 天，逐日讀取失敗會回報錯誤，避免顯示不完整資料為成功。
+
 ### 6. 昨日總結與下一餐建議
 
 | Method | Path | 功能 | 認證 | 說明 |
@@ -161,7 +163,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | `ProfileFormSheet` | `profile_form.dart` | 底部表單：性別、生日、身高、體重、活動量、目標；即時算 BMR/TDEE/熱量目標；`儲存身體資料` |
 | `SavedFoodEditor` | `saved_food_editor.dart` | 建立／編輯食物：名稱、條碼、份量、巨量、`source` 唯讀鎖、收藏、圖片；處理 `DuplicateFoodException` 衝突（使用/更新/還原/另存） |
 | `SavedFoodsManager` | `saved_foods_manager.dart` | 食物管理：分頁（常用/全部/有條碼/最近/未使用/可能重複/資料不完整/已封存）＋排序＋搜尋＋批次封存＋收藏＋編輯＋封存／還原 |
-| `UpdateCard` | `update_card.dart` | App 自更新：版本顯示、`promptIfAvailable`、安裝未知應用權限、`UpdateService.start(apkUrl)`、下載進度對話框 |
+| `UpdateCard` | `update_card.dart` | App 自更新：版本顯示、`promptIfAvailable`、安裝未知應用權限、背景下載進度／失敗重試對話框；下載完成後提示安裝 |
 | `WaterCard` | `water_card.dart` | 喝水卡：總量/目標＋進度條、預設 100/500/800 ml＋自訂、每筆刪除、內嵌目標編輯 |
 
 ### 服務與 API 對應
@@ -203,7 +205,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | AiSettingsService | GET/PATCH | `/api/me/ai-settings` | 取／存 AI 設定 |
 | AiSettingsService | POST | `/api/me/ai-settings/models` | 列出模型 |
 | UpdateService | GET | `/api/app/version` | 版本／APK／發布說明 |
-| UpdateService | GET | `/api/app/download…` | 前景下載 APK |
+| UpdateService | GET | `/api/app/download…` | Android 背景下載 APK，完成通知可開啟安裝程式 |
 | GoogleAuth | GET | `/api/app/version` | 執行期解析 `googleClientId` |
 
 ### 資料模型 Models

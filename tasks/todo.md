@@ -168,3 +168,92 @@
 - **CI:** 所有 workflow `actionlint` 通過。codeql-action 因 `v4.38.1` 僅 6.98 天（未滿 repo 7 天 cooldown）而**還原**為 baseline 的 `v4.38.0`（15.95 天，`b96794f…`）；docker-image.yml / trivy.yml 的兩個 SHA 則以 `git ls-remote` 驗證對應註解所述 tag（build-push-action v7.4.0、setup-buildx-action v4.4.1）。
 - **Major bump 驗證:** `dotenv` 18（`dotenv/config` 匯出保留、實測載入 .env）；`fast-uri` 3→4（parse/serialize/resolve/equal 輸出鍵與 v3 相同，ajv 僅用這四者，$id/相對 $ref 解析實測正確）。
 - **Android build 假警報:** 中途多次 `cannot find symbol` 失敗，經清空 `mobile/build` + `~/.gradle/caches/build-cache-1` + `gradlew --stop` 後完全重跑即成功，確認為本機陳舊 Gradle 快取狀態，非相依變更造成（CI 使用全新快取）。
+# 2026-09-25 修復 APP 內建更新切換畫面時的下載錯誤
+
+## Goal + acceptance criteria
+
+- [x] 定位離開更新畫面、切換其他頁面時的錯誤來源；用 widget test 重現跨頁對話框回報。
+- [x] 切換頁面不產生虛假的下載失敗；真實失敗留在更新視窗內且可重試。
+- [x] Android 更新持續使用背景 worker，完成時由安裝程式或系統通知提示。
+- [x] 加入回歸測試，執行 Flutter 測試、靜態分析與 Android debug APK 建置。
+
+## Risk & rollback
+
+- **Risk level:** medium（Android 背景下載與更新 UI 狀態）。
+- **Affected components:** `mobile/lib/services/update_service.dart`、`mobile/lib/widgets/update_card.dart`。
+- **Rollback:** 還原本節對應程式變更即可；沒有資料遷移。
+
+## Working notes
+
+- Android 下載由 `flutter_downloader` 背景工作回報；`_DownloadDialog` 監聽 `UpdateService.status`。
+- `canceled` 曾被映射為 `failed`；listener 在關閉動畫期間仍可操作目前 Navigator，且 SnackBar 會跨 Dashboard 分頁顯示。
+- `IndexedStack` 保留隱藏分頁的 context；`mounted` 不足以判斷是否仍在當前分頁，改用 `Visibility.of(context)`。
+- Android 背景 worker 失敗後原本會切到行程內 Dio，會破壞離開 APP 後持續下載的保證；現在重試一次背景工作後回報可重試的真實錯誤。
+
+## Results
+
+- `mobile/lib/services/update_service.dart`：區分取消與失敗，移除 Android 前景 Dio fallback；背景完成仍沿用既有安裝程式／通知流程。
+- `mobile/lib/widgets/update_card.dart`：下載對話框先顯示再啟動；視窗內顯示失敗與重試；關閉後忽略遲到事件，不再跨頁顯示錯誤。
+- `mobile/test/update_dialog_test.dart`：4 個更新狀態、離頁、跨頁回歸測試通過。
+- `docs/features.md`：更新背景下載與完成通知的功能描述。
+- `flutter test --no-pub`：95/95 通過。`flutter analyze --no-pub`：僅既有 `app_logger.dart:84` 警告。`flutter build apk --debug --no-pub`：成功。
+- 沒有連接的 Android 裝置／模擬器；背景下載完成通知與安裝提示尚未做實機驗證。
+# 2026-09-25 健康同步資料完整性與熱量／飲水自動上傳
+
+## Goal + acceptance criteria
+
+- [x] 找出健康同步漏傳與舊值殘留的確切程式路徑。
+- [x] 餐點熱量建立、修改、刪除及飲水新增、刪除成功後，自動同步受影響日期的雲端健康日總；快速連續變更合併處理。
+- [x] 某日資料讀取失敗不得被當作完整同步成功；刪光當日資料須把雲端日總更新為 0。
+- [x] 保持餐點／飲水儲存成功與健康同步失敗彼此獨立，並提供可診斷的同步失敗紀錄。
+- [x] 加入回歸測試，執行 Flutter 測試／分析與相關建置。
+
+## Risk & rollback
+
+- **Risk level:** medium（健康資料上傳、自動網路請求及日總覆寫）。
+- **Affected components:** Flutter 健康同步、餐點與飲水異動入口；如需調整伺服器會另列。
+- **Rollback:** 還原本節的健康同步和觸發器變更；沒有資料表遷移。已上傳的每日 0 值可由再次完整同步修正。
+
+## Working notes
+
+- `fetchRecentMeals`/`fetchRecentWaterLogs` 目前逐日讀取失敗即略過，可能回報「成功」但缺日；一般讀取也可能使用離線快取。
+- 雲端 `/api/health/sync` 只 upsert；既有彙整忽略 0，刪光某日後會殘留舊熱量／飲水值。
+- `/api/health/sync` 每使用者每小時 30 次；自動上傳需合併短時間的修改，且不能在每次儲存時要求 Health Connect 權限。
+- 已向使用者釐清是否也要同步 Health Connect／Samsung Health；雲端日總修正可獨立進行。
+- 飲水桌面小工具直接呼叫後端，無法觸發 Flutter 變更通知；APP 開啟／恢復時補對今天與昨天。
+- 健康卡顯示自動上傳失敗／重試中，成功後重讀狀態；本次自動路徑不要求 Health Connect 權限。
+- Health Connect 寫入仍沿用現有手動同步流程，是否要連同自動寫入待使用者回覆釐清。
+
+## Results
+
+- `mobile/lib/services/health_service.dart`：健康資料逐日讀取改走最新網路回應，失敗或格式不完整即中止；手動同步的餐點／飲水日總含 0；新增受影響日期的自動上傳並驗證後端筆數。
+- `mobile/lib/services/health_auto_sync.dart`：3 秒合併、每 2 分鐘最多一次嘗試、失敗重試、依帳號保存待補日期並在重開 APP 時續傳；餐點／飲水儲存不等待健康上傳。
+- 餐點新增／修改／刪除與飲水新增／刪除接上自動上傳；APP 進入／恢復補對最近兩天，涵蓋桌面飲水小工具；健康卡顯示重試提示。
+- `mobile/test/health_auto_sync_test.dart` 等：涵蓋更新熱量、刪至 0、短時間合併、上傳期間再變更、節流、失敗重試、跨重啟補傳與帳號隔離、逐日失敗與格式錯誤、Fresh GET 不共用快取請求。
+- `flutter test --no-pub`：108/108 通過。`flutter analyze --no-pub`：僅既有 `app_logger.dart:84` 警告。`flutter build apk --debug --no-pub`：成功。`git diff --check`：通過。
+- `adb devices` 顯示沒有已連接 Android 裝置；實機 Health Connect／桌面小工具行為尚未驗證。
+
+# 2026-09-26 發佈 APP 更新修復與健康自動同步（v0.78.0）
+
+## Goal + acceptance criteria
+
+- [ ] 將本工作樹中已完成的 APP 更新修復與健康同步變更提交至 `main`。
+- [x] 依建議版本更新 `mobile/pubspec.yaml`（`0.78.0+127`），準備 `v0.78.0` tag。
+- [ ] 建立 GitHub Release，確認 Android CI 完成並驗證遠端 main/tag/release。
+
+## Risk & rollback
+
+- **Risk level:** medium（Android 發佈與共用版本 tag；tag 也會觸發 Web 映像 CI）。
+- **Affected components:** Flutter Android APK、GitHub `main`、版本 tag 與 Release。
+- **Rollback:** 可刪除尚未公開的 Release/tag 並 revert main commit；S3 APK 發佈若已完成需重新發布前一版 APK。
+
+## Working notes
+
+- 發佈前本機 `main` 與已 fetch 的 `origin/main` 同為 `25d72e7`，工作樹變更只含先前已完成的更新修復與本次健康同步。
+- 專案最新 tag/release 是 `v0.77.3`；`release-android` 技能要求未指定版本時向使用者詢問。已提出 `v0.78.0`（功能升 minor，建議）或 `v0.77.4`（patch）選項。
+- GitHub Release workflow 不會由 tag 自動建立 GitHub Release；Android CI 會建置簽章 APK 並上傳 S3，Docker workflow 亦會由共同 tag 觸發。
+- GitHub CLI 目前 token 無效；外網讀取已透過核准的 `git fetch`/公開 API 驗證可用。正式 push／建立 Release 仍待執行與驗證。
+
+## Results
+
+- 待發佈版本選擇與遠端操作完成後更新。

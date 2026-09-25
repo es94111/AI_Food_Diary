@@ -9,12 +9,24 @@ class MealService {
   static final _api = ApiClient.instance;
 
   /// Meals for a single local day (date = yyyy-MM-dd).
-  static Future<List<Meal>> mealsForDay(DateTime day) async {
+  static Future<List<Meal>> mealsForDay(DateTime day,
+      {bool cache = true}) async {
     final res = await _api.get('/api/meals',
         query: {'date': isoDate(day), 'tzOffset': '${localTzOffsetMinutes()}'},
-        cache: true);
+        cache: cache);
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法載入餐點'));
+    }
+    if (!cache &&
+        (res.data is! Map ||
+            res.data['meals'] is! List ||
+            (res.data['meals'] as List).any((meal) {
+              if (meal is! Map) return true;
+              final calories =
+                  double.tryParse(meal['totalCalories']?.toString() ?? '');
+              return calories == null || !calories.isFinite || calories < 0;
+            }))) {
+      throw ApiException('餐點資料不完整，已取消健康同步');
     }
     final list = res.data['meals'] as List? ?? [];
     return list.map((e) => Meal.fromJson(e as Map<String, dynamic>)).toList();
@@ -166,13 +178,14 @@ class MealService {
 
   // ---- persistence ----
 
-  static Future<void> createMeal({
+  static Future<DateTime> createMeal({
     required String mealType,
     List<String>? imageDataUrls,
     List<String>? savedFoodImageIds,
     String? description,
     required List<MealItem> items,
   }) async {
+    final eatenAt = DateTime.now();
     final res = await _api.post('/api/meals', data: {
       'mealType': mealType,
       if (imageDataUrls != null && imageDataUrls.isNotEmpty)
@@ -182,7 +195,7 @@ class MealService {
         'savedFoodImageIds': savedFoodImageIds,
       if (description != null && description.isNotEmpty) 'description': description,
       'manualItems': items.map((e) => e.toPayload()).toList(),
-      'eatenAt': DateTime.now().toUtc().toIso8601String(),
+      'eatenAt': eatenAt.toUtc().toIso8601String(),
     });
     if (!ApiClient.ok(res)) {
       Sentry.logger.error('Meal save failed', attributes: {
@@ -198,6 +211,7 @@ class MealService {
       1,
       attributes: {'meal_type': SentryAttribute.string(mealType)},
     );
+    return eatenAt;
   }
 
   static Future<void> updateMeal(

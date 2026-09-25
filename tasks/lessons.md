@@ -1,5 +1,17 @@
 # Lessons
 
+## 2026-09-26 — Avoid formatting unrelated Dart lines
+
+- **Failure mode:** Running `dart format` on whole legacy files while changing health sync produced hundreds of unrelated line-wrap edits.
+- **Detection signal:** `git diff --stat` showed hundreds of changed lines in files where the behavior edit was only a few lines.
+- **Prevention rule:** Compare diff size immediately after formatting; for files not already formatter-clean, restore the original layout and reapply only the functional hunks before verification.
+
+## 2026-09-25 — IndexedStack visibility is not TickerMode
+
+- **Failure mode:** I used `TickerMode` to decide whether an update card in an `IndexedStack` was still visible after an asynchronous permission check. `IndexedStack` keeps inactive children mounted and does not mute their tickers, so the update dialog could still open over another tab.
+- **Detection signal:** A focused widget test switched the stack index before calling `runUpdate`; the test hung waiting for a dialog that should not have opened. Flutter's local `indexed_stack.dart` shows it wraps children in a visibility scope.
+- **Prevention rule:** Check `Visibility.of(context)` for `IndexedStack` tab visibility and test asynchronous UI work against the actual parent navigation widget rather than inferring visibility from `mounted` or ticker state.
+
 ## 2026-08-23 — mobile yesterday summary regression
 
 - **Failure mode:** The v0.72 mobile UI refinement removed the dashboard call to the existing `showDailySummaryPopup` flow, so the app could fetch yesterday's data for the home widget but never display it.

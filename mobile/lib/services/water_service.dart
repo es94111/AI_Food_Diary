@@ -8,12 +8,20 @@ class WaterService {
   static final _api = ApiClient.instance;
 
   /// Today's (or [day]'s) water logs plus the day total, in ml.
-  static Future<({List<WaterLog> logs, int totalMl})> forDay(DateTime day) async {
+  static Future<({List<WaterLog> logs, int totalMl})> forDay(DateTime day,
+      {bool cache = true}) async {
     final res = await _api.get('/api/water',
         query: {'date': isoDate(day), 'tzOffset': '${localTzOffsetMinutes()}'},
-        cache: true);
+        cache: cache);
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '無法載入喝水紀錄'));
+    }
+    if (!cache &&
+        (res.data is! Map ||
+            res.data['logs'] is! List ||
+            res.data['totalMl'] is! num ||
+            (res.data['totalMl'] as num) < 0)) {
+      throw ApiException('飲水資料不完整，已取消健康同步');
     }
     final list = (res.data['logs'] as List? ?? [])
         .map((e) => WaterLog.fromJson(e as Map<String, dynamic>))
@@ -39,15 +47,17 @@ class WaterService {
     }
   }
 
-  static Future<void> add(int amountMl) async {
+  static Future<DateTime> add(int amountMl) async {
+    final drankAt = DateTime.now();
     final res = await _api.post('/api/water', data: {
       'amountMl': amountMl,
-      'drankAt': DateTime.now().toUtc().toIso8601String(),
+      'drankAt': drankAt.toUtc().toIso8601String(),
     });
     if (!ApiClient.ok(res)) {
       throw ApiException(ApiClient.errorMessage(res, '儲存失敗，請稍後再試'),
           statusCode: res.statusCode);
     }
+    return drankAt;
   }
 
   static Future<void> delete(String id) async {

@@ -39,9 +39,9 @@ class _FakeAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
-ResponseBody _jsonBody(Object data) => ResponseBody.fromString(
+ResponseBody _jsonBody(Object data, {int statusCode = 200}) => ResponseBody.fromString(
       jsonEncode(data),
-      200,
+      statusCode,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
       },
@@ -101,5 +101,58 @@ void main() {
     await HealthService.fetchRecentMeals(HealthService.appDataMaxDays + 20);
 
     expect(adapter.callCount, HealthService.appDataMaxDays);
+  });
+
+  test('a failed meal day fails the sync instead of silently skipping it', () async {
+    var calls = 0;
+    final adapter = _FakeAdapter((_) {
+      calls++;
+      return calls == 2
+          ? _jsonBody({'error': '讀取失敗'}, statusCode: 500)
+          : _jsonBody({'meals': []});
+    });
+    ApiClient.instance.debugSetDioForTesting(
+      Dio(BaseOptions(baseUrl: ApiClient.baseUrl,
+          validateStatus: (status) => status != null && status < 600))
+        ..httpClientAdapter = adapter,
+    );
+
+    await expectLater(HealthService.fetchRecentMeals(3),
+        throwsA(isA<ApiException>()));
+    expect(adapter.callCount, 2);
+  });
+
+  test('a failed water day fails the sync instead of silently skipping it', () async {
+    final adapter = _FakeAdapter((_) =>
+        _jsonBody({'error': '讀取失敗'}, statusCode: 500));
+    ApiClient.instance.debugSetDioForTesting(
+      Dio(BaseOptions(baseUrl: ApiClient.baseUrl,
+          validateStatus: (status) => status != null && status < 600))
+        ..httpClientAdapter = adapter,
+    );
+
+    await expectLater(HealthService.fetchRecentWaterLogs(2),
+        throwsA(isA<ApiException>()));
+    expect(adapter.callCount, 1);
+  });
+
+  test('a malformed meal response cannot overwrite calories with zero', () async {
+    final adapter = _FakeAdapter((_) => _jsonBody({'success': true}));
+    ApiClient.instance.debugSetDioForTesting(
+      Dio(BaseOptions(baseUrl: ApiClient.baseUrl))..httpClientAdapter = adapter,
+    );
+
+    await expectLater(HealthService.fetchRecentMeals(1),
+        throwsA(isA<ApiException>()));
+  });
+
+  test('a malformed water total cannot overwrite intake with zero', () async {
+    final adapter = _FakeAdapter((_) => _jsonBody({'logs': []}));
+    ApiClient.instance.debugSetDioForTesting(
+      Dio(BaseOptions(baseUrl: ApiClient.baseUrl))..httpClientAdapter = adapter,
+    );
+
+    await expectLater(HealthService.fetchRecentWaterLogs(1),
+        throwsA(isA<ApiException>()));
   });
 }

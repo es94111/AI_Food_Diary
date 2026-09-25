@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../services/auth_service.dart';
+import '../services/health_auto_sync.dart';
 import '../services/water_service.dart';
 import '../theme/app_theme.dart';
 
@@ -81,7 +82,8 @@ class _WaterCardState extends State<WaterCard> {
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await WaterService.add(amountMl);
+      final drankAt = await WaterService.add(amountMl);
+      HealthAutoSync.instance.waterChanged(drankAt);
       await _load();
     } catch (e) {
       _toast('$e');
@@ -93,8 +95,16 @@ class _WaterCardState extends State<WaterCard> {
   Future<void> _delete(String id) async {
     if (_busy) return;
     setState(() => _busy = true);
+    var day = widget.date;
+    for (final log in _logs) {
+      if (log.id == id) {
+        day = log.drankAt;
+        break;
+      }
+    }
     try {
       await WaterService.delete(id);
+      HealthAutoSync.instance.waterChanged(day);
       await _load();
     } catch (e) {
       _toast('$e');

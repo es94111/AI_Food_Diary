@@ -146,6 +146,27 @@ void main() {
     expect(results[1].data['date'], '2026-09-08');
   });
 
+  test('fresh-only GET does not join a cache-enabled GET', () async {
+    final firstResponse = Completer<ResponseBody>();
+    var calls = 0;
+    final adapter = _FakeAdapter((options) async {
+      calls++;
+      return calls == 1
+          ? firstResponse.future
+          : _jsonBody({'version': 'fresh'});
+    });
+    ApiClient.instance.debugSetDioForTesting(_dioWith(adapter));
+
+    final cachedRequest = ApiClient.instance.get('/api/meals',
+        query: {'date': '2026-09-08'}, cache: true);
+    final freshRequest = ApiClient.instance.get('/api/meals',
+        query: {'date': '2026-09-08'}, cache: false);
+    expect((await freshRequest).data['version'], 'fresh');
+    expect(adapter.callCount, 2);
+    firstResponse.complete(_jsonBody({'version': 'old'}));
+    await cachedRequest;
+  });
+
   test('a failed GET is not stuck — the next call really retries', () async {
     var callCount = 0;
     final adapter = _FakeAdapter((options) async {

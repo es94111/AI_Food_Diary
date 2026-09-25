@@ -415,11 +415,9 @@ class HealthService {
     final span = min(days, appDataMaxDays);
     final meals = <Meal>[];
     for (var i = 0; i < span; i++) {
-      try {
-        meals.addAll(await MealService.mealsForDay(now.subtract(Duration(days: i))));
-      } catch (_) {
-        // Skip days that fail to load; keep building the rest.
-      }
+      // A skipped day makes the sync appear complete when it is not.
+      meals.addAll(await MealService.mealsForDay(
+          DateTime(now.year, now.month, now.day - i), cache: false));
     }
     return meals;
   }
@@ -433,12 +431,9 @@ class HealthService {
     final span = min(days, appDataMaxDays);
     final logs = <WaterLog>[];
     for (var i = 0; i < span; i++) {
-      try {
-        final day = await WaterService.forDay(now.subtract(Duration(days: i)));
-        logs.addAll(day.logs);
-      } catch (_) {
-        // Skip days that fail to load; keep building the rest.
-      }
+      final day = await WaterService.forDay(
+          DateTime(now.year, now.month, now.day - i), cache: false);
+      logs.addAll(day.logs);
     }
     return logs;
   }
@@ -459,14 +454,13 @@ class HealthService {
       final day = _localDayStart(meal.eatenAt);
       byDay[day] = (byDay[day] ?? 0) + meal.totalCalories;
     }
+    final now = DateTime.now();
     final out = <Map<String, dynamic>>[];
-    byDay.forEach((day, kcal) {
-      if (kcal > 0) {
-        out.add(_payload('NUTRITION', kcal.roundToDouble(), 'kcal', day));
-      } else {
-        AppLogger.log('Nutrition', '${_isoDay(day)}: 熱量為 0，不上傳此日');
-      }
-    });
+    for (var i = 0; i < min(days, appDataMaxDays); i++) {
+      final day = DateTime(now.year, now.month, now.day - i);
+      out.add(_payload('NUTRITION', (byDay[day] ?? 0).roundToDouble(),
+          'kcal', day));
+    }
     AppLogger.log('Nutrition',
         '營養彙整完成：共讀到 ${all.length} 筆餐點，'
         '產生 ${out.length} 筆 NUTRITION 指標');
@@ -488,10 +482,12 @@ class HealthService {
       final d = _localDayStart(log.drankAt);
       byDay[d] = (byDay[d] ?? 0) + log.amountMl;
     }
+    final now = DateTime.now();
     final out = <Map<String, dynamic>>[];
-    byDay.forEach((day, ml) {
-      if (ml > 0) out.add(_payload('WATER', ml / 1000.0, 'L', day));
-    });
+    for (var i = 0; i < min(days, appDataMaxDays); i++) {
+      final day = DateTime(now.year, now.month, now.day - i);
+      out.add(_payload('WATER', (byDay[day] ?? 0) / 1000.0, 'L', day));
+    }
     return out;
   }
 
@@ -501,11 +497,6 @@ class HealthService {
     final l = d.toLocal();
     return DateTime(l.year, l.month, l.day);
   }
-
-  static final _isoDayFmt = DateFormat('yyyy-MM-dd');
-
-  /// Local `yyyy-MM-dd` label for a date, used only in log lines.
-  static String _isoDay(DateTime d) => _isoDayFmt.format(d.toLocal());
 
   /// Most recent `latest`-aggregated value across all days for [backendType].
   static double? _latestLatestValue(
@@ -575,6 +566,47 @@ class HealthService {
   // a long range is really for; cap the app-owned backfill at this many days.
   static const appDataMaxDays = 31;
 
+  /// Refresh only the app-owned daily totals touched by meal or water edits.
+  /// Upload zero as well, so deleting the final entry clears the old total.
+  static Future<void> syncAppDataForDays({
+    Set<DateTime> nutritionDays = const {},
+    Set<DateTime> waterDays = const {},
+  }) async {
+    final sessionAtStart = _api.sessionCookie;
+    final metrics = <Map<String, dynamic>>[];
+    final sortedNutritionDays = nutritionDays.map(_localDayStart).toSet().toList()
+      ..sort();
+    final sortedWaterDays = waterDays.map(_localDayStart).toSet().toList()
+      ..sort();
+    for (final day in sortedNutritionDays) {
+      final meals = await MealService.mealsForDay(day, cache: false);
+      final kcal = meals.fold<double>(
+          0, (total, meal) => total + meal.totalCalories);
+      metrics.add(_payload('NUTRITION', kcal.roundToDouble(), 'kcal', day));
+    }
+    for (final day in sortedWaterDays) {
+      final water = await WaterService.forDay(day, cache: false);
+      metrics.add(_payload('WATER', water.totalMl / 1000.0, 'L', day));
+    }
+    if (metrics.isEmpty) return;
+    if (_api.sessionCookie != sessionAtStart) {
+      throw ApiException('登入狀態已變更，取消本次健康資料上傳');
+    }
+
+    for (var i = 0; i < metrics.length; i += _syncBatchSize) {
+      final batch = metrics.sublist(i, min(i + _syncBatchSize, metrics.length));
+      final res = await _api.post('/api/health/sync',
+          expectedSessionCookie: sessionAtStart, data: {
+        'source': 'HEALTH_CONNECT',
+        'metrics': batch,
+      });
+      if (!ApiClient.ok(res) ||
+          (res.data['synced'] as num?)?.toInt() != batch.length) {
+        throw ApiException(ApiClient.errorMessage(res, '熱量與飲水自動同步失敗'));
+      }
+    }
+  }
+
   /// Ensures a sync device token exists, requests permissions, reads the last
   /// [days] days, uploads (in ≤500-metric batches), then re-reads the server to
   /// verify each uploaded metric type actually landed. Returns a [HealthSyncReport].
@@ -614,12 +646,9 @@ class HealthService {
     AppLogger.log('HealthSync',
         '彙整完成：共 ${metrics.length} 筆指標（營養 ${nutrition.length}、'
         '喝水 ${water.length}、Health Connect ${hc.length}）');
-    // Spell out exactly what the NUTRITION payload looks like — the thing the
-    // user is trying to debug. Empty here = nothing to upload (no logged meals).
-    if (nutrition.isEmpty) {
-      AppLogger.log('HealthSync',
-          '⚠️ 沒有任何營養指標可上傳（近 $appDays 天沒有已記錄、熱量>0 的餐點）');
-    } else {
+    // Show the daily nutrition payloads, including zeroes that clear a stale
+    // server total after the last meal on a day was deleted.
+    if (nutrition.isNotEmpty) {
       for (final m in nutrition) {
         AppLogger.log('HealthSync',
             '營養待上傳：${m['measuredAt']} = ${m['value']} ${m['unit']}');

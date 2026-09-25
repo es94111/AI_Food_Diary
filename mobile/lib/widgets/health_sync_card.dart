@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:open_filex/open_filex.dart';
 
 import '../models/models.dart';
 import '../services/app_logger.dart';
+import '../services/health_auto_sync.dart';
 import '../services/health_service.dart';
 import '../theme/app_theme.dart';
 
@@ -165,7 +167,22 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
   @override
   void initState() {
     super.initState();
+    HealthAutoSync.instance.addListener(_onAutoSync);
     _init();
+  }
+
+  @override
+  void dispose() {
+    HealthAutoSync.instance.removeListener(_onAutoSync);
+    super.dispose();
+  }
+
+  void _onAutoSync() {
+    if (!mounted) return;
+    setState(() {
+      if (HealthAutoSync.instance.retrying) _message = null;
+    });
+    if (!HealthAutoSync.instance.retrying) unawaited(_load());
   }
 
   Future<void> _init() async {
@@ -381,6 +398,11 @@ class _HealthSyncCardState extends State<HealthSyncCard> {
                   ),
                 ),
               ),
+            ],
+            if (HealthAutoSync.instance.retrying) ...[
+              const SizedBox(height: 8),
+              Text('餐點熱量／飲水自動同步暫時失敗，將自動重試。',
+                  style: TextStyle(fontSize: 12, color: p.dangerInk)),
             ],
             const SizedBox(height: 12),
             Row(

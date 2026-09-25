@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 
 import '../models/models.dart';
 import '../services/api_client.dart';
+import '../services/health_auto_sync.dart';
 import '../services/image_cache_service.dart';
 import '../services/meal_service.dart';
 import '../theme/app_theme.dart';
@@ -84,6 +85,7 @@ class _MealCardState extends State<_MealCard> {
     );
     if (confirm != true) return;
     await MealService.deleteMeal(meal.id);
+    HealthAutoSync.instance.nutritionChanged(meal.eatenAt);
     await widget.onChanged();
   }
 
@@ -515,6 +517,7 @@ class _EditMealSheetState extends State<_EditMealSheet> {
     try {
       await MealService.updateMeal(
           widget.meal.id, _mealType, valid.map((e) => e.toMealItem()).toList());
+      HealthAutoSync.instance.nutritionChanged(widget.meal.eatenAt);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       setState(() => _error = e.toString());
