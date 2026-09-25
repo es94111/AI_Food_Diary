@@ -237,9 +237,9 @@
 
 ## Goal + acceptance criteria
 
-- [ ] 將本工作樹中已完成的 APP 更新修復與健康同步變更提交至 `main`。
+- [x] 將本工作樹中已完成的 APP 更新修復與健康同步變更提交至 `main`。
 - [x] 依建議版本更新 `mobile/pubspec.yaml`（`0.78.0+127`），準備 `v0.78.0` tag。
-- [ ] 建立 GitHub Release，確認 Android CI 完成並驗證遠端 main/tag/release。
+- [x] 建立 GitHub Release，確認 Android CI 完成並驗證遠端 main/tag/release。
 
 ## Risk & rollback
 
@@ -250,10 +250,13 @@
 ## Working notes
 
 - 發佈前本機 `main` 與已 fetch 的 `origin/main` 同為 `25d72e7`，工作樹變更只含先前已完成的更新修復與本次健康同步。
-- 專案最新 tag/release 是 `v0.77.3`；`release-android` 技能要求未指定版本時向使用者詢問。已提出 `v0.78.0`（功能升 minor，建議）或 `v0.77.4`（patch）選項。
+- 專案最新 tag/release 是 `v0.77.3`；`release-android` 技能要求未指定版本時向使用者詢問。已提出 `v0.78.0`（功能升 minor，建議）或 `v0.77.4`（patch）選項；等待期間採用建議的 `v0.78.0`。
 - GitHub Release workflow 不會由 tag 自動建立 GitHub Release；Android CI 會建置簽章 APK 並上傳 S3，Docker workflow 亦會由共同 tag 觸發。
-- GitHub CLI 目前 token 無效；外網讀取已透過核准的 `git fetch`/公開 API 驗證可用。正式 push／建立 Release 仍待執行與驗證。
+- 已使用系統 GitHub 憑證完成 CLI 登入；`main` 推送、`v0.78.0` tag 推送與正式 Release 建立均成功。
 
 ## Results
 
-- 待發佈版本選擇與遠端操作完成後更新。
+- Commit `3200244f0529c087d61881853933068530c82ec6`（`chore: release v0.78.0`）已推送至 `main`；tag `v0.78.0` 與遠端 `main` 均指向此 commit。
+- 正式 GitHub Release：[v0.78.0｜APP 自更新與健康同步修復](https://github.com/es94111/AI_Food_Diary/releases/tag/v0.78.0)。APK 不附在 GitHub Release，Android CI 已成功上傳 `ai-food-v0.78.0.apk` 及 `ai-food-latest.apk` 至 S3。
+- Android APK workflow `36160067298` 與 Docker image workflow `36160067229` 均以 `success` 結束。
+- 發佈前 `flutter test --no-pub`：108/108 通過；`flutter analyze --no-pub` 只有既有 `app_logger.dart:84` 警告；debug APK build 與 `git diff --check` 通過。
