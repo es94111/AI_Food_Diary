@@ -1,4 +1,7 @@
 import { redirect } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
+import { BrandMark } from "@/components/brand-mark";
 import { getCurrentUser } from "@/lib/auth";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { TURNSTILE_SITE_KEY } from "@/lib/turnstile-config";
@@ -25,22 +28,38 @@ export default async function LoginPage({
   if (user) redirect(nextPath);
 
   return (
-    <main className="flex min-h-dvh items-center justify-center px-6 py-12">
-      <div className="glass iridescent w-full max-w-md rounded-[2rem] p-8 text-center">
-        <h1 className="text-3xl font-black">登入或註冊</h1>
-        <p className="mt-2 text-stone-600">
-          本服務僅支援 Google SSO。選擇 Google
-          帳號即可登入，首次使用會自動建立帳號。
-        </p>
-        <GoogleSignInButton
-          clientId={
-            process.env.GOOGLE_CLIENT_ID ??
-            process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
-          }
-          turnstileSiteKey={TURNSTILE_SITE_KEY}
-          nextPath={nextPath}
-        />
-      </div>
-    </main>
+    <div className="site-auth">
+      <header className="site-header site-auth-header site-wrap">
+        <Link className="site-brand" href="/" aria-label="AI Food Diary 首頁">
+          <span className="site-brand-symbol"><BrandMark /></span>
+          <span>AI Food Diary</span>
+        </Link>
+        <Link className="site-auth-back" href="/">返回首頁</Link>
+      </header>
+      <main className="site-auth-grid site-wrap">
+        <section className="site-auth-story" aria-labelledby="site-auth-story-title">
+          <div>
+            <h1 id="site-auth-story-title">從今天這一餐，<br />開始更了解自己。</h1>
+            <p>留下每一餐的內容，檢查 AI 的估算，再依自己的步調回看每天的飲食。</p>
+          </div>
+          <div className="site-auth-photo">
+            <Image src="/images/meal-journal.jpg" alt="雞肉、糙米與蔬菜的餐點示意照片" width={1100} height={1100} sizes="(max-width: 900px) 0px, 50vw" loading="eager" />
+            <span>一餐一餐，慢慢記下來。</span>
+          </div>
+        </section>
+        <section className="site-auth-panel" aria-labelledby="site-auth-title">
+          <span className="site-auth-panel-mark"><BrandMark /></span>
+          <h2 id="site-auth-title">登入或註冊</h2>
+          <p>使用 Google 帳號繼續。首次登入時會自動建立帳號，之後就能接著記錄。</p>
+          <div className="site-auth-signin">
+            <GoogleSignInButton
+              clientId={process.env.GOOGLE_CLIENT_ID ?? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+              turnstileSiteKey={TURNSTILE_SITE_KEY}
+              nextPath={nextPath}
+            />
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }

@@ -1,5 +1,7 @@
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { BrandMark } from "@/components/brand-mark";
 import { getCurrentUser } from "@/lib/auth";
 
 export default async function HomePage() {
@@ -7,55 +9,84 @@ export default async function HomePage() {
   if (user) redirect("/dashboard");
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center px-6 py-12">
-      <section className="grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
-        <div>
-          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.35em] text-amber-700">
-            AI Food Diary
-          </p>
-          <h1 className="text-5xl font-black leading-tight text-stone-950 md:text-7xl">
-            拍下每一餐
-            <br />讓 AI 幫你看懂營養
-          </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-stone-700">
-            上傳餐點照片，自動估算熱量、蛋白質、脂肪與碳水，並依據今日攝取提供下一餐建議與昨日總結。
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              className="rounded-full bg-stone-950 px-6 py-3 font-semibold text-white"
-              href="/login"
-            >
-              使用 Google 開始
-            </Link>
+    <div className="site-home">
+      <header className="site-header site-wrap">
+        <Link className="site-brand" href="/" aria-label="AI Food Diary 首頁">
+          <span className="site-brand-symbol"><BrandMark /></span>
+          <span>AI Food Diary</span>
+        </Link>
+        <nav className="site-header-nav" aria-label="網站導覽">
+          <a href="#how-it-works">怎麼運作</a>
+          <Link className="site-header-login" href="/login">登入或開始使用</Link>
+        </nav>
+      </header>
+
+      <main>
+
+      <section className="site-hero site-wrap" aria-labelledby="site-hero-title">
+        <div className="site-hero-copy">
+          <h1 id="site-hero-title">把每一餐，<br /><span>記成自己的節奏。</span></h1>
+          <p className="site-hero-lead">拍下、描述，或手動輸入今天吃的東西。AI 幫你整理營養估算，最後由你確認，才成為正式紀錄。</p>
+          <div className="site-hero-actions">
+            <Link className="site-button site-button-primary" href="/login">開始記錄</Link>
+            <a className="site-text-link" href="#how-it-works">了解記錄流程</a>
           </div>
+          <p className="site-hero-footnote">每一次估算都可以檢查、調整，再決定是否儲存。</p>
         </div>
-        <div className="rounded-[2rem] border border-white/80 bg-white/80 p-6 shadow-2xl shadow-amber-900/10 backdrop-blur">
-          <div className="rounded-[1.5rem] bg-stone-950 p-6 text-white">
-            <p className="text-sm text-amber-200">今日攝取</p>
-            <p className="mt-2 text-5xl font-black">1,420 kcal</p>
-            <div className="mt-8 grid grid-cols-3 gap-3 text-center">
-              <div className="rounded-2xl bg-white/10 p-4">
-                <p className="text-2xl font-bold">82g</p>
-                <p className="text-xs text-stone-300">蛋白質</p>
+
+        <div className="site-hero-scene" aria-label="飲食記錄示意">
+          <div className="site-journal">
+            <div className="site-journal-header">
+              <div className="site-journal-brand"><span className="site-journal-brand-mark"><BrandMark /></span> 我的飲食紀錄</div>
+              <span className="site-journal-date">今天 · 午餐</span>
+            </div>
+            <div className="site-journal-body">
+              <div className="site-journal-photo">
+                <Image src="/images/meal-journal.jpg" alt="雞肉、糙米與蔬菜的餐點示意照片" width={1100} height={1100} sizes="(max-width: 620px) 100vw, (max-width: 900px) 70vw, 40vw" preload />
+                <span className="site-photo-label">拍照記下這一餐</span>
               </div>
-              <div className="rounded-2xl bg-white/10 p-4">
-                <p className="text-2xl font-bold">45g</p>
-                <p className="text-xs text-stone-300">脂肪</p>
-              </div>
-              <div className="rounded-2xl bg-white/10 p-4">
-                <p className="text-2xl font-bold">160g</p>
-                <p className="text-xs text-stone-300">碳水</p>
+              <div className="site-journal-entry">
+                <span className="site-entry-status"><span aria-hidden="true" /> AI 估算 · 待確認</span>
+                <h2>雞肉與蔬菜<br />糙米餐盤</h2>
+                <p>AI 先整理內容，你可以修正食物、份量與營養數值。</p>
+                <div className="site-entry-calories"><strong>548</strong><span>kcal<br />估算熱量</span></div>
+                <dl className="site-entry-macros">
+                  <div><dt>蛋白質</dt><dd>36 g</dd></div>
+                  <div><dt>脂肪</dt><dd>18 g</dd></div>
+                  <div><dt>碳水</dt><dd>60 g</dd></div>
+                </dl>
+                <div className="site-entry-review"><span className="site-review-check" aria-hidden="true" /><span>確認後，才會儲存為正式紀錄</span></div>
               </div>
             </div>
-            <div className="mt-6 rounded-2xl bg-amber-400 p-4 text-stone-950">
-              <p className="font-bold">下一餐建議</p>
-              <p className="mt-1 text-sm">
-                補充高蛋白與蔬菜，避免再攝取高糖飲料。
-              </p>
-            </div>
+          </div>
+          <p className="site-scene-note">畫面與營養數值為示意，實際估算會依餐點而異。</p>
+        </div>
+      </section>
+
+      <section className="site-process" id="how-it-works" aria-labelledby="site-process-title">
+        <div className="site-wrap">
+          <div className="site-process-intro">
+            <h2 id="site-process-title">先看懂，<br />再決定要留下什麼。</h2>
+            <p>記錄可以很簡單，也保留你需要的細節。從第一餐到長期回顧，都由你掌握。</p>
+          </div>
+          <div className="site-process-steps">
+            <article><span>01</span><h3>用習慣的方式開始</h3><p>上傳餐點照片、輸入描述，或直接手動記錄。</p></article>
+            <article><span>02</span><h3>把估算變成自己的紀錄</h3><p>檢查 AI 整理的食物與營養，修改後再確認儲存。</p></article>
+            <article><span>03</span><h3>回看每天的節奏</h3><p>查看攝取摘要、飲水與歷史紀錄，理解下一步。</p></article>
           </div>
         </div>
       </section>
-    </main>
+
+      <section className="site-close site-wrap" aria-labelledby="site-close-title">
+        <div>
+          <h2 id="site-close-title">從今天這一餐開始。</h2>
+          <p>慢慢記，也能更清楚地認識自己的飲食。</p>
+        </div>
+        <Link className="site-button site-button-light" href="/login">開始使用</Link>
+      </section>
+      </main>
+
+      <footer className="site-footer site-wrap"><span>AI Food Diary</span><span>理解每一餐，照自己的步調前進。</span></footer>
+    </div>
   );
 }

@@ -45,6 +45,8 @@ export function GoogleSignInButton({
   useEffect(() => {
     if (!clientId) return;
     const configuredClientId = clientId;
+    let renderedWidth = 0;
+    let initialized = false;
 
     async function onCredential(response: { credential: string }) {
       if (busyRef.current) return;
@@ -88,29 +90,41 @@ export function GoogleSignInButton({
 
     function render() {
       if (!window.google || !ref.current) return;
-      window.google.accounts.id.initialize({
-        client_id: configuredClientId,
-        callback: onCredential,
-      });
+      const width = Math.min(320, Math.floor(ref.current.clientWidth));
+      if (width <= 0 || width === renderedWidth) return;
+      if (!initialized) {
+        window.google.accounts.id.initialize({
+          client_id: configuredClientId,
+          callback: onCredential,
+        });
+        initialized = true;
+      }
+      ref.current.replaceChildren();
       window.google.accounts.id.renderButton(ref.current, {
         theme: "outline",
         size: "large",
-        width: 320,
+        width,
         text: "continue_with",
         locale: "zh_TW",
       });
+      renderedWidth = width;
     }
 
+    const observer = new ResizeObserver(render);
+    if (ref.current) observer.observe(ref.current);
     if (window.google) {
       render();
-      return;
+      return () => observer.disconnect();
     }
     const existing = document.querySelector<HTMLScriptElement>(
       `script[src="${SCRIPT_SRC}"]`,
     );
     if (existing) {
       existing.addEventListener("load", render);
-      return () => existing.removeEventListener("load", render);
+      return () => {
+        observer.disconnect();
+        existing.removeEventListener("load", render);
+      };
     }
     const script = document.createElement("script");
     script.src = SCRIPT_SRC;
@@ -118,6 +132,10 @@ export function GoogleSignInButton({
     script.defer = true;
     script.onload = render;
     document.head.appendChild(script);
+    return () => {
+      observer.disconnect();
+      script.onload = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clientId, nextPath]);
 
@@ -148,7 +166,7 @@ export function GoogleSignInButton({
       />
       <div
         className={
-          busy || !turnstileReady ? "pointer-events-none opacity-60" : undefined
+          `site-google-button${busy || !turnstileReady ? " pointer-events-none opacity-60" : ""}`
         }
         ref={ref}
       />

@@ -260,3 +260,58 @@
 - 正式 GitHub Release：[v0.78.0｜APP 自更新與健康同步修復](https://github.com/es94111/AI_Food_Diary/releases/tag/v0.78.0)。APK 不附在 GitHub Release，Android CI 已成功上傳 `ai-food-v0.78.0.apk` 及 `ai-food-latest.apk` 至 S3。
 - Android APK workflow `36160067298` 與 Docker image workflow `36160067229` 均以 `success` 結束。
 - 發佈前 `flutter test --no-pub`：108/108 通過；`flutter analyze --no-pub` 只有既有 `app_logger.dart:84` 警告；debug APK build 與 `git diff --check` 通過。
+
+# 2026-09-27 網站風格與 UI 更新
+
+## Goal + acceptance criteria
+
+- [x] 盤點現有 Web 頁面、共用樣式與產品設計約束。
+- [x] 將公開首頁與登入頁更新為與工作台一致的視覺語言；保留既有導向、Google SSO 與 Turnstile 流程。
+- [x] 改善共用導覽與互動狀態，維持桌面與手機可用性及鍵盤焦點可見性。
+- [x] 驗證桌面/手機版面、TypeScript/建置及 diff 品質。
+- [x] 記錄結果與未驗證項目。
+
+## Working notes
+
+- Web 入口為 `src/app/page.tsx`、`src/app/login/page.tsx`、`src/app/dashboard/*`，共用 token 在 `src/app/globals.css`。
+- 工作台已採暖米色畫布、深炭色側欄、琥珀/陶土/橄欖色系；首頁與登入頁仍採較舊的獨立樣式。本次延伸既有世界，統一公開頁與操作介面。
+- 文案依專案規範使用台灣繁體中文、溫和不評判的語氣；示範營養數字必須清楚標示為示意。
+- 風險低：限定 Web 視覺與可及性；不改資料模型/API/驗證流程。若出現回歸，可還原本次 Web UI 檔案。
+
+## Results
+
+- `src/app/page.tsx` 與 `src/app/login/page.tsx` 改用工作台現有的暖色、深炭色和共用品牌標記；首頁以標示為示意的餐點照片與可確認 AI 草稿呈現產品流程。圖片儲存在 `public/images/meal-journal.jpg`。
+- 工作台加入依路由更新的麵包屑與跳到主要內容連結；移除無實際同步訊號支持的「資料同步正常」文案。登入頁保留 `safeNextPath`、Google SSO 與 Turnstile，並處理窄螢幕驗證元件與 Google 按鈕寬度。
+- 視覺檢查：開發伺服器實際檢視首頁桌面 1280px、手機 390px，登入頁桌面 1280px、手機 390/320px；320px 的首頁與登入頁 `documentElement.scrollWidth` 均為 320px，沒有水平溢出。未登入狀態無法目視檢查工作台內頁。
+- `node_modules/.bin/tsc --noEmit` 通過；`node_modules/.bin/next build --webpack` 通過（43/43 頁）；`git diff --check` 通過。
+- `npm run build` 預設 Turbopack 在目前環境因子程序綁定連接埠遭拒而失敗，改用官方 `--webpack` 建置模式驗證成功。`npm run lint` 的既有腳本仍是 `next lint`，Next 16 回報 `Invalid project directory .../lint`；本次沒有更改 lint 設定。
+- 本機未設定 Google SSO，故未執行實際登入與人機驗證；登入控制元件已做程式檢查與窄螢幕版面檢查。
+
+# 2026-09-27 v0.79.0 網站 UI 發佈
+
+## Goal + acceptance criteria
+
+- [x] 確認使用者指定版本 `v0.79.0`，核對 `main`、遠端與既有 tag。
+- [x] 統一 Web、lockfile 與 Android 本地版本號，維持單一共用版本。
+- [x] 驗證版本與網站建置、檢查提交內容。
+- [ ] 提交並推送至 GitHub `main`；推送 `v0.79.0` tag。
+- [ ] 建立繁體中文 GitHub Release，確認遠端 commit/tag/release 與相關 CI。
+
+## Risk & rollback
+
+- **Risk level:** medium（共用版本 tag 觸發 Android APK 與 Docker 發佈）。
+- **Affected components:** Web UI、Android 版本資訊、GitHub main/tag/Release 與發佈 CI。
+- **Rollback:** 若需復原 UI，以新 commit revert 本次變更並重新發版；已公開 tag 與 Release 不重寫。Android APK 與 Docker `latest` 若受影響，重新發佈修正版本。
+
+## Working notes
+
+- 發佈前 `main` 與 `origin/main` 同為 `ea78224`，最新 tag 是 `v0.78.0`；`v0.79.0` 尚未存在。
+- 發佈前 `package.json`、`package-lock.json`、`mobile/pubspec.yaml` 版本分別為 `0.77.3`、`0.77.2`、`0.78.0+127`。
+- `main` 推送及 tag 推送都觸發 Android CI；tag 也觸發 Docker image CI，須檢查兩次 Android 執行結果。
+- `.DS_Store` 是既有未追蹤檔，不納入提交。
+
+## Results
+
+- `package.json`、`package-lock.json` 與 `mobile/pubspec.yaml` 已統一為 `0.79.0`；Android 本地 build number 為 `128`。
+- `node_modules/.bin/tsc --noEmit` 與 `node_modules/.bin/next build --webpack` 通過（43/43 頁）；`git diff --check` 通過。
+- 發佈與 CI 結果待確認。

@@ -15,6 +15,7 @@ type TurnstileRenderOptions = {
   "expired-callback": () => void;
   "error-callback": () => void;
   theme?: "auto" | "light" | "dark";
+  size?: "normal" | "compact";
 };
 
 type TurnstileApi = {
@@ -84,6 +85,17 @@ export const TurnstileWidget = forwardRef<
   const widgetIdRef = useRef<string | null>(null);
   const onTokenRef = useRef(onToken);
   const [loadError, setLoadError] = useState(false);
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current?.closest(".site-auth-signin");
+    if (!container) return;
+    const updateSize = () => setCompact(container.clientWidth < 300);
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     onTokenRef.current = onToken;
@@ -124,6 +136,7 @@ export const TurnstileWidget = forwardRef<
           "expired-callback": () => onTokenRef.current(null),
           "error-callback": () => onTokenRef.current(null),
           theme: "light",
+          size: compact ? "compact" : "normal",
         });
         widgetIdRef.current = widgetId;
       })
@@ -147,7 +160,7 @@ export const TurnstileWidget = forwardRef<
       widgetIdRef.current = null;
       onTokenRef.current(null);
     };
-  }, [action, siteKey]);
+  }, [action, siteKey, compact]);
 
   return (
     <div className="flex min-h-[70px] flex-col items-center justify-center gap-1">
