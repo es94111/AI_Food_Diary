@@ -294,8 +294,8 @@
 - [x] 確認使用者指定版本 `v0.79.0`，核對 `main`、遠端與既有 tag。
 - [x] 統一 Web、lockfile 與 Android 本地版本號，維持單一共用版本。
 - [x] 驗證版本與網站建置、檢查提交內容。
-- [ ] 提交並推送至 GitHub `main`；推送 `v0.79.0` tag。
-- [ ] 建立繁體中文 GitHub Release，確認遠端 commit/tag/release 與相關 CI。
+- [x] 提交並推送至 GitHub `main`；推送 `v0.79.0` tag。
+- [x] 建立繁體中文 GitHub Release，確認遠端 commit/tag/release 與相關 CI。
 
 ## Risk & rollback
 
@@ -314,4 +314,7 @@
 
 - `package.json`、`package-lock.json` 與 `mobile/pubspec.yaml` 已統一為 `0.79.0`；Android 本地 build number 為 `128`。
 - `node_modules/.bin/tsc --noEmit` 與 `node_modules/.bin/next build --webpack` 通過（43/43 頁）；`git diff --check` 通過。
-- 發佈與 CI 結果待確認。
+- Release commit `657766d9b713e4fefb5b38800e51e1123af94345` 已推送到 `main`；遠端 `v0.79.0` tag 指向同一 commit。
+- 正式 GitHub Release：[v0.79.0｜網站介面更新](https://github.com/es94111/AI_Food_Diary/releases/tag/v0.79.0)；APK 不附在 GitHub Release，由 Android CI 發佈至既有下載位置。
+- Application Build `36323003178`、Prisma Migration Smoke Test `36323003221`、CodeQL Advanced `36323003188` 與 Docker image `36323025903` 皆成功。
+- Android APK 的 `main` 執行 `36323003295` 與 tag 執行 `36323025919` 均成功；兩次執行的 `Upload APK to S3` 步驟皆為 `success`，發佈版本化與 latest APK。
