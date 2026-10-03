@@ -1,3 +1,34 @@
+# 2026-10-03 修復 Next.js Dependabot Critical Alert #39
+
+## Goal + acceptance criteria
+
+- [x] 確認 GitHub advisory 指出 `next` `<16.3.6`，修復版為 `16.3.6`；專案目前 lock 在 `16.3.5`。
+- [x] 搜尋確認專案未使用 `next/og` 或 `ImageResponse`。
+- [x] 將 Next.js 與 lockfile 更新至修復版，避免不相關依賴升級。
+- [x] 執行依賴稽核與相關建置/測試。
+- [x] 準備可審查的修補。
+- [x] 確認後續發版版本為 `0.79.2`。
+- [x] 更新 Web/Mobile 版本與 Android build number `130`。
+- [ ] 提交並推送 `main`，推送 tag `v0.79.2` 並建立 GitHub Release。
+- [ ] 驗證 Dependabot Critical alert 已關閉並確認 CI 成功。
+
+## Risk & rollback
+
+- **Risk level:** high（GitHub 標示 Critical 的 Next.js runtime dependency advisory）。
+- **Affected components:** Next.js runtime 與 npm lockfile。
+- **Rollback:** 若修復版造成建置或運行回歸，回退程式碼相容性問題，但不要重新發布含有已知受影響 Next.js 版本的 production image。
+
+## Working notes
+
+- GitHub Dependabot alert #39：`GHSA-vcvr-r3jv-pc5j`；首個修復版 `16.3.6`。Advisory 的 RCE 影響面是 Node.js `next/og` ImageResponse 的攻擊者可控 SVG 輸入；本 repo 搜尋沒有使用該 API，但仍更新依賴以清除此 Critical alert。
+
+## Results
+
+- `package.json`/`package-lock.json` 僅將 Next.js 與其 SWC/env 子套件由 `16.3.5` 更新為修復版 `16.3.6`。
+- `npm run build` 通過（Next.js `16.3.6`，43/43 靜態頁完成）；`npm audit --omit=dev --audit-level=high` → `found 0 vulnerabilities`。
+- 全相依樹 `npm audit` 仍報 5 個 High `braces` advisories，路徑在 ESLint 開發工具鏈；沒有 Critical advisory。
+- 使用者確認後續安全修補發版為 `v0.79.2`。
+
 # 2026-10-03 修復健康同步 token 洩漏至日誌
 
 ## Goal + acceptance criteria
