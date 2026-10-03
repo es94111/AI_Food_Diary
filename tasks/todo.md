@@ -9,8 +9,9 @@
 - [x] 準備可審查的修補。
 - [x] 確認後續發版版本為 `0.79.2`。
 - [x] 更新 Web/Mobile 版本與 Android build number `130`。
-- [ ] 提交並推送 `main`，推送 tag `v0.79.2` 並建立 GitHub Release。
-- [ ] 驗證 Dependabot Critical alert 已關閉並確認 CI 成功。
+- [x] 提交並推送 `main`，推送 tag `v0.79.2` 並建立 GitHub Release。
+- [x] 驗證 Dependabot Critical alert 已標示 fixed。
+- [ ] 確認 v0.79.2 Android APK 與 Docker tag CI 成功。
 
 ## Risk & rollback
 
@@ -28,6 +29,9 @@
 - `npm run build` 通過（Next.js `16.3.6`，43/43 靜態頁完成）；`npm audit --omit=dev --audit-level=high` → `found 0 vulnerabilities`。
 - 全相依樹 `npm audit` 仍報 5 個 High `braces` advisories，路徑在 ESLint 開發工具鏈；沒有 Critical advisory。
 - 使用者確認後續安全修補發版為 `v0.79.2`。
+- GitHub Dependabot alert #39 在推送修復版後回報 `state=fixed`（2026-10-03T13:37:47Z）。
+- Commit `9439b76` 已推送到 `main`；tag `v0.79.2` 與 Release 已建立：[GitHub Release v0.79.2](https://github.com/es94111/AI_Food_Diary/releases/tag/v0.79.2)。
+- Docker tag workflow `37126847349` 已成功（含 image push 與 Sentry release）；Android workflow `37126847412` 尚在執行，完成後補記結果。
 
 # 2026-10-03 修復健康同步 token 洩漏至日誌
 

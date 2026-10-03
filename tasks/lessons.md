@@ -1,5 +1,11 @@
 # Lessons
 
+## 2026-10-03 — Quote literal backticks in shell release notes
+
+- **Failure mode:** A double-quoted `gh release create --notes` argument contained Markdown backticks; zsh treated the enclosed text as command substitution and omitted the literal reference from the release notes.
+- **Detection signal:** The command printed `zsh:1: no such file or directory: next/og`, and reviewing the published release showed the reference was missing.
+- **Prevention rule:** Pass Markdown notes with literal backticks through a single-quoted multiline argument or a temporary notes file, then inspect the published text with `gh release view` after the mutation.
+
 ## 2026-09-26 — Avoid formatting unrelated Dart lines
 
 - **Failure mode:** Running `dart format` on whole legacy files while changing health sync produced hundreds of unrelated line-wrap edits.
