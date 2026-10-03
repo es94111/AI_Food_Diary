@@ -11,7 +11,7 @@
 - [x] 更新 Web/Mobile 版本與 Android build number `130`。
 - [x] 提交並推送 `main`，推送 tag `v0.79.2` 並建立 GitHub Release。
 - [x] 驗證 Dependabot Critical alert 已標示 fixed。
-- [ ] 確認 v0.79.2 Android APK 與 Docker tag CI 成功。
+- [x] 確認 v0.79.2 Android APK 與 Docker tag CI 成功。
 
 ## Risk & rollback
 
@@ -31,7 +31,8 @@
 - 使用者確認後續安全修補發版為 `v0.79.2`。
 - GitHub Dependabot alert #39 在推送修復版後回報 `state=fixed`（2026-10-03T13:37:47Z）。
 - Commit `9439b76` 已推送到 `main`；tag `v0.79.2` 與 Release 已建立：[GitHub Release v0.79.2](https://github.com/es94111/AI_Food_Diary/releases/tag/v0.79.2)。
-- Docker tag workflow `37126847349` 已成功（含 image push 與 Sentry release）；Android workflow `37126847412` 尚在執行，完成後補記結果。
+- Android tag workflow `37126847412` 成功，release APK 已建置並由 `Upload APK to S3` 步驟發布；Docker tag workflow `37126847349` 成功（含 image push 與 Sentry release）。
+- 發版提交及後續文件提交各自觸發的 main Android workflow `37126818412`、`37127321629`，曾與 tag run 同時發布相同版本與 `latest` S3 路徑；為避免重複寫入，取消這兩個 main run，保留並確認 tag 發版 run 成功。文件提交只記錄結果，不影響 v0.79.2 程式碼與 tag。
 
 # 2026-10-03 修復健康同步 token 洩漏至日誌
 
