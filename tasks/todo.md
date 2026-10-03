@@ -1,3 +1,40 @@
+# 2026-10-03 修復健康同步 token 洩漏至日誌
+
+## Goal + acceptance criteria
+
+- [x] 移除健康同步裝置註冊回應中的敏感內容，只保留 HTTP 狀態碼。
+- [x] 保留 token 取得與 Flutter Secure Storage 儲存行為。
+- [x] 加入回歸測試，證明 token 不會出現在 debug 或持久化日誌。
+- [x] 執行目標 Flutter 測試與 analyzer，檢查最終 diff。
+
+## Risk & rollback
+
+- **Risk level:** medium（健康同步憑證與日誌處理）。
+- **Affected components:** Flutter `HealthService` token 註冊與手機端同步診斷日誌。
+- **Rollback:** 若驗證出現同步回歸，還原本節所列的服務與測試檔案 diff。
+
+## Working notes
+
+- 註冊 API 回傳可授權健康資料讀寫的 bearer token；日誌由健康同步卡片提供檢視/分享。
+- 僅移除兩個 sink 的 response body，狀態碼與 token 安全儲存流程維持不變。
+
+## Results
+
+- `flutter test test/health_service_token_logging_test.dart` 通過；回歸測試確認 token 仍回傳並寫入 `hcs_token` 安全儲存，但不出現在 debug 輸出或持久化日誌。
+- 完整 `flutter test` 通過（109 tests）；針對修改檔案的 `flutter analyze lib/services/health_service.dart test/health_service_token_logging_test.dart` 通過。
+- 全套 `flutter analyze` 目前有一筆既存警告：未修改的 `lib/services/app_logger.dart:84` `unawaited_return_in_try_block`；`git diff --check` 通過。
+- 註冊流程今後只記錄狀態碼。先前版本已寫入裝置的歷史日誌不會由此修補自動清除；若舊日誌曾被分享，應撤銷該同步裝置 token。
+
+## Release v0.79.1
+
+- [x] 確認目標版本為 `0.79.1`（最新 tag `v0.79.0` 的安全修補版）。
+- [x] 更新 `package.json` 與 `mobile/pubspec.yaml`（build number `129`）。
+- [ ] 提交並推送 `main`。
+- [ ] 建立並推送 `v0.79.1` tag，建立 GitHub Release。
+- [ ] 確認 GitHub Release 與 tag 指向提交，並檢查 CI workflow 啟動狀態。
+
+- **Risk / rollback:** tag 會觸發 Android APK 發布與 Docker image 推送；若發版產物有問題，修正後發下一個 patch 版並回滾/重新部署前一個 Docker image tag。
+
 # 2026-09-09 GitHub Security and quality 修復
 
 ## Goal + acceptance criteria

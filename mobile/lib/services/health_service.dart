@@ -755,9 +755,10 @@ class HealthService {
     // Register a new sync device (requires an active cookie session).
     final res = await _api.post('/api/health/connections',
         data: {'provider': 'HEALTH_CONNECT', 'deviceName': deviceName});
-    debugPrint('HealthSync: connections response ${res.statusCode}: ${res.data}');
-    AppLogger.log('HealthSync',
-        '註冊同步裝置回應 ${res.statusCode}：${res.data}');
+    // The registration response includes the bearer token. Keep logs limited
+    // to the status code so the credential never enters persistent logs.
+    debugPrint('HealthSync: connections response ${res.statusCode}');
+    AppLogger.log('HealthSync', '註冊同步裝置回應 ${res.statusCode}');
     if (!ApiClient.ok(res)) {
       AppLogger.log('HealthSync', '註冊同步裝置失敗，無法取得 token');
       throw ApiException(ApiClient.errorMessage(res, '建立健康同步裝置失敗'));
@@ -766,6 +767,10 @@ class HealthService {
     await _storage.write(key: _tokenKey, value: token);
     return token;
   }
+
+  @visibleForTesting
+  static Future<String> debugEnsureTokenForTesting(String deviceName) =>
+      _ensureToken(deviceName);
 
   // ---- status & device management (cookie session) ----
 
