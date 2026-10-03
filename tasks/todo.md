@@ -29,11 +29,13 @@
 
 - [x] 確認目標版本為 `0.79.1`（最新 tag `v0.79.0` 的安全修補版）。
 - [x] 更新 `package.json` 與 `mobile/pubspec.yaml`（build number `129`）。
-- [ ] 提交並推送 `main`。
-- [ ] 建立並推送 `v0.79.1` tag，建立 GitHub Release。
-- [ ] 確認 GitHub Release 與 tag 指向提交，並檢查 CI workflow 啟動狀態。
+- [x] 提交並推送 `main`。
+- [x] 建立並推送 `v0.79.1` tag，建立 GitHub Release。
+- [x] 確認 GitHub Release 與 tag 指向提交，並確認 tag CI 成功。
 
 - **Risk / rollback:** tag 會觸發 Android APK 發布與 Docker image 推送；若發版產物有問題，修正後發下一個 patch 版並回滾/重新部署前一個 Docker image tag。
+- **Release evidence:** `fbade5e` pushed to `main`; remote `v0.79.1` points to the same commit; [GitHub Release v0.79.1](https://github.com/es94111/AI_Food_Diary/releases/tag/v0.79.1) is published with Traditional Chinese notes.
+- **CI evidence:** Docker image workflow `37125799266` succeeded; Android APK workflow `37125799260` succeeded, including S3 upload. Docker workflow reported the existing Sentry action `version` input deprecation warning.
 
 # 2026-09-09 GitHub Security and quality 修復
 
