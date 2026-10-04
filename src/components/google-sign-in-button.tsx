@@ -73,6 +73,11 @@ export function GoogleSignInButton({
           setError(data.error ?? "Google 登入失敗");
           return;
         }
+        // API routes are not pages: a full navigation lets the browser follow their redirect (e.g. to NouriLedger).
+        if (nextPath.startsWith("/api/")) {
+          window.location.assign(nextPath);
+          return;
+        }
         router.push(nextPath);
         router.refresh();
       } catch {

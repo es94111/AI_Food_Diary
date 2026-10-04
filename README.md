@@ -135,6 +135,19 @@ AI_MEAL_ANALYSIS_SAMPLE_TEMPERATURE="0.5" # 精準模式各次取樣的 temperat
 
 ---
 
+### 一鍵匯入 NouriLedger（選用）
+
+新版「養財日記 NouriLedger」合併了本專案與 AssetPilot。設定 `NOURILEDGER_ORIGIN`（例如 `https://nouriledger.shao.one`，須與新站的 `APP_URL` 相同）後，設定頁會出現「一鍵匯入到 NouriLedger」按鈕；未設定則功能完全關閉（端點回 404）。
+
+流程：按鈕 → 新站（用 Google 登入）→ 新站確認頁顯示「舊帳號 → 新帳號」→ 使用者按「開始匯入」→ 新站以伺服器對伺服器方式取回**該使用者自己的資料與照片**。
+
+- 授權採 authorization code + PKCE（S256）：code 以 `AUTH_SECRET` 衍生金鑰做 HMAC 簽章、綁定使用者／tokenVersion／新站網址，10 分鐘有效、匯出時單次使用；外洩的 code 沒有只存在新站伺服器的 verifier 就無用。**不需要任何資料庫變更。**
+- 匯出範圍只限登入者本人；不含個人 AI 金鑰、Google 帳號 ID、管理員旗標與任何 token。讀不到的照片會略過並在新站顯示警告。
+- 這是「複製」，本站資料不會被刪除或修改；可重複匯入，新站不會產生重複資料。
+- 端點：`GET /api/migration/nouriledger/authorize`（瀏覽器）、`POST …/userinfo`、`POST …/export`（伺服器對伺服器）。
+- 回滾：清空 `NOURILEDGER_ORIGIN` 並重啟。
+- 測試：`npm run test:nouriledger`（資料庫相關測試需設定 `FOOD_TEST_DATABASE_URL` 指向本機 `*_test` 資料庫，否則自動跳過）。
+
 ## 📦 發版與 CI
 
 Web 與 App 共用**一個版本 tag**，推送後同時觸發兩個 workflow：

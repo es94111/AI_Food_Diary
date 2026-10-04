@@ -1,3 +1,41 @@
+# 2026-10-04 舊站一鍵匯入 NouriLedger（Food Diary 提供端）
+
+## Goal + acceptance criteria
+
+- [x] 使用者在設定頁按一個按鈕 → 新站（Google 登入、確認「舊帳號 → 新帳號」）→ 新站以伺服器對伺服器方式取回**該使用者自己的資料與照片**。
+- [x] 未設定 `NOURILEDGER_ORIGIN` 時功能完全關閉：按鈕不顯示、三個端點回 404。
+- [x] 匯出只含登入者本人；不含個人 AI 金鑰、Google ID、管理員旗標、tokenVersion；管理員整庫匯出行為不變（有回歸測試）。
+- [x] 授權碼：HMAC 簽章、綁定使用者／tokenVersion／新站 origin／PKCE challenge，10 分鐘、匯出單次使用；「登出所有裝置」會讓尚未兌換的 code 失效。
+- [x] 讀不到的照片不擋住匯入，改為警告並從 JSON 移除懸空 key（引擎遇到缺附件的 key 會整批失敗）。
+- [x] 不需要資料庫變更、不新增相依。
+
+## Risk & rollback
+
+- **Risk level:** high（認證流程、個資外送、跨系統）。預設關閉，需同時在新站設定來源才會運作。
+- **Affected components:** `src/lib/admin-export.ts`（新增**可選**的 `ExportScope`，admin 路徑不變）、`src/lib/nouriledger-handoff.ts`／`-grant.ts`／`-export.ts`、`src/app/api/migration/nouriledger/*`、登入頁 `next` 白名單、Google 登入按鈕（`/api/` 目標改硬導向）、設定頁卡片。
+- **Rollback:** 清空 `NOURILEDGER_ORIGIN` 並重啟即關閉；或還原本分支。沒有 schema／資料遷移需要回復。
+
+## Dependencies & Environment
+
+- 新環境變數：`NOURILEDGER_ORIGIN`（見 `.env.example`）；簽章金鑰由既有 `AUTH_SECRET` 衍生。
+- 新站需設定 `NOURILEDGER_IMPORT_SOURCES`（含此站的 `origin` 與穩定的 `instance` 代碼），且新站 `APP_URL` 須等於此處的 `NOURILEDGER_ORIGIN`。
+
+## Working notes
+
+- 設計：新站發起的 authorization code + PKCE（S256）。新站只信任管理員設定的來源網址（無 SSRF），不需共享密鑰；PKCE verifier 只存在新站伺服器，所以從網址外洩的 code 沒有用。
+- code 是無狀態 HMAC 權杖，單次使用只在記憶體強制（verifier 要求與 10 分鐘壽命限制了重啟後的重放空間）；刻意不加資料表。
+- 這台 Windows 開發機的 `node_modules` 是在 macOS 安裝的（只有 darwin 原生套件），且位於 Synology 同步資料夾——**不要在此資料夾執行 `npm ci`**，以免把 Windows 套件同步回 Mac。驗證改在同步資料夾外的拋棄式 clone 進行。
+- DB 相關測試需自行提供拋棄式 PostgreSQL：`FOOD_TEST_DATABASE_URL=postgresql://…@127.0.0.1:…/food_diary_test`（先 `prisma migrate deploy`）；未設定則自動跳過。
+
+## Results
+
+- `npm run test:nouriledger`：19 項（8 項純函式 + 11 項 DB 測試）全部通過；未設定 DB 時 11 項 DB 測試自動跳過、不失敗。
+- 既有 `npm run test:mcp` 36 項仍全數通過；`npm run build`（`prisma generate` + `tsc --noEmit` + `next build`）通過，三個新端點都在路由表中。
+- 正式模式（`next start`）冒煙：`userinfo` 200；`export` 200（`multipart/form-data`、`no-store`），只含本人 1 位使用者、`appConfig` 為空、無 AI 金鑰、無他人 ID；同一個 code 第二次兌換回 400 `invalid_grant`。
+- 三站端對端（Food + AssetPilot + NouriLedger，真實 Chromium，合成資料）11/11 通過：設定頁按鈕 → 新站確認頁（舊帳號 → 新帳號與筆數）→ 匯入；照片逐位元組相同、Alice 的 AI 金鑰與 Bob 的資料都沒有進新站；重跑新增 0 筆；callback 網址不可重放；偽造 callback／他人 state 皆被拒；未登入時新站與舊站登入頁都會記住返回位置；深色＋手機寬度畫面正常。
+- **未驗證**：真實 Google／LINE 登入、正式網域與 TLS、NAS 容器經公開網址互連（必要時在新站設定 `serverOrigin`）、正式資料量下的耗時、Android App。
+- 發版：Web／Mobile 版本號 0.79.2 → 0.80.0（`mobile/pubspec.yaml` 0.80.0+131；App 本身沒有功能變更，只隨同一個 tag 同步版本）。合併後打 `v0.80.0`，tag 會觸發 `android-apk.yml`（APK → S3）與 `docker-image.yml`（Docker Hub），功能預設關閉，不影響既有使用者。
+
 # 2026-10-03 修復 Next.js Dependabot Critical Alert #39
 
 ## Goal + acceptance criteria

@@ -1,6 +1,6 @@
 {
   "name": "ai-food-diary",
-  "version": "0.79.2",
+  "version": "0.80.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -25,6 +25,7 @@
     "admin:data:verify:roundtrip": "tsx scripts/admin-data-export-import-check.ts roundtrip",
     "admin:data:verify:wipe": "tsx scripts/admin-data-export-import-check.ts wipe",
     "test:mcp": "node --conditions=react-server --import tsx --test tests/mcp/*.test.ts",
+    "test:nouriledger": "node --conditions=react-server --import tsx --test tests/nouriledger/*.test.ts",
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {
