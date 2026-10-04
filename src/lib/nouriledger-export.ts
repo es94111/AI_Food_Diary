@@ -12,6 +12,8 @@ import { getDecryptedImage, isStorageKey } from "@/lib/storage";
 export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 /** Headroom under NouriLedger's 256 MiB package limit. */
 export const MAX_PACKAGE_BYTES = 240 * 1024 * 1024;
+/** Photos fetched at the same time (bounds the memory held in flight to a few images). */
+export const READ_CONCURRENCY = 4;
 
 export class ExportTooLargeError extends Error {
   constructor() {
@@ -60,7 +62,7 @@ export async function buildNouriLedgerPackage(userId: string, readImage: ImageRe
   let oversized = 0;
   const rewrite = new Map<string, string | null>();
   const files = new Map<string, { body: Buffer; contentType: string }>();
-  for (const key of wanted) {
+  const loadImage = async (key: string) => {
     let image: { body: Buffer; contentType: string } | null = null;
     let manifestKey = key;
     if (isStorageKey(key)) {
@@ -70,14 +72,22 @@ export async function buildNouriLedgerPackage(userId: string, readImage: ImageRe
       // Do not repeat a multi-megabyte data URL as an object key; address it by its content hash instead.
       if (image) manifestKey = `legacy-data-url:${sha256(image.body)}`;
     }
-    if (!image || image.body.length === 0) { rewrite.set(key, null); unreadable += 1; continue; }
-    if (image.body.length > MAX_IMAGE_BYTES) { rewrite.set(key, null); oversized += 1; continue; }
-    if (!files.has(manifestKey)) {
-      bytes += image.body.length;
-      if (bytes > MAX_PACKAGE_BYTES) throw new ExportTooLargeError();
-      files.set(manifestKey, image);
+    return { key, manifestKey, image };
+  };
+  // The reads are independent object-storage round trips, so a few run at once; the results are applied in key order.
+  const keys = [...wanted];
+  for (let start = 0; start < keys.length; start += READ_CONCURRENCY) {
+    const loaded = await Promise.all(keys.slice(start, start + READ_CONCURRENCY).map(loadImage));
+    for (const { key, manifestKey, image } of loaded) {
+      if (!image || image.body.length === 0) { rewrite.set(key, null); unreadable += 1; continue; }
+      if (image.body.length > MAX_IMAGE_BYTES) { rewrite.set(key, null); oversized += 1; continue; }
+      if (!files.has(manifestKey)) {
+        bytes += image.body.length;
+        if (bytes > MAX_PACKAGE_BYTES) throw new ExportTooLargeError();
+        files.set(manifestKey, image);
+      }
+      rewrite.set(key, manifestKey);
     }
-    rewrite.set(key, manifestKey);
   }
 
   // A meal that still names a photo with no bytes would make the whole import fail, so unreadable photos are

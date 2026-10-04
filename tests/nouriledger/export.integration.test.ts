@@ -188,6 +188,33 @@ test("an account without photos still exports cleanly, and an oversized total is
   }
 });
 
+test("photos are fetched a few at a time and still land in their original order", { skip }, async () => {
+  const { prisma, packager, suffix } = ctx;
+  const user = await prisma.user.create({ data: { email: `parallel-${suffix}@export.test`, passwordHash: "x" } });
+  try {
+    const keys = Array.from({ length: 10 }, (_, index) => `meals/parallel/${index}.jpg`);
+    await prisma.meal.create({ data: { userId: user.id, mealType: "SNACK", imageStorageKey: keys[0], imageStorageKeys: keys, totalCalories: 1 } });
+    let active = 0;
+    let peak = 0;
+    const reader = async (key: string) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      active -= 1;
+      return { body: jpeg(Number(/(\d+)\.jpg$/u.exec(key)![1]) + 10), contentType: "image/jpeg" };
+    };
+    const result = await packager.buildNouriLedgerPackage(user.id, reader);
+    assert.ok(peak > 1, "reads overlap");
+    assert.ok(peak <= packager.READ_CONCURRENCY, "but only a bounded number at a time");
+    const manifest = JSON.parse(String(result.form.get("attachmentsManifest"))) as Array<{ objectKey: string; fileField: string }>;
+    assert.deepEqual(manifest.map((entry) => entry.objectKey), keys, "the manifest follows the meal's photo order");
+    assert.deepEqual(manifest.map((entry) => entry.fileField), keys.map((_, index) => `file_${index}`));
+    assert.equal(result.imageCount, 10);
+  } finally {
+    await prisma.user.delete({ where: { id: user.id } });
+  }
+});
+
 test("the summary shown on the confirmation page counts only the account's own records", { skip }, async () => {
   const { alice, bob, suffix, aliceKeys, packager } = ctx;
   const summary = await packager.summarizeUser(alice.id);

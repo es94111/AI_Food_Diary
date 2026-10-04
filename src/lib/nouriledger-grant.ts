@@ -10,6 +10,30 @@ const fail = (error: string, status: number) => NextResponse.json({ error }, { s
 
 export type GrantResult = { ok: true; userId: string } | { ok: false; response: NextResponse };
 
+/** The body is a code, a PKCE verifier and a URL. Same cap as the OAuth token endpoint, which is also public. */
+const MAX_BODY_BYTES = 16 * 1024;
+
+/** Reads at most `maxBytes` of the body (declared length checked up front, then while streaming); null when it is larger. */
+async function readBodyLimited(request: Request, maxBytes: number): Promise<string | null> {
+  const declared = Number(request.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, total).toString("utf8");
+}
+
 /**
  * Shared gate of the two server-to-server endpoints. Order matters: nothing is spent (rate budget, code) before the
  * request is proven genuine, and the one-time code is only burned once every other check has passed.
@@ -25,8 +49,11 @@ export async function resolveGrant(
   const blocked = await enforceRateLimit(`nouriledger-handoff:ip:${getClientIp(request) ?? "shared"}`, { limit: 300, windowSec: 600 });
   if (blocked) return { ok: false, response: blocked };
 
+  let raw: string | null;
+  try { raw = await readBodyLimited(request, MAX_BODY_BYTES); } catch { raw = null; }
+  if (raw === null) return { ok: false, response: fail("invalid_request", 400) };
   let body: unknown = null;
-  try { body = await request.json(); } catch { /* reported as invalid_request below */ }
+  try { body = JSON.parse(raw); } catch { /* reported as invalid_request below */ }
   let payload;
   try {
     payload = redeemGrant(body, origin, { consume: false });

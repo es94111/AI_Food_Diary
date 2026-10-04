@@ -100,6 +100,21 @@ test("requests that are not proven genuine are refused before anything is read",
   assert.equal((await post(userinfo, grant)).status, 200, "none of the failed attempts burned the genuine code");
 });
 
+test("oversized request bodies are refused without being parsed, and the genuine code survives", { skip }, async () => {
+  const { makeUser, grantFor, post, userinfo, exportRoute } = ctx;
+  const user = await makeUser("nora");
+  const grant = grantFor(user);
+  for (const route of [userinfo, exportRoute]) {
+    assert.deepEqual(await (await post(route, { ...grant, padding: "x".repeat(32 * 1024) })).json(), { error: "invalid_request" }, "streamed body beyond the cap");
+    const declared = await route.POST(new Request("https://food.example.test/api/migration/nouriledger/x", {
+      method: "POST", headers: { "content-type": "application/json", "content-length": String(1_000_000) }, body: JSON.stringify(grant)
+    }));
+    assert.equal(declared.status, 400);
+    assert.deepEqual(await declared.json(), { error: "invalid_request" }, "declared length beyond the cap");
+  }
+  assert.equal((await post(userinfo, grant)).status, 200, "none of the refused attempts burned the genuine code");
+});
+
 test("a disabled account or a revoked session (tokenVersion) cannot redeem a code", { skip }, async () => {
   const { makeUser, grantFor, post, userinfo, exportRoute, prisma } = ctx;
   const disabled = await makeUser("ivan", { isDisabled: true });
