@@ -34,7 +34,10 @@
 - 正式模式（`next start`）冒煙：`userinfo` 200；`export` 200（`multipart/form-data`、`no-store`），只含本人 1 位使用者、`appConfig` 為空、無 AI 金鑰、無他人 ID；同一個 code 第二次兌換回 400 `invalid_grant`。
 - 三站端對端（Food + AssetPilot + NouriLedger，真實 Chromium，合成資料）11/11 通過：設定頁按鈕 → 新站確認頁（舊帳號 → 新帳號與筆數）→ 匯入；照片逐位元組相同、Alice 的 AI 金鑰與 Bob 的資料都沒有進新站；重跑新增 0 筆；callback 網址不可重放；偽造 callback／他人 state 皆被拒；未登入時新站與舊站登入頁都會記住返回位置；深色＋手機寬度畫面正常。
 - **未驗證**：真實 Google／LINE 登入、正式網域與 TLS、NAS 容器經公開網址互連（必要時在新站設定 `serverOrigin`）、正式資料量下的耗時、Android App。
-- 發版：Web／Mobile 版本號 0.79.2 → 0.80.0（`mobile/pubspec.yaml` 0.80.0+131；App 本身沒有功能變更，只隨同一個 tag 同步版本）。合併後打 `v0.80.0`，tag 會觸發 `android-apk.yml`（APK → S3）與 `docker-image.yml`（Docker Hub），功能預設關閉，不影響既有使用者。
+- 發版：Web／Mobile 版本號 0.79.2 → 0.80.0（`mobile/pubspec.yaml` 0.80.0+131；App 本身沒有功能變更，只隨同一個 tag 同步版本）。
+- 合併：PR #145 已 squash-merge 到 `main`，提交 `aaa281d22219bb9e4223113582137adff3cf86d2`；合併內容已包含請求本文限制、照片並行上限，以及超限時保留 keep-alive 連線的修正。
+- 發版完成：tag `v0.80.0` 指向上述 `main` 提交；GitHub Release：[v0.80.0｜舊站一鍵匯入 NouriLedger](https://github.com/es94111/AI_Food_Diary/releases/tag/v0.80.0)。
+- 發版 CI：Docker workflow `37191769208` 成功，推送 `0.80.0`／`latest` image 並建立 Sentry release；Android workflow `37191769211` 成功，建置 APK 並上傳版本 APK 與 latest APK 至 S3。
 
 # 2026-10-03 修復 Next.js Dependabot Critical Alert #39
 
