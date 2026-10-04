@@ -7,6 +7,10 @@ services:
       - "3000:3000"
     env_file:
       - .env
+    environment:
+      # The official production destination is enabled by default; an explicit
+      # empty value in the host environment can disable the hand-off.
+      NOURILEDGER_ORIGIN: ${NOURILEDGER_ORIGIN-https://nouriledger.shao.one}
     depends_on:
       - postgres
       - redis

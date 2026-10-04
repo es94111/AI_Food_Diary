@@ -1,5 +1,12 @@
 # Lessons
 
+## 2026-10-04 — Do not create a partial `.env` when the file is absent
+
+- **Failure mode:** A settings helper continued after an absent-file read error and created an incomplete `.env` containing only the new integration setting.
+- **Detection signal:** The file contained exactly one variable and had a fresh timestamp; the project Docker Compose uses `.env` as the complete application environment.
+- **Prevention rule:** Check that `.env` exists before editing it. For absent files, update the tracked `.env.example` and deployment configuration, and never synthesize a partial runtime `.env`.
+
+
 ## 2026-10-03 — Quote literal backticks in shell release notes
 
 - **Failure mode:** A double-quoted `gh release create --notes` argument contained Markdown backticks; zsh treated the enclosed text as command substitution and omitted the literal reference from the release notes.
