@@ -329,20 +329,21 @@ function numOrNull(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function toExportUser(row: DbRow): ExportUser {
+function toExportUser(row: DbRow, minimal = false): ExportUser {
   return {
     id: row.id as string,
     email: row.email as string,
     name: (row.name as string | null) ?? null,
-    googleId: (row.googleId as string | null) ?? null,
-    isAdmin: Boolean(row.isAdmin),
-    tokenVersion: Number(row.tokenVersion ?? 0),
+    // Per-user transfers carry no provider identity, privilege or session state.
+    googleId: minimal ? null : ((row.googleId as string | null) ?? null),
+    isAdmin: minimal ? false : Boolean(row.isAdmin),
+    tokenVersion: minimal ? 0 : Number(row.tokenVersion ?? 0),
     createdAt: isoOf(row.createdAt),
     updatedAt: isoOf(row.updatedAt)
   };
 }
 
-function toExportUserProfile(row: DbRow, anomalies: Anomalies): ExportUserProfile {
+function toExportUserProfile(row: DbRow, anomalies: Anomalies, includeSecrets = true): ExportUserProfile {
   return {
     id: row.id as string,
     userId: row.userId as string,
@@ -368,7 +369,8 @@ function toExportUserProfile(row: DbRow, anomalies: Anomalies): ExportUserProfil
     aiTextModel: (row.aiTextModel as string | null) ?? null,
     // Sensitivity note: the export file therefore contains every user's AI key
     // in plaintext. The UI copy must tell the admin to store it safely.
-    aiApiKey: decCounted<string | null>(row.encryptedAiApiKey, null, anomalies, "UserProfile.encryptedAiApiKey"),
+    // A per-user transfer never decrypts or exports the personal AI key (see ExportScope.excludeSecrets).
+    aiApiKey: includeSecrets ? decCounted<string | null>(row.encryptedAiApiKey, null, anomalies, "UserProfile.encryptedAiApiKey") : null,
     createdAt: isoOf(row.createdAt),
     updatedAt: isoOf(row.updatedAt)
   };
@@ -516,9 +518,16 @@ function toExportAppConfig(row: DbRow): ExportAppConfig {
   };
 }
 
+// Optional restriction of the export to a single account (used by the one-click
+// hand-off to NouriLedger). With a scope, every query is filtered to that user,
+// the global AppConfig is left out, and — when excludeSecrets is set — the
+// account's provider id, admin flag, token version and personal AI API key are
+// neither decrypted nor exported. Without a scope the admin export is unchanged.
+export type ExportScope = { userId: string; excludeSecrets?: boolean };
+
 // Builds the full decrypted export envelope. Never throws on individual
 // decryption failures — they are counted. Never logs values.
-export async function buildExportEnvelope(): Promise<{
+export async function buildExportEnvelope(scope?: ExportScope): Promise<{
   format: typeof EXPORT_FORMAT;
   version: typeof EXPORT_VERSION;
   exportedAt: string;
@@ -539,23 +548,25 @@ export async function buildExportEnvelope(): Promise<{
   };
 }> {
   const anomalies: Anomalies = {};
+  const ownedBy = scope ? { userId: scope.userId } : undefined;
+  const excludeSecrets = Boolean(scope?.excludeSecrets);
   const [users, userProfiles, meals, mealItems, waterLogs, savedFoods, dailySummaries, dailyRecommendations, healthMetrics, appConfig] =
     await Promise.all([
-      prisma.user.findMany({ orderBy: { createdAt: "asc" } }),
-      prisma.userProfile.findMany(),
-      prisma.meal.findMany({ orderBy: { createdAt: "asc" } }),
-      prisma.mealItem.findMany({ orderBy: { createdAt: "asc" } }),
-      prisma.waterLog.findMany(),
-      prisma.savedFood.findMany(),
-      prisma.dailySummary.findMany(),
-      prisma.dailyRecommendation.findMany(),
-      prisma.healthMetric.findMany(),
-      prisma.appConfig.findMany()
+      prisma.user.findMany({ where: scope ? { id: scope.userId } : undefined, orderBy: { createdAt: "asc" } }),
+      prisma.userProfile.findMany({ where: ownedBy }),
+      prisma.meal.findMany({ where: ownedBy, orderBy: { createdAt: "asc" } }),
+      prisma.mealItem.findMany({ where: scope ? { meal: { userId: scope.userId } } : undefined, orderBy: { createdAt: "asc" } }),
+      prisma.waterLog.findMany({ where: ownedBy }),
+      prisma.savedFood.findMany({ where: ownedBy }),
+      prisma.dailySummary.findMany({ where: ownedBy }),
+      prisma.dailyRecommendation.findMany({ where: ownedBy }),
+      prisma.healthMetric.findMany({ where: ownedBy }),
+      scope ? Promise.resolve([]) : prisma.appConfig.findMany()
     ]);
 
   const data = {
-    users: users.map((row) => toExportUser(row as DbRow)),
-    userProfiles: userProfiles.map((row) => toExportUserProfile(row as DbRow, anomalies)),
+    users: users.map((row) => toExportUser(row as DbRow, excludeSecrets)),
+    userProfiles: userProfiles.map((row) => toExportUserProfile(row as DbRow, anomalies, !excludeSecrets)),
     meals: meals.map((row) => toExportMeal(row as DbRow, anomalies)),
     mealItems: mealItems.map((row) => toExportMealItem(row as DbRow, anomalies)),
     waterLogs: waterLogs.map((row) => toExportWaterLog(row as DbRow)),

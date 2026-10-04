@@ -7,6 +7,7 @@ import { AiSettingsForm } from "@/components/ai-settings-form";
 import { LogoutButton } from "@/components/logout-button";
 import { GoogleLinkPanel } from "@/components/google-link-panel";
 import { Metric } from "@/components/health-cards";
+import { NouriLedgerMigrationCard } from "@/components/nouriledger-migration-card";
 import { WEB_VERSION } from "@/lib/version";
 import { getLatestAppRelease } from "@/lib/app-release";
 
@@ -68,6 +69,7 @@ export default async function SettingsPage() {
           }
           linked={!!user.googleId}
         />
+        <NouriLedgerMigrationCard />
         <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">版本資訊</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">

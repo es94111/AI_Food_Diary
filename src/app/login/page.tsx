@@ -6,10 +6,14 @@ import { getCurrentUser } from "@/lib/auth";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 import { TURNSTILE_SITE_KEY } from "@/lib/turnstile-config";
 
+// Only these in-app destinations may be a post-login target: the MCP consent page and the one-click
+// import's authorize step (which sends the signed-in user on to NouriLedger).
+const NEXT_PREFIXES = ["/oauth/authorize?", "/api/migration/nouriledger/authorize?"];
+
 function safeNextPath(value: string | string[] | undefined): string {
   if (
     typeof value === "string" &&
-    value.startsWith("/oauth/authorize?") &&
+    NEXT_PREFIXES.some((prefix) => value.startsWith(prefix)) &&
     !value.startsWith("//") &&
     value.length <= 8_192
   ) {
