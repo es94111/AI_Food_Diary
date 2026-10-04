@@ -26,7 +26,9 @@ async function readBodyLimited(request: Request, maxBytes: number): Promise<stri
     if (done) break;
     total += value.byteLength;
     if (total > maxBytes) {
-      await reader.cancel().catch(() => {});
+      // Stop reading but do not cancel: cancelling destroys the socket, which resets a keep-alive connection (and any
+      // reverse-proxy connection pool sharing it). The server discards the unread remainder after answering.
+      reader.releaseLock();
       return null;
     }
     chunks.push(value);
