@@ -126,6 +126,22 @@ export function enforceSavedFoodWriteRateLimit(userId: string): Promise<NextResp
   });
 }
 
+export function enforceMealBundleReadRateLimit(userId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`read:meal-bundle:${userId}`, {
+    limit: 120,
+    windowSec: 600,
+    message: "餐組讀取過於頻繁，請稍後再試。"
+  });
+}
+
+export function enforceMealBundleWriteRateLimit(userId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`write:meal-bundle:${userId}`, {
+    limit: 60,
+    windowSec: 600,
+    message: "餐組操作過於頻繁，請稍後再試。"
+  });
+}
+
 // Water entries are small, but each one is a durable database row and is
 // returned by the daily water views. Keep the budget generous for normal
 // logging while bounding scripted write loops.

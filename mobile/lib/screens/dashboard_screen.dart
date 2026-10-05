@@ -26,6 +26,7 @@ import '../widgets/profile_form.dart';
 import '../widgets/update_card.dart';
 import 'login_screen.dart';
 import 'meal_capture_screen.dart';
+import 'meal_bundles_screen.dart';
 import 'saved_foods_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -895,6 +896,24 @@ class _DashboardScreenState extends State<DashboardScreen>
                 MaterialPageRoute(
                   builder: (_) => const SavedFoodsScreen(),
                   settings: const RouteSettings(name: '/saved-foods'),
+                ),
+              );
+              if (mounted) setState(() => _savedFoodsRevision++);
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.menu_book_outlined),
+            title: const Text('我的餐組／食譜'),
+            subtitle: const Text('管理常吃組合，記錄時一次加入'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const MealBundlesScreen(),
+                  settings: const RouteSettings(name: '/meal-bundles'),
                 ),
               );
               if (mounted) setState(() => _savedFoodsRevision++);

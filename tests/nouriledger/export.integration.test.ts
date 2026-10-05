@@ -48,7 +48,15 @@ async function setup() {
     }
   });
   const bobMeal = await prisma.meal.create({ data: { userId: bob.id, mealType: "DINNER", totalCalories: 900, items: { create: [{ name: "Bob 的秘密晚餐", calories: 900 }] } } });
-  await prisma.savedFood.create({ data: { userId: alice.id, name: "雞胸肉", calories: 165, protein: 31, fat: 3.6, carbs: 0, imageStorageKey: "foods/alice/chicken.png" } });
+  const aliceFood = await prisma.savedFood.create({ data: { userId: alice.id, name: "雞胸肉", calories: 165, protein: 31, fat: 3.6, carbs: 0, imageStorageKey: "foods/alice/chicken.png" } });
+  await prisma.mealBundle.create({
+    data: {
+      userId: alice.id,
+      encName: encryptJson("雞胸便當組合"),
+      imageStorageKey: "foods/alice/chicken.png",
+      items: { create: [{ savedFoodId: aliceFood.id, encName: encryptJson("雞胸肉"), encEstimatedAmount: encryptJson("100g"), calories: 165, protein: 31, fat: 3.6, carbs: 0 }] }
+    }
+  });
   await prisma.savedFood.create({ data: { userId: bob.id, name: "Bob 的食物", calories: 1 } });
   await prisma.waterLog.create({ data: { userId: alice.id, amountMl: 500 } });
   await prisma.waterLog.create({ data: { userId: bob.id, amountMl: 250 } });
@@ -129,6 +137,8 @@ test("the package carries decrypted photos, drops unreadable ones from the JSON 
   assert.deepEqual(envelope.data.meals[0].imageStorageKeys, ["meals/alice/lunch.jpg", "foods/alice/chicken.png", legacyKey], "missing, failing and oversized photos are removed; order is kept");
   assert.equal(envelope.data.meals[0].imageStorageKey, "meals/alice/lunch.jpg", "the mirror of the first key holds");
   assert.equal(envelope.data.savedFoods[0].imageStorageKey, "foods/alice/chicken.png", "a photo shared by a meal and a saved food is shipped once");
+  assert.equal(envelope.data.mealBundles[0].imageStorageKey, "foods/alice/chicken.png", "a bundle shares and retains its photo attachment");
+  assert.equal(envelope.data.mealBundleItems[0].name, "雞胸肉");
   assert.ok(!JSON.stringify(envelope).includes("data:image"), "the inline data URL is not repeated as a key");
   assert.equal(result.warnings.length, 2);
   assert.match(result.warnings[0], /^2 張照片在舊站已無法讀取/u, "the missing object and the failing read");
@@ -150,7 +160,7 @@ test("the package satisfies the importer's contract (one owner, referential inte
   const payload = JSON.parse(await (result.form.get("file") as File).text()) as { format: string; version: number; counts: Record<string, number>; data: Record<string, Array<Record<string, unknown>>> };
   assert.equal(payload.format, "ai-food-diary-export");
   assert.equal(payload.version, 1);
-  for (const key of ["users", "userProfiles", "meals", "mealItems", "waterLogs", "savedFoods", "dailySummaries", "dailyRecommendations", "healthMetrics", "appConfig"]) assert.ok(Array.isArray(payload.data[key]), key);
+  for (const key of ["users", "userProfiles", "meals", "mealItems", "waterLogs", "savedFoods", "mealBundles", "mealBundleItems", "dailySummaries", "dailyRecommendations", "healthMetrics", "appConfig"]) assert.ok(Array.isArray(payload.data[key]), key);
   for (const [key, declared] of Object.entries(payload.counts)) assert.equal(payload.data[key].length, declared, `declared count for ${key}`);
   assert.equal(payload.data.users.length, 1);
   const owner = String(payload.data.users[0].id);
@@ -165,6 +175,7 @@ test("the package satisfies the importer's contract (one owner, referential inte
   const referenced = new Set<string>();
   for (const meal of payload.data.meals) for (const key of (meal.imageStorageKeys as string[]) ?? []) referenced.add(key);
   for (const food of payload.data.savedFoods) if (food.imageStorageKey) referenced.add(String(food.imageStorageKey));
+  for (const bundle of payload.data.mealBundles) if (bundle.imageStorageKey) referenced.add(String(bundle.imageStorageKey));
   for (const key of referenced) assert.ok(manifest.some((entry) => entry.objectKey === key), `no manifest entry for ${key}`);
   const fileParts = [...result.form.keys()].filter((name) => name.startsWith("file_"));
   assert.equal(fileParts.length, manifest.length, "no orphan file parts");
@@ -221,7 +232,7 @@ test("the summary shown on the confirmation page counts only the account's own r
   assert.deepEqual(summary, {
     sourceUserId: alice.id,
     account: { email: `alice-${suffix}@export.test`, name: "Alice" },
-    counts: { meals: 1, meal_items: 2, saved_foods: 1, water_logs: 1, health_metrics: 1, daily_summaries: 1, images: new Set([...aliceKeys, "foods/alice/chicken.png"]).size }
+    counts: { meals: 1, meal_items: 2, saved_foods: 1, meal_bundles: 1, meal_bundle_items: 1, water_logs: 1, health_metrics: 1, daily_summaries: 1, images: new Set([...aliceKeys, "foods/alice/chicken.png"]).size }
   });
   assert.equal(await packager.summarizeUser("does-not-exist"), null);
   assert.equal((await packager.summarizeUser(bob.id))?.counts.meals, 1);

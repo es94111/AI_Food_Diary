@@ -182,6 +182,7 @@ class MealService {
     required String mealType,
     List<String>? imageDataUrls,
     List<String>? savedFoodImageIds,
+    List<String>? mealBundleImageIds,
     String? description,
     required List<MealItem> items,
   }) async {
@@ -193,6 +194,8 @@ class MealService {
       // Photos from picked saved foods, attached by reference (no re-upload/copy).
       if (savedFoodImageIds != null && savedFoodImageIds.isNotEmpty)
         'savedFoodImageIds': savedFoodImageIds,
+      if (mealBundleImageIds != null && mealBundleImageIds.isNotEmpty)
+        'mealBundleImageIds': mealBundleImageIds,
       if (description != null && description.isNotEmpty) 'description': description,
       'manualItems': items.map((e) => e.toPayload()).toList(),
       'eatenAt': eatenAt.toUtc().toIso8601String(),

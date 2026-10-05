@@ -12,10 +12,11 @@
   - [1. 認證與使用者](#1-認證與使用者)
   - [2. 餐點 Meals](#2-餐點-meals)
   - [3. 常用食物 Saved Foods](#3-常用食物-saved-foods)
-  - [4. 喝水 Water](#4-喝水-water)
-  - [5. 健康 Health Connect](#5-健康-health-connect)
-  - [6. 昨日總結與下一餐建議](#6-昨日總結與下一餐建議)
-  - [7. 管理 / App 後設資料](#7-管理--app-後設資料)
+  - [4. 餐組 Meal Bundles](#4-餐組-meal-bundles)
+  - [5. 喝水 Water](#5-喝水-water)
+  - [6. 健康 Health Connect](#6-健康-health-connect)
+  - [7. 昨日總結與下一餐建議](#7-昨日總結與下一餐建議)
+  - [8. 管理 / App 後設資料](#8-管理--app-後設資料)
   - [Web 頁面](#web-頁面)
   - [背景工作 Worker](#背景工作-worker)
 - [APP 功能](#app-功能)
@@ -54,7 +55,7 @@
 | Method | Path | 功能 | 認證 | 說明 |
 | --- | --- | --- | --- | --- |
 | GET | `/api/meals` | 列出某日餐點 | Authed | `?date=YYYY-MM-DD`，時區取自 `afd_tz` cookie／`tz` query／設定檔 |
-| POST | `/api/meals` | 儲存確認的餐點 | Authed | 上傳照片到 S3、計算總計、加密 notes/items。`{ mealType, imageDataUrls?\|imageDataUrl?, description?, manualItems?[], savedFoodImageIds?[], eatenAt? }` |
+| POST | `/api/meals` | 儲存確認的餐點 | Authed | 上傳照片到 S3、計算總計、加密 notes/items。`{ mealType, imageDataUrls?\|imageDataUrl?, description?, manualItems?[], savedFoodImageIds?[], mealBundleImageIds?[], eatenAt? }` |
 | POST | `/api/meals/analyze` | AI 圖片分析（預覽，不儲存） | Authed + AI 限流 | 照片先存 private bucket、改以短效 signed URL 送 AI（`APP_PUBLIC_URL` 未設時退回 data URL）；`precise=true` 跑中位數穩定估算。`{ mealType, imageDataUrls\|imageDataUrl, precise? }` |
 | POST | `/api/meals/analyze-description` | AI 文字描述分析（預覽） | Authed + AI 限流 | `{ mealType, description(2-1200) }` |
 | POST | `/api/meals/analyze-manual` | AI 對手動項目評分（預覽） | Authed + AI 限流 | `{ mealType, manualItems[] }` |
@@ -81,7 +82,20 @@
 | DELETE | `/api/saved-foods/[id]` | 軟封存 | Authed | 設 `archivedAt` |
 | GET | `/api/saved-foods/[id]/image` | 串流食物照片 | Authed + 本人 | 維持舊資料相容與 App 使用；Web bucket 照片改走 `/api/images` |
 
-### 4. 喝水 Water
+### 4. 餐組 Meal Bundles
+
+| Method | Path | 功能 | 認證 | 說明 |
+| --- | --- | --- | --- | --- |
+| GET | `/api/meal-bundles` | 列出餐組 | Authed | 回傳解密後的名稱與項目；只列本人餐組 |
+| POST | `/api/meal-bundles` | 建立餐組／由餐點另存 | Authed | `{ name, items[], imageDataUrl? }` 或 `{ name, sourceMealId }`；項目欄位加密，照片使用私有加密物件儲存 |
+| GET | `/api/meal-bundles/[id]` | 取得單一餐組 | Authed | 404 若非本人 |
+| PATCH | `/api/meal-bundles/[id]` | 編輯名稱、項目、照片 | Authed | 驗證關聯食物屬於本人；每項可為自訂內容或引用我的食物 |
+| DELETE | `/api/meal-bundles/[id]` | 刪除餐組 | Authed | 只刪餐組本身；共用照片僅在沒有其他引用時清除 |
+| GET | `/api/meal-bundles/[id]/image` | 串流舊格式照片 | Authed + 本人 | 新照片改走短效簽章 `/api/images` |
+
+建立或更新 API 有每使用者速率限制。從餐組加入時，項目只放進餐點草稿；確認儲存前仍可編輯。餐點儲存時可按引用附加餐組照片，不重複上傳。
+
+### 5. 喝水 Water
 
 | Method | Path | 功能 | 認證 | 說明 |
 | --- | --- | --- | --- | --- |
@@ -89,7 +103,7 @@
 | POST | `/api/water` | 新增喝水紀錄 | Authed | `{ amountMl(1-5000), drankAt? }` |
 | DELETE | `/api/water/[id]` | 刪除喝水紀錄 | Authed | 404 若非本人 |
 
-### 5. 健康 Health Connect
+### 6. 健康 Health Connect
 
 | Method | Path | 功能 | 認證 | 說明 |
 | --- | --- | --- | --- | --- |
@@ -102,14 +116,14 @@
 
 Android APP 餐點新增／修改／刪除或飲水新增／刪除後，會合併更新受影響日期的雲端 NUTRITION／WATER 日總；刪除最後一筆也會送出 0。離線失敗會重試，待補日期會依帳號保存在本機，重新開啟 APP 可續傳；健康卡會顯示重試提示。開啟或恢復 APP 時也會補對今天與昨天（含桌面飲水小工具）。手動健康同步的 APP 餐點／飲水回補範圍最多 31 天，逐日讀取失敗會回報錯誤，避免顯示不完整資料為成功。
 
-### 6. 昨日總結與下一餐建議
+### 7. 昨日總結與下一餐建議
 
 | Method | Path | 功能 | 認證 | 說明 |
 | --- | --- | --- | --- | --- |
 | GET | `/api/daily-summary` | 預覽已存總結 | Authed | `?date=`、`?generate=1` 才花 AI 配額（僅允許過去日期） |
 | GET | `/api/recommendations/next-meal` | 預覽／產生下一餐建議 | Authed | `?peek=1` 只讀已存；否則花 AI 產生並儲存（用當日總計、同步體重身高、TDEE） |
 
-### 7. 管理 / App 後設資料
+### 8. 管理 / App 後設資料
 
 | Method | Path | 功能 | 認證 | 說明 |
 | --- | --- | --- | --- | --- |
@@ -128,8 +142,9 @@ Android APP 餐點新增／修改／刪除或飲水新增／刪除後，會合�
 | 舊註冊網址 | `/register` | 導向 `/login`；不再提供帳密註冊表單 |
 | 管理 | `/dashboard/admin` | 僅管理員可見（側邊欄多出「管理」項；非管理員被導回儀表板）。`AdminDataForm`：匯出下載、匯入上傳（模式選擇＋備份確認勾選框）與逐表報告 |
 | 儀表板殼 | `/dashboard` | 認證守門（未登入轉 `/login`）；`TimezoneReporter`、品牌 header、`DashboardNav`（飲食／健康／食物／設定［／管理，admin]） |
-| 飲食 | `/dashboard` | 日／週切換；熱量目標卡（TDEE，Health Connect 體重身高覆蓋設定檔）＋巨量環；Health Connect 有 `TOTAL_CALORIES` 時顯示淨熱量卡；`WaterCard`；`MealCaptureForm`（照片／描述／手動／營養標示／條碼／下一餐建議）；`MealList`；週檢視；`DailySummaryPopup`；`AiInfoCard` |
+| 飲食 | `/dashboard` | 日／週切換；熱量目標卡（TDEE，Health Connect 體重身高覆蓋設定檔）＋巨量環；Health Connect 有 `TOTAL_CALORIES` 時顯示淨熱量卡；`WaterCard`；`MealCaptureForm`（照片／描述／手動／營養標示／條碼／餐組／下一餐建議）；`MealList`；週檢視；`DailySummaryPopup`；`AiInfoCard` |
 | 食物 | `/dashboard/foods` | 「我的食物」`SavedFoodsManager` |
+| 餐組 | `/dashboard/meal-bundles` | 「我的餐組」`MealBundlesManager`；建立／編輯／刪除、選用我的食物、可選照片 |
 | 健康 | `/dashboard/health` | Health Connect 同步儀表板；`ActivityHero`；分組 `HealthGroupCard`（活動／睡眠／身體組成）；`HealthHistoryProvider`（點擊鑽取歷史）；BMR/TDEE 代謝卡（Mifflin-St Jeor） |
 | 設定 | `/dashboard/settings` | `ProfileMetabolismForm`、`AiSettingsForm`、`GoogleLinkPanel`（舊帳號綁定）、版本卡（APK 下載 `/api/app/download`）、`LogoutButton` |
 
@@ -149,8 +164,9 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | --- | --- | --- |
 | Splash | `splash_screen.dart` | 品牌動畫閃屏（三色巨量環旋轉、餐廳 logo、標題＋標語）；背景啟動 `BackgroundAnalysis`/`MealAnalysisController`/`UpdateService`；檢查 session 後導向 |
 | 登入／註冊 | `login_screen.dart` | 僅顯示 Google SSO；首次 Google 登入自動建立帳號；成功轉 `/dashboard` |
-| 儀表板 | `dashboard_screen.dart` | `Scaffold` + `NavigationBar` 三分頁（飲食／健康／設定），背景分析時 AppBar 下方顯示進度條。**飲食**：日期切換（每日/每週、不可選未來）、熱量卡（含巨量與淨熱量）、`WaterCard`、`MealCaptureForm`、`MealList`、`_DailySummaryCard`；**健康**：`HealthSyncCard`、BMR/TDEE 卡；**設定**：帳號卡、身體資料卡、`AiSettingsCard`、我的食物管理、Google 連結、`UpdateCard`、管理員面板、登出。接 home widget 快速拍攝 |
+| 儀表板 | `dashboard_screen.dart` | `Scaffold` + `NavigationBar` 三分頁（飲食／健康／設定），背景分析時 AppBar 下方顯示進度條。**飲食**：日期切換（每日/每週、不可選未來）、熱量卡（含巨量與淨熱量）、`WaterCard`、`MealCaptureForm`、`MealList`、`_DailySummaryCard`；**健康**：`HealthSyncCard`、BMR/TDEE 卡；**設定**：帳號卡、身體資料卡、`AiSettingsCard`、我的食物／餐組管理、Google 連結、`UpdateCard`、管理員面板、登出。接 home widget 快速拍攝 |
 | 食物管理 | `saved_foods_screen.dart` | `Scaffold` + `SavedFoodsManager()` |
+| 餐組管理 | `meal_bundles_screen.dart` | `MealBundlesScreen`／`MealBundleEditorScreen`：餐組 CRUD、食物或自訂項目、可選照片 |
 
 ### 元件 Widgets
 
@@ -160,8 +176,8 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | `showDailySummaryPopup` | `daily_summary_popup.dart` | 昨日總結彈窗：kcal 行、`MarkdownText`、amber 建議框、關閉／`知道了`；不觸發 AI |
 | `HealthSyncCard` | `health_sync_card.dart` | Health Connect 同步卡：同步狀態、分類指標圖（活動/身體組成/生命徵象/睡眠/營養）、點指標看趨勢、同步按鈕、同步紀錄 |
 | `MarkdownText` | `markdown_text.dart` | 無依賴 Markdown 渲染：`#/##/###`、`-`/`*`、數字清單、`**粗**`/`*斜*/`` `code` `` |
-| `MealCaptureForm` | `meal_capture_form.dart` | 餐點輸入：照片／描述／手動三模式、餐別下拉（自動取最近）、精準模式、條碼掃描、營養標示 OCR、儲存食物流程、下一餐建議 |
-| `MealList`/`_MealCard` | `meal_list.dart` | 餐點卡片：餐別、時間、總 kcal、照片、項目評分、巨量條、`編輯`／`刪除`／補上傳照片 |
+| `MealCaptureForm` | `meal_capture_form.dart` | 餐點輸入：照片／描述／手動三模式、餐別下拉（自動取最近）、精準模式、餐組快速加入、條碼掃描、營養標示 OCR、儲存食物流程、下一餐建議 |
+| `MealList`/`_MealCard` | `meal_list.dart` | 餐點卡片：餐別、時間、總 kcal、照片、項目評分、巨量條、`編輯`／`刪除`／`存為餐組`／補上傳照片 |
 | `ProfileFormSheet` | `profile_form.dart` | 底部表單：性別、生日、身高、體重、活動量、目標；即時算 BMR/TDEE/熱量目標；`儲存身體資料` |
 | `SavedFoodEditor` | `saved_food_editor.dart` | 建立／編輯食物：名稱、條碼、份量、巨量、`source` 唯讀鎖、收藏、圖片；處理 `DuplicateFoodException` 衝突（使用/更新/還原/另存） |
 | `SavedFoodsManager` | `saved_foods_manager.dart` | 食物管理：分頁（常用/全部/有條碼/最近/未使用/可能重複/資料不完整/已封存）＋排序＋搜尋＋批次封存＋收藏＋編輯＋封存／還原 |
@@ -192,6 +208,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | WaterService | GET | `/api/water?date=&tzOffset=` | 某日喝水紀錄（快取） |
 | WaterService | POST | `/api/water` | 新增喝水 |
 | WaterService | DELETE | `/api/water/$id` | 刪除喝水 |
+| MealBundleService | GET/POST/PATCH/DELETE | `/api/meal-bundles` (`/$id`) | 餐組 CRUD、照片與從餐點另存 |
 | SavedFoodService | GET | `/api/saved-foods` | 列出／條碼查詢 |
 | SavedFoodService | GET | `/api/saved-foods/$id/image` | 取食物照片 |
 | SavedFoodService | POST | `/api/saved-foods` | 建立食物 |
@@ -212,7 +229,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 
 ### 資料模型 Models
 
-`models.dart`（含 `part 'saved_food.dart'`）定義：`UserProfile`、`WaterLog`、`AppUser`、`MealItem`、`Meal`、`FoodAnalysisItem`、`DailySummary`、`SleepSegment`、`HealthMetricValue`、`HealthHistoryPoint`、`HealthHistorySeries`、`HealthConnection`、`HealthSyncStatus`、`Totals`、`SavedFood`。多數含 `fromJson`；`MealItem` 另有 `toPayload`。
+`models.dart`（含 `part 'saved_food.dart'`、`part 'meal_bundle.dart'`）定義：`UserProfile`、`WaterLog`、`AppUser`、`MealItem`、`Meal`、`MealBundle`／`MealBundleItem`、`FoodAnalysisItem`、`DailySummary`、`SleepSegment`、`HealthMetricValue`、`HealthHistoryPoint`、`HealthHistorySeries`、`HealthConnection`、`HealthSyncStatus`、`Totals`、`SavedFood`。多數含 `fromJson`；`MealItem` 與 `MealBundleItem` 另有 `toPayload`。
 
 ---
 

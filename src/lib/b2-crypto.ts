@@ -3,6 +3,8 @@ import { encryptJson } from "./encryption";
 import { decryptField, encryptField } from "./field-crypto";
 
 type MealItemLike = {
+  savedFoodId?: string | null;
+  aiRating?: string;
   name?: string | null;
   estimatedAmount?: string | null;
   encName?: unknown;
@@ -156,6 +158,43 @@ export function decryptSavedFood<T extends SavedFoodLike & { imageStorageKey?: s
   // never send the raw storage key.
   const { imageStorageKey, encBrand, ...rest } = decrypted;
   return { ...rest, hasImage: !!imageStorageKey, brand: decryptField<string | null>(encBrand, null) };
+}
+
+export function encryptMealBundleItemWrite(item: {
+  savedFoodId?: string | null;
+  name: string;
+  estimatedAmount: string;
+  calories: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  aiRating?: string;
+}) {
+  return {
+    savedFoodId: item.savedFoodId ?? null,
+    encName: encryptJson(item.name),
+    encEstimatedAmount: encryptJson(item.estimatedAmount),
+    calories: item.calories,
+    protein: item.protein,
+    fat: item.fat,
+    carbs: item.carbs,
+    aiRating: item.aiRating ?? "MANUAL"
+  };
+}
+
+export function decryptMealBundle<T extends {
+  encName?: unknown;
+  name?: string | null;
+  items?: MealItemLike[];
+  imageStorageKey?: string | null;
+}>(bundle: T) {
+  const { encName, name, items, imageStorageKey, ...rest } = bundle;
+  return {
+    ...rest,
+    name: decryptField<string>(encName, name ?? ""),
+    hasImage: !!imageStorageKey,
+    items: items?.map((item) => decryptMealItem(item)) ?? []
+  };
 }
 
 export function encryptDailySummaryWrite(summary: {

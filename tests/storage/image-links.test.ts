@@ -3,7 +3,7 @@ import { test } from "node:test";
 
 process.env.AUTH_SECRET = "test-only-secret-that-is-longer-than-thirty-two-bytes";
 
-import { mealImagePaths, savedFoodImagePath } from "../../src/lib/image-links";
+import { mealBundleImagePath, mealImagePaths, savedFoodImagePath } from "../../src/lib/image-links";
 import { parseSignedImageQuery, verifyImageSignature } from "../../src/lib/storage";
 import { signedImageCacheControl, withImageWidth } from "../../src/lib/image-url";
 
@@ -35,6 +35,17 @@ test("saved-food photos sign object keys and fall back for legacy rows", () => {
   assert.equal(legacy, "/api/saved-foods/food-1/image");
 
   assert.equal(savedFoodImagePath({ id: "food-1", imageStorageKey: null }), null);
+});
+
+test("meal-bundle photos sign object keys and fall back for legacy rows", () => {
+  const signed = mealBundleImagePath({ id: "bundle-1", imageStorageKey: "meals/u1/a.jpg" });
+  assert.ok(signed?.startsWith("/api/images?"));
+  const ref = parseSignedImageQuery(new URL(signed!, "https://example.com"));
+  assert.ok(ref);
+  assert.equal(ref.key, "meals/u1/a.jpg");
+  assert.equal(verifyImageSignature("user", ref), true);
+  assert.equal(mealBundleImagePath({ id: "bundle-1", imageStorageKey: "data:image/png;base64,AAAA" }), "/api/meal-bundles/bundle-1/image");
+  assert.equal(mealBundleImagePath({ id: "bundle-1", imageStorageKey: null }), null);
 });
 
 test("thumbnail width is appended correctly to both signed and legacy image URLs", () => {

@@ -205,6 +205,32 @@ export const savedFoodExportSchema = z.object({
 });
 export type ExportSavedFood = z.infer<typeof savedFoodExportSchema>;
 
+export const mealBundleExportSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
+  name: z.string().min(1),
+  imageStorageKey: nullableStr,
+  createdAt: iso,
+  updatedAt: iso
+});
+export type ExportMealBundle = z.infer<typeof mealBundleExportSchema>;
+
+export const mealBundleItemExportSchema = z.object({
+  id: z.string().min(1),
+  mealBundleId: z.string().min(1),
+  savedFoodId: nullableStr,
+  name: z.string().min(1),
+  estimatedAmount: z.string().min(1),
+  calories: z.number(),
+  protein: z.number(),
+  fat: z.number(),
+  carbs: z.number(),
+  aiRating: z.string().default("MANUAL"),
+  createdAt: iso,
+  updatedAt: iso
+});
+export type ExportMealBundleItem = z.infer<typeof mealBundleItemExportSchema>;
+
 export const dailySummaryExportSchema = z.object({
   id: z.string().min(1),
   userId: z.string().min(1),
@@ -272,6 +298,8 @@ export const exportEnvelopeSchema = z.object({
     mealItems: z.array(mealItemExportSchema).default([]),
     waterLogs: z.array(waterLogExportSchema).default([]),
     savedFoods: z.array(savedFoodExportSchema).default([]),
+    mealBundles: z.array(mealBundleExportSchema).default([]),
+    mealBundleItems: z.array(mealBundleItemExportSchema).default([]),
     dailySummaries: z.array(dailySummaryExportSchema).default([]),
     dailyRecommendations: z.array(dailyRecommendationExportSchema).default([]),
     healthMetrics: z.array(healthMetricExportSchema).default([]),
@@ -287,6 +315,8 @@ export const TABLE_KEYS = [
   "mealItems",
   "waterLogs",
   "savedFoods",
+  "mealBundles",
+  "mealBundleItems",
   "dailySummaries",
   "dailyRecommendations",
   "healthMetrics",
@@ -458,6 +488,34 @@ function toExportSavedFood(row: DbRow, anomalies: Anomalies): ExportSavedFood {
   };
 }
 
+function toExportMealBundle(row: DbRow, anomalies: Anomalies): ExportMealBundle {
+  return {
+    id: row.id as string,
+    userId: row.userId as string,
+    name: decCounted<string>(row.encName, "", anomalies, "MealBundle.encName") ?? "",
+    imageStorageKey: (row.imageStorageKey as string | null) ?? null,
+    createdAt: isoOf(row.createdAt),
+    updatedAt: isoOf(row.updatedAt)
+  };
+}
+
+function toExportMealBundleItem(row: DbRow, anomalies: Anomalies): ExportMealBundleItem {
+  return {
+    id: row.id as string,
+    mealBundleId: row.mealBundleId as string,
+    savedFoodId: (row.savedFoodId as string | null) ?? null,
+    name: decCounted<string>(row.encName, "", anomalies, "MealBundleItem.encName") ?? "",
+    estimatedAmount: decCounted<string>(row.encEstimatedAmount, "", anomalies, "MealBundleItem.encEstimatedAmount") ?? "",
+    calories: Number(row.calories ?? 0),
+    protein: Number(row.protein ?? 0),
+    fat: Number(row.fat ?? 0),
+    carbs: Number(row.carbs ?? 0),
+    aiRating: (row.aiRating as string | undefined) ?? "MANUAL",
+    createdAt: isoOf(row.createdAt),
+    updatedAt: isoOf(row.updatedAt)
+  };
+}
+
 function toExportDailySummary(row: DbRow, anomalies: Anomalies): ExportDailySummary {
   return {
     id: row.id as string,
@@ -541,6 +599,8 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
     mealItems: ExportMealItem[];
     waterLogs: ExportWaterLog[];
     savedFoods: ExportSavedFood[];
+    mealBundles: ExportMealBundle[];
+    mealBundleItems: ExportMealBundleItem[];
     dailySummaries: ExportDailySummary[];
     dailyRecommendations: ExportDailyRecommendation[];
     healthMetrics: ExportHealthMetric[];
@@ -550,7 +610,7 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
   const anomalies: Anomalies = {};
   const ownedBy = scope ? { userId: scope.userId } : undefined;
   const excludeSecrets = Boolean(scope?.excludeSecrets);
-  const [users, userProfiles, meals, mealItems, waterLogs, savedFoods, dailySummaries, dailyRecommendations, healthMetrics, appConfig] =
+  const [users, userProfiles, meals, mealItems, waterLogs, savedFoods, mealBundles, mealBundleItems, dailySummaries, dailyRecommendations, healthMetrics, appConfig] =
     await Promise.all([
       prisma.user.findMany({ where: scope ? { id: scope.userId } : undefined, orderBy: { createdAt: "asc" } }),
       prisma.userProfile.findMany({ where: ownedBy }),
@@ -558,6 +618,8 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
       prisma.mealItem.findMany({ where: scope ? { meal: { userId: scope.userId } } : undefined, orderBy: { createdAt: "asc" } }),
       prisma.waterLog.findMany({ where: ownedBy }),
       prisma.savedFood.findMany({ where: ownedBy }),
+      prisma.mealBundle.findMany({ where: ownedBy, orderBy: { createdAt: "asc" } }),
+      prisma.mealBundleItem.findMany({ where: scope ? { mealBundle: { userId: scope.userId } } : undefined, orderBy: { createdAt: "asc" } }),
       prisma.dailySummary.findMany({ where: ownedBy }),
       prisma.dailyRecommendation.findMany({ where: ownedBy }),
       prisma.healthMetric.findMany({ where: ownedBy }),
@@ -571,6 +633,8 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
     mealItems: mealItems.map((row) => toExportMealItem(row as DbRow, anomalies)),
     waterLogs: waterLogs.map((row) => toExportWaterLog(row as DbRow)),
     savedFoods: savedFoods.map((row) => toExportSavedFood(row as DbRow, anomalies)),
+    mealBundles: mealBundles.map((row) => toExportMealBundle(row as DbRow, anomalies)),
+    mealBundleItems: mealBundleItems.map((row) => toExportMealBundleItem(row as DbRow, anomalies)),
     dailySummaries: dailySummaries.map((row) => toExportDailySummary(row as DbRow, anomalies)),
     dailyRecommendations: dailyRecommendations.map((row) => toExportDailyRecommendation(row as DbRow)),
     healthMetrics: healthMetrics.map((row) => toExportHealthMetric(row as DbRow, anomalies)),
@@ -626,11 +690,19 @@ function shortError(err: unknown): string {
 // Writes one row inside the current table transaction. Returns "skip" when the
 // row already exists (skip-existing mode). Throws on per-row failures — the
 // caller catches, counts, and continues without aborting the transaction.
+type ImportContext = {
+  userIds: Set<string>;
+  mealIds: Set<string>;
+  mealBundleIds: Set<string>;
+  savedFoodIds: Set<string>;
+  userIdMap: Map<string, string>;
+};
+
 type RowWriter = (
   tx: Prisma.TransactionClient,
   row: never,
   opts: ImportOptions,
-  ctx: { userIds: Set<string>; mealIds: Set<string>; userIdMap: Map<string, string> }
+  ctx: ImportContext
 ) => Promise<"skip" | void>;
 
 const writers: Record<TableKey, RowWriter> = {
@@ -865,6 +937,58 @@ const writers: Record<TableKey, RowWriter> = {
     await tx.savedFood.create({ data });
   },
 
+  mealBundles: async (tx, rawRow, opts, ctx) => {
+    const row = rawRow as unknown as ExportMealBundle;
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
+    const data = {
+      id: row.id,
+      userId,
+      encName: encryptJson(row.name),
+      imageStorageKey: row.imageStorageKey ?? null,
+      ...(toDate(row.createdAt) ? { createdAt: toDate(row.createdAt) as Date } : {}),
+      updatedAt: new Date()
+    };
+    if (opts.mode === "overwrite") {
+      await tx.mealBundle.upsert({ where: { id: row.id }, create: data, update: data });
+      return;
+    }
+    const existing = await tx.mealBundle.findUnique({ where: { id: row.id }, select: { id: true } });
+    if (existing) return "skip";
+    await tx.mealBundle.create({ data });
+  },
+
+  mealBundleItems: async (tx, rawRow, opts, ctx) => {
+    const row = rawRow as unknown as ExportMealBundleItem;
+    if (!ctx.mealBundleIds.has(row.mealBundleId)) {
+      throw new Error(`mealBundleId ${row.mealBundleId} 找不到對應的餐組（孤兒列）`);
+    }
+    if (row.savedFoodId && !ctx.savedFoodIds.has(row.savedFoodId)) {
+      throw new Error(`savedFoodId ${row.savedFoodId} 找不到對應的食物（孤兒列）`);
+    }
+    const data = {
+      id: row.id,
+      mealBundleId: row.mealBundleId,
+      savedFoodId: row.savedFoodId ?? null,
+      encName: encryptJson(row.name),
+      encEstimatedAmount: encryptJson(row.estimatedAmount),
+      calories: new Prisma.Decimal(row.calories ?? 0),
+      protein: new Prisma.Decimal(row.protein ?? 0),
+      fat: new Prisma.Decimal(row.fat ?? 0),
+      carbs: new Prisma.Decimal(row.carbs ?? 0),
+      aiRating: row.aiRating ?? "MANUAL",
+      ...(toDate(row.createdAt) ? { createdAt: toDate(row.createdAt) as Date } : {}),
+      updatedAt: new Date()
+    };
+    if (opts.mode === "overwrite") {
+      await tx.mealBundleItem.upsert({ where: { id: row.id }, create: data, update: data });
+      return;
+    }
+    const existing = await tx.mealBundleItem.findUnique({ where: { id: row.id }, select: { id: true } });
+    if (existing) return "skip";
+    await tx.mealBundleItem.create({ data });
+  },
+
   dailySummaries: async (tx, rawRow, opts, ctx) => {
     const row = rawRow as unknown as ExportDailySummary;
     const userId = remapUserId(row.userId, ctx);
@@ -1004,17 +1128,19 @@ const writers: Record<TableKey, RowWriter> = {
 
 // Loads parent id sets once per table (file ids ∪ existing DB ids) so orphan
 // checks don't need a query per row.
-async function importContext(
-  envelope: ImportEnvelope
-): Promise<{ userIds: Set<string>; mealIds: Set<string>; userIdMap: Map<string, string> }> {
-  const [dbUsers, dbMeals] = await Promise.all([
+async function importContext(envelope: ImportEnvelope): Promise<ImportContext> {
+  const [dbUsers, dbMeals, dbMealBundles, dbSavedFoods] = await Promise.all([
     prisma.user.findMany({ select: { id: true, email: true } }),
-    prisma.meal.findMany({ select: { id: true } })
+    prisma.meal.findMany({ select: { id: true } }),
+    prisma.mealBundle.findMany({ select: { id: true } }),
+    prisma.savedFood.findMany({ select: { id: true } })
   ]);
   const userIds = new Set<string>([...envelope.data.users.map((u) => u.id), ...dbUsers.map((u) => u.id)]);
   const mealIds = new Set<string>([...envelope.data.meals.map((m) => m.id), ...dbMeals.map((m) => m.id)]);
+  const mealBundleIds = new Set<string>([...envelope.data.mealBundles.map((bundle) => bundle.id), ...dbMealBundles.map((bundle) => bundle.id)]);
+  const savedFoodIds = new Set<string>([...envelope.data.savedFoods.map((food) => food.id), ...dbSavedFoods.map((food) => food.id)]);
   const userIdMap = buildUserIdMap(envelope, dbUsers);
-  return { userIds, mealIds, userIdMap };
+  return { userIds, mealIds, mealBundleIds, savedFoodIds, userIdMap };
 }
 
 // Cross-database import support: a user may exist in the target DB with the
