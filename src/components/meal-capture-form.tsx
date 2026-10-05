@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { NextMealAdvice } from "@/components/next-meal-advice";
 import { withImageWidth } from "@/lib/image-url";
+import { mealPhotoDataUrlsForSave } from "@/lib/meal-capture";
 
 type ManualItem = {
   id: string;
@@ -158,6 +159,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   // to the meal by reference on save (same object key, no re-upload/copy).
   const [pickedFoodIds, setPickedFoodIds] = useState<string[]>([]);
   const [pickedBundleIds, setPickedBundleIds] = useState<string[]>([]);
+  const [attachPhotosToManualDraft, setAttachPhotosToManualDraft] = useState(false);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -338,8 +340,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mealType: confirmMealType,
-          // Newly captured meal photos (photo mode only).
-          imageDataUrls: mode === "photo" && previews.length > 0 ? previews : undefined,
+          // Keep explicitly selected photos when adding a bundle switches photo mode to a manual draft.
+          imageDataUrls: mealPhotoDataUrlsForSave(mode, previews, attachPhotosToManualDraft),
           // Photos from picked saved foods, attached by reference (no copy).
           savedFoodImageIds: pickedFoodIds.length > 0 ? pickedFoodIds : undefined,
           mealBundleImageIds: pickedBundleIds.length > 0 ? pickedBundleIds : undefined,
@@ -356,6 +358,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       setPreviews([]);
       setPickedFoodIds([]);
       setPickedBundleIds([]);
+      setAttachPhotosToManualDraft(false);
       const usedFoodIds = [...new Set(confirmItems.map((item) => item.savedFoodId).filter((id): id is string => !!id))];
       await Promise.allSettled(usedFoodIds.map((id) => markSavedFoodUsed(id)));
       setDescription("");
@@ -424,6 +427,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   }
 
   function addMealBundle(bundle: MealBundle) {
+    if (mode === "photo" && previews.length > 0) setAttachPhotosToManualDraft(true);
     setMode("manual");
     setManualItems((current) => [
       ...current.filter((item) => item.name.trim()),
@@ -741,6 +745,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
           </button>)}
         </div> : <p className="mt-2 text-xs text-stone-600">尚無餐組，<a className="font-semibold underline" href="/dashboard/meal-bundles">建立一組常吃餐點</a>。</p>}
       </div>
+      {mode === "manual" && attachPhotosToManualDraft && previews.length > 0 ? (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-stone-100 px-3 py-2 text-sm text-stone-700">
+          <span>{previews.length} 張已選照片將隨餐點儲存。</span>
+          <button className="font-semibold text-red-700" onClick={() => { setPreviews([]); setAttachPhotosToManualDraft(false); }} type="button">移除照片</button>
+        </div>
+      ) : null}
       {mode === "photo" ? (
       <div
         className={`mt-5 rounded-2xl border border-dashed p-4 transition ${draggingImage ? "border-amber-500 bg-amber-50" : "border-amber-200 bg-white"}`}
@@ -758,7 +768,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
           </div>
           <div className="flex gap-2">
             {previews.length ? (
-              <button className="rounded-xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => setPreviews([])} type="button">全部移除</button>
+              <button className="rounded-xl bg-stone-100 px-4 py-2 text-sm font-semibold text-stone-700" onClick={() => { setPreviews([]); setAttachPhotosToManualDraft(false); }} type="button">全部移除</button>
             ) : null}
             <button className="cursor-pointer rounded-xl bg-amber-700 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-amber-800 disabled:opacity-60" disabled={previews.length >= MAX_IMAGES} onClick={() => fileInputRef.current?.click()} type="button">選擇圖片</button>
           </div>
