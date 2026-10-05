@@ -7,7 +7,7 @@ ChatGPT Remote MCP 的部署、OAuth、create-only policy、audit 與還原設�
 [docs/chatgpt-mcp.md](docs/chatgpt-mcp.md)。
 
 <p>
-  <img src="https://img.shields.io/badge/version-0.75.1-2563eb" alt="version">
+  <img src="https://img.shields.io/badge/version-0.80.1-2563eb" alt="version">
   <img src="https://img.shields.io/badge/Next.js-App_Router-black?logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript">
   <img src="https://img.shields.io/badge/Flutter-Android-02569B?logo=flutter&logoColor=white" alt="Flutter">
@@ -46,6 +46,10 @@ ChatGPT Remote MCP 的部署、OAuth、create-only policy、audit 與還原設�
 | 🌙 **昨日總結自動彈窗** | Worker 依各使用者時區於凌晨事前產生；App／Web 每日首次開啟自動彈出，不跑即時 AI |
 | 🍱 **常用食物 / 條碼 / 營養標示** | 自建食物庫、掃條碼、輸入營養標示（熱量與三大營養素皆支援小數） |
 | ❤️ **Health Connect 同步** | Android 同步體重、身高、活動消耗，自動計算當日淨熱量 |
+| 🤖 **ChatGPT 連接器（MCP）** | 授權後可在 ChatGPT 對話中查詢餐點／飲水／常用食物並新增紀錄；連接器僅能讀取與新增，無法修改或刪除 |
+| 📜 **AI 操作紀錄** | 列出每筆由 AI 建立的資料（時間、工具、影響範圍、前後內容），可依日期／來源／工具／結果篩選，並可安全還原 |
+| 📦 **資料備份與匯入** | 管理員可一鍵匯出全部使用者資料為 JSON，並以略過／覆寫模式匯回；跨環境搬遷與災難還原皆適用 |
+| 🔁 **NouriLedger 一鍵搬家** | 設定頁可將本人資料與照片複製到「養財日記 NouriLedger」新站，採 authorization code + PKCE，本站資料不受影響 |
 | 🔐 **隱私與加密** | AES-256-GCM 欄位加密；每位使用者自帶 AI 金鑰，加密儲存後端解密，不共用額度 |
 
 ---
@@ -57,7 +61,7 @@ ChatGPT Remote MCP 的部署、OAuth、create-only policy、audit 與還原設�
 | 前端（Web） | Next.js App Router + TypeScript |
 | 前端（App） | Flutter（Android） |
 | 資料庫 | Prisma + PostgreSQL |
-| 認證 | Google SSO · JWT HttpOnly Cookie Session |
+| 認證 | Google SSO · Cloudflare Turnstile 人機驗證 · JWT HttpOnly Cookie Session |
 | 加密 | AES-256-GCM 欄位加密 |
 | AI | OpenAI Responses API（支援 OpenAI-compatible endpoint） |
 | 背景工作 | Redis + BullMQ worker（昨日總結事前產生） |
@@ -79,13 +83,14 @@ ChatGPT Remote MCP 的部署、OAuth、create-only policy、audit 與還原設�
    - `GOOGLE_CLIENT_ID` 與 `NEXT_PUBLIC_GOOGLE_CLIENT_ID` 請填入同一個 Google OAuth Web client ID。
    - 使用 OpenAI 官方 API 時可留空 `OPENAI_BASE_URL`。
    - 使用 OpenAI-compatible API 時，將 `OPENAI_BASE_URL` 設為相容服務的 `/v1` endpoint，例如 `https://api.example.com/v1`。
-5. 啟動服務（會一併啟動 **worker**，昨日總結排程才會運作）：
+5. 設定登入人機驗證：填入 `NEXT_PUBLIC_TURNSTILE_SITE_KEY` 與 `TURNSTILE_SECRET`，並在 `TURNSTILE_HOSTNAMES` 允許實際網站來源，否則 Web 與 App 登入都會被安全拒絕（詳見 [`docs/turnstile-login.md`](docs/turnstile-login.md)）。
+6. 啟動服務（會一併啟動 **worker**，昨日總結排程才會運作）：
 
    ```bash
    docker compose up --build
    ```
 
-6. 開啟 <http://localhost:3000>。
+7. 開啟 <http://localhost:3000>。
 
 ---
 
