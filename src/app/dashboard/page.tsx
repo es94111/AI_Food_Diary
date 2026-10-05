@@ -8,6 +8,7 @@ import { sumMeals } from "@/lib/totals";
 import { decryptProfile } from "@/lib/profile-crypto";
 import { decryptMetricValue } from "@/lib/field-crypto";
 import { decryptMeal } from "@/lib/b2-crypto";
+import { mealImagePaths } from "@/lib/image-links";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MAX_WATER_LOGS_PER_DAY } from "@/lib/water-limits";
 import { MealCaptureForm } from "@/components/meal-capture-form";
@@ -103,10 +104,9 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   const isDeficit = netCalories < 0;
   const mealList = meals.map((meal) => {
     const decrypted = decryptMeal(meal);
-    const imageUrls = Array.from(
-      { length: decrypted.imageCount },
-      (_, i) => `/api/meals/${meal.id}/image?i=${i}`
-    );
+    // Signed, short-lived links to the private bucket's streaming endpoint
+    // (legacy inline rows keep falling back to the authenticated meal route).
+    const imageUrls = mealImagePaths(meal, meal.id);
     return {
       ...decrypted,
       eatenAt: meal.eatenAt.toISOString(),

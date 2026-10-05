@@ -55,17 +55,19 @@
 | --- | --- | --- | --- | --- |
 | GET | `/api/meals` | 列出某日餐點 | Authed | `?date=YYYY-MM-DD`，時區取自 `afd_tz` cookie／`tz` query／設定檔 |
 | POST | `/api/meals` | 儲存確認的餐點 | Authed | 上傳照片到 S3、計算總計、加密 notes/items。`{ mealType, imageDataUrls?\|imageDataUrl?, description?, manualItems?[], savedFoodImageIds?[], eatenAt? }` |
-| POST | `/api/meals/analyze` | AI 圖片分析（預覽，不儲存） | Authed + AI 限流 | `precise=true` 跑中位數穩定估算。`{ mealType, imageDataUrls\|imageDataUrl, precise? }` |
+| POST | `/api/meals/analyze` | AI 圖片分析（預覽，不儲存） | Authed + AI 限流 | 照片先存 private bucket、改以短效 signed URL 送 AI（`APP_PUBLIC_URL` 未設時退回 data URL）；`precise=true` 跑中位數穩定估算。`{ mealType, imageDataUrls\|imageDataUrl, precise? }` |
 | POST | `/api/meals/analyze-description` | AI 文字描述分析（預覽） | Authed + AI 限流 | `{ mealType, description(2-1200) }` |
 | POST | `/api/meals/analyze-manual` | AI 對手動項目評分（預覽） | Authed + AI 限流 | `{ mealType, manualItems[] }` |
-| POST | `/api/meals/analyze-nutrition-label` | AI 營養標示 OCR（預覽） | Authed + AI 限流 | `{ imageDataUrls\|imageDataUrl }`（1-5 張） |
+| POST | `/api/meals/analyze-nutrition-label` | AI 營養標示 OCR（預覽） | Authed + AI 限流 | 同 analyze，改以 signed URL 送 AI。`{ imageDataUrls\|imageDataUrl }`（1-5 張） |
 | POST | `/api/meals/reestimate` | 重新估算已編輯項目（預覽） | Authed + AI 限流 | `{ manualItems[{name,estimatedAmount}] }` |
 | GET | `/api/meals/[id]` | 取得單一餐點 | Authed | 404 若非本人 |
 | PATCH | `/api/meals/[id]` | 取代餐點項目 | Authed | 交易內刪舊項目重算總計。`{ mealType, items[] }` |
 | DELETE | `/api/meals/[id]` | 刪除餐點 | Authed | 一併移除未再被引用的照片 |
-| GET | `/api/meals/[id]/image` | 串流餐點照片 | Authed | `?i=<index>`，`Cache-Control: private, max-age=60` |
+| GET | `/api/meals/[id]/image` | 串流餐點照片 | Authed | `?i=<index>`（僅舊版 inline data URL；bucket 照片改走 `/api/images`） |
 | POST | `/api/meals/[id]/image` | 附加照片 | Authed | `{ imageDataUrls[] }`，最多 5 張 |
 | DELETE | `/api/meals/[id]/image` | 刪除單張照片 | Authed | `?i=<index>` |
+| GET | `/api/images` | 串流 bucket 照片（短效簽章） | Authed + 本人 | `?k=&e=&s=`，簽章＋擁有者檢查後解密串流；`?w=` 可縮圖 |
+| GET | `/api/images/ai` | 供 AI 取圖的 capability URL | 短效簽章 | `ai` scope（5 分鐘），不帶 cookie，僅憑簽章 |
 
 ### 3. 常用食物 Saved Foods
 
@@ -77,7 +79,7 @@
 | PATCH | `/api/saved-foods/[id]` | 部分更新 | Authed | `source` 不可改。409 條碼重複 |
 | POST | `/api/saved-foods/[id]` | 標記使用 | Authed | 遞增 `useCount`、設 `lastUsedAt` |
 | DELETE | `/api/saved-foods/[id]` | 軟封存 | Authed | 設 `archivedAt` |
-| GET | `/api/saved-foods/[id]/image` | 串流食物照片 | Authed | 404 若無 |
+| GET | `/api/saved-foods/[id]/image` | 串流食物照片（舊版 inline data URL） | Authed | 404 若無；bucket 照片改走 `/api/images` |
 
 ### 4. 喝水 Water
 
@@ -215,6 +217,14 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 ---
 
 ## 如何執行測試
+
+### 單元測試（Node）
+
+| 指令 | 涵蓋 |
+| --- | --- |
+| `npm run test:storage` | 照片 signed URL：HMAC 簽章、`user`／`ai` scope 隔離、過期、竄改、擁有者前綴、舊版 data URL 相容、AI 圖片來源解析 |
+| `npm run test:mcp` | MCP 工具、政策與傳輸契約 |
+| `npm run test:nouriledger` | 舊站匯出／授權碼（資料庫測試需 `FOOD_TEST_DATABASE_URL`） |
 
 ### WEB HTTP 煙霧測試
 

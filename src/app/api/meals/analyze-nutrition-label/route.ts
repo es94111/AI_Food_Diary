@@ -4,7 +4,9 @@ import { analyzeNutritionLabelImage } from "@/lib/ai";
 import { resolveUserAiConfig } from "@/lib/ai-config";
 import { aiErrorResponse } from "@/lib/ai-errors";
 import { requireUser } from "@/lib/auth";
+import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import { enforceAiRateLimit } from "@/lib/rate-limit";
+import { resolvePreviewVisionImages } from "@/lib/vision-images";
 import { imageDataUrlSchema } from "@/lib/validators";
 
 const nutritionLabelSchema = z
@@ -18,6 +20,7 @@ const nutritionLabelSchema = z
 
 export async function POST(request: Request) {
   let byoKey = true;
+  let uploadedKeys: string[] = [];
   try {
     const user = await requireUser();
     const limited = await enforceAiRateLimit(user.id);
@@ -26,7 +29,11 @@ export async function POST(request: Request) {
     const images = body.imageDataUrls?.length ? body.imageDataUrls : body.imageDataUrl ? [body.imageDataUrl] : [];
     const config = resolveUserAiConfig(user);
     byoKey = config.source === "user";
-    const analysis = await analyzeNutritionLabelImage(config, images);
+    // Same as the meal preview: store first (when linkable), then hand the AI
+    // signed links instead of inline base64, releasing the objects in `finally`.
+    const preview = await resolvePreviewVisionImages(images, user.id);
+    uploadedKeys = preview.uploadedKeys;
+    const analysis = await analyzeNutritionLabelImage(config, preview.inputs);
     return NextResponse.json({ analysis });
   } catch (error) {
     return aiErrorResponse(error, {
@@ -35,5 +42,7 @@ export async function POST(request: Request) {
       emptyContentMessage: "AI 服務沒有回傳分析內容，請確認模型是否支援圖片輸入。",
       byoKey
     });
+  } finally {
+    await Promise.all(uploadedKeys.map((key) => deleteImageIfUnreferenced(key).catch(() => undefined)));
   }
 }

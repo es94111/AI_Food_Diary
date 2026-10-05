@@ -62,6 +62,12 @@ export function aiErrorResponse(
   if (message.includes("Unexpected token") || message.includes("JSON") || message === "OPENAI_RESPONSE_NOT_PARSEABLE") {
     return NextResponse.json({ error: "AI 回傳格式無法解析，請調整提示語要求只輸出 JSON。" }, { status: 502 });
   }
+  // A stored photo could not be read back from object storage (missing object or
+  // a changed encryption key). The provider never saw an image, so say so plainly
+  // instead of blaming the AI.
+  if (message === "IMAGE_UNREADABLE") {
+    return NextResponse.json({ error: "讀取照片失敗，照片可能已被刪除或無法解密，請重新上傳照片。" }, { status: 502 });
+  }
 
   // Upstream provider error: surface its real status + message. We answer with
   // 502 (we are acting as a gateway to the provider) so it stays distinct from

@@ -182,7 +182,7 @@ DOCKERHUB_IMAGE=你的 Docker Hub image，例如 username/ai-food-diary
 ## 📝 備註
 
 - AI 營養分析為估算值；使用者可在 Web／App 修正餐點項目後重新辨識。
-- 目前圖片以 data URL 送到 AI，不會保存到 MinIO；MinIO 已在部署環境預留，下一步可改為 private bucket + signed URL。
+- 照片存於 private bucket（MinIO／S3），且**靜態加密**：物件本體是 AES-256-GCM 信封。AI 分析改以**短效 signed URL**（`/api/images/ai`，5 分鐘）取得照片，不再傳送 data URL；Web 顯示走 `/api/images`（10 分鐘、簽章＋本人檢查），App 仍走已驗證的 `/api/meals/[id]/image`。需要設定 `APP_PUBLIC_URL` 才能對外提供 signed URL（未設定時 AI 退回伺服器端解密讀取）。生命週期、刪除與回滾見 [`docs/photo-lifecycle.md`](docs/photo-lifecycle.md)。
 - Docker runtime 使用 `prisma migrate deploy` 套用版本化 migration；本機開發仍可用 `prisma db push`。
 - 昨日總結排程跑在 **worker** 程序，請確認 worker 與 app 使用相同 env（加密金鑰、`DATABASE_URL`、`REDIS_URL`）。
 - 磁碟加密屬基礎設施控制；部署 PostgreSQL、MinIO/S3、Docker volume、備份與 VM 磁碟時請依 [`docs/disk-encryption.md`](docs/disk-encryption.md) 驗證。
