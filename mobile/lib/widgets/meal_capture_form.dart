@@ -6,11 +6,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../models/models.dart';
+import '../screens/meal_bundles_screen.dart';
 import '../theme/app_theme.dart';
 import '../services/background_analysis.dart';
 import '../services/health_auto_sync.dart';
 import '../services/image_cache_service.dart';
 import '../services/meal_analysis_controller.dart';
+import '../services/meal_bundle_service.dart';
 import '../services/meal_service.dart';
 import '../services/saved_food_list_logic.dart';
 import '../services/saved_food_service.dart';
@@ -183,10 +185,12 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   // Saved foods (with photos) picked into the meal; their image is attached to
   // the meal by reference on save instead of being copied.
   final List<String> _pickedFoodIds = [];
+  final List<String> _pickedBundleImageIds = [];
   final _descriptionCtrl = TextEditingController();
   final _foodSearchCtrl = TextEditingController();
   final List<EditableItem> _manualItems = [EditableItem()];
   List<SavedFood> _savedFoods = [];
+  List<MealBundle> _mealBundles = [];
   bool _labelLoading = false;
   bool _barcodeLoading = false;
   bool _adviceLoading = false;
@@ -214,6 +218,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     super.initState();
     _mode = widget.initialMode;
     _loadSavedFoods();
+    _loadMealBundles();
     _analysis.addListener(_onAnalysisChanged);
     widget.controller?._attach(this, _openCameraAndAnalyze);
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -241,6 +246,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     }
     if (oldWidget.savedFoodsRevision != widget.savedFoodsRevision) {
       _loadSavedFoods();
+      _loadMealBundles();
     }
   }
 
@@ -277,6 +283,46 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       return;
     }
     if (mounted) setState(() => _savedFoods = foods);
+  }
+
+  Future<void> _loadMealBundles() async {
+    try {
+      final bundles = await MealBundleService.list();
+      if (mounted) setState(() => _mealBundles = bundles);
+    } catch (_) {
+      // Quick-add suggestions are non-critical; preserve the existing form.
+    }
+  }
+
+  void _addMealBundle(MealBundle bundle) {
+    setState(() {
+      _mode = CaptureMode.manual;
+      _manualItems
+        ..removeWhere((item) => !item.hasName)
+        ..addAll(bundle.items.map((item) => EditableItem(
+          savedFoodId: item.savedFoodId,
+          name: item.name,
+          estimatedAmount: item.estimatedAmount,
+          calories: fmtNum(item.calories),
+          protein: item.protein.toString(),
+          fat: item.fat.toString(),
+          carbs: item.carbs.toString(),
+          aiRating: 'MANUAL',
+        )));
+      if (bundle.hasImage &&
+          !_pickedBundleImageIds.contains(bundle.id) &&
+          _pickedBundleImageIds.length < 5) {
+        _pickedBundleImageIds.add(bundle.id);
+      }
+      for (final item in bundle.items) {
+        final id = item.savedFoodId;
+        final food = _savedFoods.where((entry) => entry.id == id).firstOrNull;
+        if (id != null && food?.hasImage == true && !_pickedFoodIds.contains(id) && _pickedFoodIds.length < 5) {
+          _pickedFoodIds.add(id);
+        }
+      }
+      _error = null;
+    });
   }
 
   /// Picks one (camera) or several (gallery) images and returns their data URLs,
@@ -433,6 +479,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     // Photos from picked saved foods are attached by reference on save (not
     // analysed, not re-uploaded).
     final pickedFoodIds = List<String>.of(_pickedFoodIds);
+    final pickedBundleImageIds = List<String>.of(_pickedBundleImageIds);
     final manualItems = manual.map((e) => e.toMealItem()).toList();
     final savedFoodIds = mode == CaptureMode.manual
         ? manual.map((e) => e.savedFoodId).toList()
@@ -468,6 +515,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         mode: mode.name,
         imageDataUrls: images,
         savedFoodImageIds: pickedFoodIds,
+        mealBundleImageIds: pickedBundleImageIds,
         savedFoodIds: savedFoodIds,
         description: desc,
         body: body,
@@ -478,6 +526,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         mode: mode.name,
         imageDataUrls: images,
         savedFoodImageIds: pickedFoodIds,
+        mealBundleImageIds: pickedBundleImageIds,
         savedFoodIds: savedFoodIds,
         description: desc,
         run: () => switch (mode) {
@@ -618,6 +667,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final mode = _analysis.mode; // 'photo' | 'describe' | 'manual'
     final images = _analysis.imageDataUrls;
     final pickedFoodIds = _analysis.savedFoodImageIds;
+    final pickedBundleImageIds = _analysis.mealBundleImageIds;
     final desc = _analysis.description.trim();
     return Navigator.of(context).push<bool>(
       MaterialPageRoute(
@@ -648,6 +698,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             mealType: mealType,
             imageDataUrls: images.isNotEmpty ? images : null,
             savedFoodImageIds: pickedFoodIds.isNotEmpty ? pickedFoodIds : null,
+            mealBundleImageIds: pickedBundleImageIds.isNotEmpty ? pickedBundleImageIds : null,
             description: mode == 'describe' && desc.isNotEmpty ? desc : null,
             items: saveItems,
           );
@@ -679,6 +730,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     setState(() {
       _imageDataUrls.clear();
       _pickedFoodIds.clear();
+      _pickedBundleImageIds.clear();
       _descriptionCtrl.clear();
       _foodSearchCtrl.clear();
       _manualItems
@@ -1079,6 +1131,8 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             const SizedBox(height: 12),
             _modeTabs(),
             const SizedBox(height: 12),
+            RepaintBoundary(child: _mealBundlesSection()),
+            const SizedBox(height: 12),
             if (_mode == CaptureMode.photo) ...[
               _imageSection(),
               _preciseModeTile(),
@@ -1361,6 +1415,50 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           ],
         );
       }).toList(),
+    );
+  }
+
+  Widget _mealBundlesSection() {
+    final p = context.palette;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: p.amberSurface,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(child: Text('從餐組快速加入', style: TextStyle(fontWeight: FontWeight.bold))),
+              TextButton(
+                onPressed: () async {
+                  await Navigator.of(context).push(MaterialPageRoute<void>(
+                    builder: (_) => const MealBundlesScreen(),
+                    settings: const RouteSettings(name: '/meal-bundles'),
+                  ));
+                  await _loadMealBundles();
+                },
+                child: const Text('管理'),
+              ),
+            ],
+          ),
+          if (_mealBundles.isEmpty)
+            Text('尚無餐組，點「管理」建立常吃組合。', style: TextStyle(fontSize: 12, color: p.inkSoft))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _mealBundles.map((bundle) => ActionChip(
+                avatar: const Icon(Icons.add, size: 16),
+                label: Text('${bundle.name} · ${bundle.items.length} 項'),
+                onPressed: () => _addMealBundle(bundle),
+              )).toList(),
+            ),
+        ],
+      ),
     );
   }
 

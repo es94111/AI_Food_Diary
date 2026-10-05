@@ -48,7 +48,7 @@ function parseDataUrl(value: string): { body: Buffer; contentType: string } | nu
 
 export async function buildNouriLedgerPackage(userId: string, readImage: ImageReader = getDecryptedImage): Promise<PackageResult> {
   const envelope = await buildExportEnvelope({ userId, excludeSecrets: true });
-  const { meals, savedFoods } = envelope.data;
+  const { meals, savedFoods, mealBundles } = envelope.data;
 
   const wanted = new Set<string>();
   for (const meal of meals) {
@@ -56,6 +56,7 @@ export async function buildNouriLedgerPackage(userId: string, readImage: ImageRe
     if (meal.imageStorageKey) wanted.add(meal.imageStorageKey);
   }
   for (const food of savedFoods) if (food.imageStorageKey) wanted.add(food.imageStorageKey);
+  for (const bundle of mealBundles) if (bundle.imageStorageKey) wanted.add(bundle.imageStorageKey);
 
   let bytes = Buffer.byteLength(JSON.stringify(envelope));
   let unreadable = 0;
@@ -99,6 +100,7 @@ export async function buildNouriLedgerPackage(userId: string, readImage: ImageRe
     meal.imageStorageKey = kept[0] ?? null;
   }
   for (const food of savedFoods) food.imageStorageKey = food.imageStorageKey ? (rewrite.get(food.imageStorageKey) ?? null) : null;
+  for (const bundle of mealBundles) bundle.imageStorageKey = bundle.imageStorageKey ? (rewrite.get(bundle.imageStorageKey) ?? null) : null;
 
   const form = new FormData();
   form.set("file", new File([JSON.stringify(envelope)], "ai-food-diary-export.json", { type: "application/json" }));
@@ -129,15 +131,18 @@ export interface UserSummary {
 export async function summarizeUser(userId: string): Promise<UserSummary | null> {
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, name: true } });
   if (!user) return null;
-  const [meals, mealItems, savedFoods, waterLogs, healthMetrics, dailySummaries, mealImages, foodImages] = await Promise.all([
+  const [meals, mealItems, savedFoods, mealBundles, mealBundleItems, waterLogs, healthMetrics, dailySummaries, mealImages, foodImages, bundleImages] = await Promise.all([
     prisma.meal.count({ where: { userId } }),
     prisma.mealItem.count({ where: { meal: { userId } } }),
     prisma.savedFood.count({ where: { userId } }),
+    prisma.mealBundle.count({ where: { userId } }),
+    prisma.mealBundleItem.count({ where: { mealBundle: { userId } } }),
     prisma.waterLog.count({ where: { userId } }),
     prisma.healthMetric.count({ where: { userId } }),
     prisma.dailySummary.count({ where: { userId } }),
     prisma.meal.findMany({ where: { userId }, select: { imageStorageKey: true, imageStorageKeys: true } }),
-    prisma.savedFood.findMany({ where: { userId, imageStorageKey: { not: null } }, select: { imageStorageKey: true } })
+    prisma.savedFood.findMany({ where: { userId, imageStorageKey: { not: null } }, select: { imageStorageKey: true } }),
+    prisma.mealBundle.findMany({ where: { userId, imageStorageKey: { not: null } }, select: { imageStorageKey: true } })
   ]);
   const keys = new Set<string>();
   for (const meal of mealImages) {
@@ -145,9 +150,10 @@ export async function summarizeUser(userId: string): Promise<UserSummary | null>
     for (const key of meal.imageStorageKeys) keys.add(key);
   }
   for (const food of foodImages) if (food.imageStorageKey) keys.add(food.imageStorageKey);
+  for (const bundle of bundleImages) if (bundle.imageStorageKey) keys.add(bundle.imageStorageKey);
   return {
     sourceUserId: user.id,
     account: { email: user.email, name: user.name ?? "" },
-    counts: { meals, meal_items: mealItems, saved_foods: savedFoods, water_logs: waterLogs, health_metrics: healthMetrics, daily_summaries: dailySummaries, images: keys.size }
+    counts: { meals, meal_items: mealItems, saved_foods: savedFoods, meal_bundles: mealBundles, meal_bundle_items: mealBundleItems, water_logs: waterLogs, health_metrics: healthMetrics, daily_summaries: dailySummaries, images: keys.size }
   };
 }

@@ -13,14 +13,15 @@ export async function deleteImageIfUnreferenced(key: string): Promise<void> {
   // Legacy data-URL "keys" aren't stored as S3 objects; nothing to delete.
   if (!isStorageKey(key)) return;
 
-  const [savedCount, mealCount] = await Promise.all([
+  const [savedCount, mealCount, bundleCount] = await Promise.all([
     prisma.savedFood.count({ where: { imageStorageKey: key } }),
     prisma.meal.count({
       where: { OR: [{ imageStorageKey: key }, { imageStorageKeys: { has: key } }] }
-    })
+    }),
+    prisma.mealBundle.count({ where: { imageStorageKey: key } })
   ]);
 
-  if (savedCount + mealCount > 0) return; // still referenced — keep the object
+  if (savedCount + mealCount + bundleCount > 0) return; // still referenced — keep the object
 
   await deleteImage(key).catch((err) => console.error("Failed to delete image from storage", err));
 }

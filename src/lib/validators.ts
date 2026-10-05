@@ -61,6 +61,8 @@ export const mealSchema = z.object({
   // Saved foods whose stored photo should be attached to this meal by reference
   // (the meal points at the same object key instead of re-uploading a copy).
   savedFoodImageIds: z.array(z.string().min(1)).max(MAX_MEAL_IMAGES).optional(),
+  // Optional meal-bundle photos are attached by reference, like saved-food photos.
+  mealBundleImageIds: z.array(z.string().min(1)).max(MAX_MEAL_IMAGES).optional(),
   eatenAt: boundedDatetime().optional(),
   // Bounded: each item is fanned out into a MealItem row (and into AI prompts
   // on the manual/reestimate paths), so an unbounded array is a row-count and
@@ -145,6 +147,39 @@ export const brandSearchSchema = z.object({
 
 export const savedFoodBatchArchiveSchema = z.object({
   ids: z.array(z.string().min(1)).min(1).max(100)
+});
+
+const mealBundleItemSchema = z.object({
+  savedFoodId: z.string().min(1).nullable().optional(),
+  name: z.string().trim().min(1).max(120),
+  estimatedAmount: z.string().trim().min(1).max(120),
+  calories: z.coerce.number().min(0).max(10000),
+  protein: z.coerce.number().min(0).max(1000),
+  fat: z.coerce.number().min(0).max(1000),
+  carbs: z.coerce.number().min(0).max(1000),
+  aiRating: z.enum(["GOOD", "OK", "LIMIT", "MANUAL"]).optional()
+});
+
+export const mealBundleCreateSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  items: z.array(mealBundleItemSchema).min(1).max(50).optional(),
+  sourceMealId: z.string().min(1).optional(),
+  imageDataUrl: imageDataUrlSchema().optional()
+}).refine((body) => !!body.sourceMealId || !!body.items?.length, {
+  message: "請至少加入一項食物或選擇來源餐點。",
+  path: ["items"]
+});
+
+export const mealBundlePatchSchema = z.object({
+  name: z.string().trim().min(1).max(120).optional(),
+  items: z.array(mealBundleItemSchema).min(1).max(50).optional(),
+  imageDataUrl: imageDataUrlSchema().optional(),
+  removeImage: z.coerce.boolean().optional()
+}).refine((body) => Object.keys(body).length > 0, {
+  message: "請提供要更新的餐組資料。"
+}).refine((body) => !(body.imageDataUrl && body.removeImage), {
+  message: "不可同時上傳與移除照片。",
+  path: ["imageDataUrl"]
 });
 
 export const aiSettingsSchema = z

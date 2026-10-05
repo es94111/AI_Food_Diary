@@ -32,6 +32,7 @@ class MealAnalysisController extends ChangeNotifier
   // Saved foods (with photos) picked into the meal; their image is attached by
   // reference on save instead of being copied into [imageDataUrls].
   List<String> savedFoodImageIds = const [];
+  List<String> mealBundleImageIds = const [];
   List<String?> savedFoodIds = const [];
   String description = '';
 
@@ -63,6 +64,7 @@ class MealAnalysisController extends ChangeNotifier
     required String mode,
     required List<String> imageDataUrls,
     List<String> savedFoodImageIds = const [],
+    List<String> mealBundleImageIds = const [],
     List<String?> savedFoodIds = const [],
     required String description,
     required Future<List<FoodAnalysisItem>> Function() run,
@@ -72,6 +74,7 @@ class MealAnalysisController extends ChangeNotifier
       mode: mode,
       imageDataUrls: imageDataUrls,
       savedFoodImageIds: savedFoodImageIds,
+      mealBundleImageIds: mealBundleImageIds,
       savedFoodIds: savedFoodIds,
       description: description,
       background: false,
@@ -92,6 +95,7 @@ class MealAnalysisController extends ChangeNotifier
     required String mode,
     required List<String> imageDataUrls,
     List<String> savedFoodImageIds = const [],
+    List<String> mealBundleImageIds = const [],
     List<String?> savedFoodIds = const [],
     required String description,
     required Map<String, dynamic> body,
@@ -101,6 +105,7 @@ class MealAnalysisController extends ChangeNotifier
       mode: mode,
       imageDataUrls: imageDataUrls,
       savedFoodImageIds: savedFoodImageIds,
+      mealBundleImageIds: mealBundleImageIds,
       savedFoodIds: savedFoodIds,
       description: description,
       background: true,
@@ -111,6 +116,7 @@ class MealAnalysisController extends ChangeNotifier
         mealType: mealType,
         imageDataUrls: imageDataUrls,
         savedFoodImageIds: savedFoodImageIds,
+        mealBundleImageIds: mealBundleImageIds,
         savedFoodIds: savedFoodIds,
         description: description,
         body: body,
@@ -130,6 +136,7 @@ class MealAnalysisController extends ChangeNotifier
     required String mode,
     required List<String> imageDataUrls,
     List<String> savedFoodImageIds = const [],
+    List<String> mealBundleImageIds = const [],
     List<String?> savedFoodIds = const [],
     required String description,
     required bool background,
@@ -138,6 +145,7 @@ class MealAnalysisController extends ChangeNotifier
     this.mode = mode;
     this.imageDataUrls = imageDataUrls;
     this.savedFoodImageIds = savedFoodImageIds;
+    this.mealBundleImageIds = mealBundleImageIds;
     this.savedFoodIds = savedFoodIds;
     this.description = description;
     status = MealAnalysisStatus.running;
@@ -221,6 +229,9 @@ class MealAnalysisController extends ChangeNotifier
             ?.map((e) => e.toString())
             .toList() ??
         const [];
+    mealBundleImageIds =
+        (ctx['mealBundleImageIds'] as List?)?.map((e) => e.toString()).toList() ??
+        const [];
     savedFoodIds =
         (ctx['savedFoodIds'] as List?)?.map((e) => e?.toString()).toList() ??
         const [];
@@ -255,6 +266,7 @@ class MealAnalysisController extends ChangeNotifier
     result = const [];
     imageDataUrls = const [];
     savedFoodImageIds = const [];
+    mealBundleImageIds = const [];
     savedFoodIds = const [];
     description = '';
     mealType = 'LUNCH';
@@ -280,6 +292,7 @@ class MealAnalysisController extends ChangeNotifier
     result = const [];
     imageDataUrls = const [];
     savedFoodImageIds = const [];
+    mealBundleImageIds = const [];
     savedFoodIds = const [];
     description = '';
     mealType = 'LUNCH';

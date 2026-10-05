@@ -3,6 +3,7 @@
 import 'dart:convert';
 
 part 'saved_food.dart';
+part 'meal_bundle.dart';
 part 'ai_activity.dart';
 
 double _toDouble(dynamic v) {

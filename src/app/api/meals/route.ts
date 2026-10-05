@@ -80,6 +80,19 @@ export async function POST(request: Request) {
         }
       }
     }
+    const bundleImageIds = body.mealBundleImageIds ?? [];
+    if (bundleImageIds.length && imageStorageKeys.length < MAX_MEAL_IMAGES) {
+      const bundles = await prisma.mealBundle.findMany({
+        where: { id: { in: bundleImageIds }, userId: user.id, imageStorageKey: { not: null } },
+        select: { imageStorageKey: true }
+      });
+      for (const bundle of bundles) {
+        const key = bundle.imageStorageKey;
+        if (key && !imageStorageKeys.includes(key) && imageStorageKeys.length < MAX_MEAL_IMAGES) {
+          imageStorageKeys.push(key);
+        }
+      }
+    }
     const imageStorageKey = imageStorageKeys[0] ?? null;
 
     const meal = await prisma.meal.create({

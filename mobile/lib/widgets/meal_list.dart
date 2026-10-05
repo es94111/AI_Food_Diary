@@ -9,6 +9,7 @@ import '../models/models.dart';
 import '../services/api_client.dart';
 import '../services/health_auto_sync.dart';
 import '../services/image_cache_service.dart';
+import '../services/meal_bundle_service.dart';
 import '../services/meal_service.dart';
 import '../theme/app_theme.dart';
 import 'meal_capture_form.dart';
@@ -59,6 +60,7 @@ class _MealCard extends StatefulWidget {
 class _MealCardState extends State<_MealCard> {
   final _picker = ImagePicker();
   bool _uploading = false;
+  bool _savingBundle = false;
   String? _error;
 
   Meal get meal => widget.meal;
@@ -98,6 +100,32 @@ class _MealCardState extends State<_MealCard> {
       builder: (ctx) => _EditMealSheet(meal: meal),
     );
     if (saved == true) await widget.onChanged();
+  }
+
+  Future<void> _saveAsBundle() async {
+    final controller = TextEditingController(text: '${mealTypes[meal.mealType] ?? '餐點'}餐組');
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('另存為餐組'),
+        content: TextField(controller: controller, maxLength: 120, autofocus: true, decoration: const InputDecoration(labelText: '餐組名稱')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('儲存')),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (name == null || name.isEmpty) return;
+    setState(() => _savingBundle = true);
+    try {
+      await MealBundleService.createFromMeal(meal.id, name);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已將「$name」另存為餐組。')));
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) setState(() => _savingBundle = false);
+    }
   }
 
   Future<ImageSource?> _imageSourceSheet() => showModalBottomSheet<ImageSource>(
@@ -397,6 +425,10 @@ class _MealCardState extends State<_MealCard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                TextButton.icon(
+                    onPressed: _savingBundle ? null : _saveAsBundle,
+                    icon: const Icon(Icons.bookmark_add_outlined, size: 16),
+                    label: const Text('存為餐組')),
                 TextButton.icon(
                     onPressed: _edit,
                     icon: const Icon(Icons.edit, size: 16),

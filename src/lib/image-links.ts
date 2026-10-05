@@ -19,3 +19,10 @@ export function savedFoodImagePath(food: { id: string; imageStorageKey: string |
     ? signedImagePath("user", food.imageStorageKey)
     : `/api/saved-foods/${food.id}/image`;
 }
+
+export function mealBundleImagePath(bundle: { id: string; imageStorageKey: string | null }): string | null {
+  if (!bundle.imageStorageKey) return null;
+  return isStorageKey(bundle.imageStorageKey)
+    ? signedImagePath("user", bundle.imageStorageKey)
+    : `/api/meal-bundles/${bundle.id}/image`;
+}

@@ -184,6 +184,33 @@ void main() {
     });
   });
 
+  group('MealBundle', () {
+    test('parses bundle metadata and encrypted item response fields', () {
+      final bundle = MealBundle.fromJson({
+        'id': 'bundle-1',
+        'name': '早餐組合',
+        'hasImage': true,
+        'imageUrl': '/api/images?k=example',
+        'items': [
+          {
+            'savedFoodId': 'food-1',
+            'name': '燕麥',
+            'estimatedAmount': '50g',
+            'calories': '190',
+            'protein': 7,
+            'fat': 4,
+            'carbs': 32,
+          },
+        ],
+      });
+      expect(bundle.id, 'bundle-1');
+      expect(bundle.hasImage, isTrue);
+      expect(bundle.items.single.savedFoodId, 'food-1');
+      expect(bundle.items.single.calories, 190);
+      expect(bundle.items.single.toPayload()['estimatedAmount'], '50g');
+    });
+  });
+
   group('FoodAnalysisItem', () {
     test('defaults aiRating to OK', () {
       final f = FoodAnalysisItem.fromJson({

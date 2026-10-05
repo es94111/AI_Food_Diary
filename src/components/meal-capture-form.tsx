@@ -35,6 +35,13 @@ type SavedFood = {
   imageUrl?: string | null;
 };
 
+type MealBundle = {
+  id: string;
+  name: string;
+  hasImage: boolean;
+  items: Array<{ savedFoodId?: string | null; name: string; estimatedAmount: string; calories: number; protein: number; fat: number; carbs: number }>;
+};
+
 type BrandSearchCandidate = {
   name: string;
   packageInfo: string | null;
@@ -145,10 +152,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   const [manualItems, setManualItems] = useState<ManualItem[]>([emptyManualItem()]);
   const [barcode, setBarcode] = useState("");
   const [savedFoods, setSavedFoods] = useState<SavedFood[]>([]);
+  const [mealBundles, setMealBundles] = useState<MealBundle[]>([]);
   const [foodSearch, setFoodSearch] = useState("");
   // Saved foods picked into this meal that carry a photo. Their image is attached
   // to the meal by reference on save (same object key, no re-upload/copy).
   const [pickedFoodIds, setPickedFoodIds] = useState<string[]>([]);
+  const [pickedBundleIds, setPickedBundleIds] = useState<string[]>([]);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
   const [showConfirm, setShowConfirm] = useState(false);
@@ -167,6 +176,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
 
   useEffect(() => {
     loadSavedFoods();
+    loadMealBundles();
   }, []);
 
   useEffect(() => {
@@ -332,6 +342,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
           imageDataUrls: mode === "photo" && previews.length > 0 ? previews : undefined,
           // Photos from picked saved foods, attached by reference (no copy).
           savedFoodImageIds: pickedFoodIds.length > 0 ? pickedFoodIds : undefined,
+          mealBundleImageIds: pickedBundleIds.length > 0 ? pickedBundleIds : undefined,
           description: mode === "describe" ? description.trim() || undefined : undefined,
           manualItems: items,
           eatenAt: new Date().toISOString()
@@ -344,6 +355,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       }
       setPreviews([]);
       setPickedFoodIds([]);
+      setPickedBundleIds([]);
       const usedFoodIds = [...new Set(confirmItems.map((item) => item.savedFoodId).filter((id): id is string => !!id))];
       await Promise.allSettled(usedFoodIds.map((id) => markSavedFoodUsed(id)));
       setDescription("");
@@ -403,6 +415,37 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     const response = await fetch("/api/saved-foods", { cache: "no-store" });
     const data = await response.json().catch(() => ({}));
     if (response.ok) setSavedFoods(data.foods ?? []);
+  }
+
+  async function loadMealBundles() {
+    const response = await fetch("/api/meal-bundles", { cache: "no-store" });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok) setMealBundles(data.bundles ?? []);
+  }
+
+  function addMealBundle(bundle: MealBundle) {
+    setMode("manual");
+    setManualItems((current) => [
+      ...current.filter((item) => item.name.trim()),
+      ...bundle.items.map((item) => ({
+        id: crypto.randomUUID(),
+        savedFoodId: item.savedFoodId ?? undefined,
+        name: item.name,
+        estimatedAmount: item.estimatedAmount,
+        calories: String(item.calories),
+        protein: String(item.protein),
+        fat: String(item.fat),
+        carbs: String(item.carbs),
+        aiRating: "MANUAL"
+      }))
+    ]);
+    if (bundle.hasImage) setPickedBundleIds((current) => current.includes(bundle.id) || current.length >= 5 ? current : [...current, bundle.id]);
+    const savedFoodImageIds = bundle.items
+      .map((item) => item.savedFoodId)
+      .filter((id): id is string => !!id && !!savedFoods.find((food) => food.id === id)?.hasImage);
+    if (savedFoodImageIds.length) {
+      setPickedFoodIds((current) => [...new Set([...current, ...savedFoodImageIds])].slice(0, 5));
+    }
   }
 
   async function saveAsSavedFood(item: ManualItem) {
@@ -685,6 +728,18 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
             {m.label}
           </button>
         ))}
+      </div>
+      <div className="mt-4 rounded-2xl bg-amber-50 p-3">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-sm font-bold text-amber-950">從餐組快速加入</h3>
+          <a className="text-xs font-semibold text-amber-800 underline" href="/dashboard/meal-bundles">管理餐組</a>
+        </div>
+        {mealBundles.length ? <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {mealBundles.map((bundle) => <button className="rounded-xl bg-white px-3 py-2 text-left text-sm font-semibold text-stone-800 ring-1 ring-amber-100" key={bundle.id} onClick={() => addMealBundle(bundle)} type="button">
+            <span className="block">+ {bundle.name}</span>
+            <span className="mt-0.5 block text-xs font-normal text-stone-500">{bundle.items.length} 項 · {bundle.items.reduce((sum, item) => sum + Number(item.calories), 0)} kcal</span>
+          </button>)}
+        </div> : <p className="mt-2 text-xs text-stone-600">尚無餐組，<a className="font-semibold underline" href="/dashboard/meal-bundles">建立一組常吃餐點</a>。</p>}
       </div>
       {mode === "photo" ? (
       <div

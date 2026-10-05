@@ -67,6 +67,7 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
   const [editing, setEditing] = useState(false);
   const [items, setItems] = useState<EditableMealItem[]>(() => meal.items.map(toEditableItem));
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +170,30 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
     router.refresh();
   }
 
+  async function onSaveAsBundle() {
+    const defaultName = `${MEAL_TYPE_LABELS[meal.mealType] ?? "餐點"}餐組`;
+    const name = window.prompt("請輸入餐組名稱", defaultName)?.trim();
+    if (!name) return;
+    setLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/meal-bundles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, sourceMealId: meal.id })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(data.error ?? "另存餐組失敗");
+        return;
+      }
+      setNotice(`已將「${name}」另存為餐組。`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function onSave(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const formData = new FormData(event.currentTarget);
@@ -214,9 +239,14 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
         </div>
         <div className="meal-card-actions">
           {!editing ? (
-            <button className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700" disabled={loading} onClick={onRepeat} type="button">
-              再記一次
-            </button>
+            <>
+              <button className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700" disabled={loading} onClick={onRepeat} type="button">
+                再記一次
+              </button>
+              <button className="rounded-full bg-amber-50 px-3 py-1 font-semibold text-amber-700" disabled={loading} onClick={onSaveAsBundle} type="button">
+                存為餐組
+              </button>
+            </>
           ) : null}
           <button className="rounded-full bg-stone-100 px-3 py-1 font-semibold" disabled={loading} onClick={() => setEditing((value) => !value)} type="button">
             {editing ? "取消" : "修正"}
@@ -345,6 +375,7 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
           </ul>
           <MacroBars protein={Number(meal.totalProtein)} fat={Number(meal.totalFat)} carbs={Number(meal.totalCarbs)} />
           {meal.aiNotes ? <p className="mt-3 text-xs text-stone-500">{meal.aiNotes}</p> : null}
+          {notice ? <p className="mt-3 text-sm text-emerald-700">{notice}</p> : null}
           {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
         </>
       )}
