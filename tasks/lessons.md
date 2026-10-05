@@ -19,6 +19,12 @@
 - **Detection signal:** The command printed `zsh:1: no such file or directory: next/og`, and reviewing the published release showed the reference was missing.
 - **Prevention rule:** Pass Markdown notes with literal backticks through a single-quoted multiline argument or a temporary notes file, then inspect the published text with `gh release view` after the mutation.
 
+## 2026-10-05 — Add query parameters without breaking legacy URLs
+
+- **Failure mode:** Signed saved-food image URLs already contain `?k=...`, while legacy inline-image URLs have no query string. Appending `&w=256` unconditionally made legacy thumbnail URLs malformed (`/image&w=256`).
+- **Detection signal:** Trace both branches of an optional URL field back to their constructors, then assert thumbnail URL output for both query-bearing signed URLs and bare legacy routes.
+- **Prevention rule:** When composing URLs, use URL/search-param APIs (or a shared tested helper) rather than hard-coding `&`; cover both empty and existing query-string cases.
+
 ## 2026-09-26 — Avoid formatting unrelated Dart lines
 
 - **Failure mode:** Running `dart format` on whole legacy files while changing health sync produced hundreds of unrelated line-wrap edits.

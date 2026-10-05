@@ -63,7 +63,7 @@
 | GET | `/api/meals/[id]` | 取得單一餐點 | Authed | 404 若非本人 |
 | PATCH | `/api/meals/[id]` | 取代餐點項目 | Authed | 交易內刪舊項目重算總計。`{ mealType, items[] }` |
 | DELETE | `/api/meals/[id]` | 刪除餐點 | Authed | 一併移除未再被引用的照片 |
-| GET | `/api/meals/[id]/image` | 串流餐點照片 | Authed | `?i=<index>`（僅舊版 inline data URL；bucket 照片改走 `/api/images`） |
+| GET | `/api/meals/[id]/image` | 串流餐點照片 | Authed + 本人 | `?i=<index>`，維持舊資料相容與 App 使用；Web bucket 照片改走 `/api/images` |
 | POST | `/api/meals/[id]/image` | 附加照片 | Authed | `{ imageDataUrls[] }`，最多 5 張 |
 | DELETE | `/api/meals/[id]/image` | 刪除單張照片 | Authed | `?i=<index>` |
 | GET | `/api/images` | 串流 bucket 照片（短效簽章） | Authed + 本人 | `?k=&e=&s=`，簽章＋擁有者檢查後解密串流；`?w=` 可縮圖 |
@@ -79,7 +79,7 @@
 | PATCH | `/api/saved-foods/[id]` | 部分更新 | Authed | `source` 不可改。409 條碼重複 |
 | POST | `/api/saved-foods/[id]` | 標記使用 | Authed | 遞增 `useCount`、設 `lastUsedAt` |
 | DELETE | `/api/saved-foods/[id]` | 軟封存 | Authed | 設 `archivedAt` |
-| GET | `/api/saved-foods/[id]/image` | 串流食物照片（舊版 inline data URL） | Authed | 404 若無；bucket 照片改走 `/api/images` |
+| GET | `/api/saved-foods/[id]/image` | 串流食物照片 | Authed + 本人 | 維持舊資料相容與 App 使用；Web bucket 照片改走 `/api/images` |
 
 ### 4. 喝水 Water
 

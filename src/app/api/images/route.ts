@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
 import { apiRoute } from "@/lib/http";
 import { parseThumbWidth, resizeImageBytes } from "@/lib/image-thumb";
+import { signedImageCacheControl } from "@/lib/image-url";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getDecryptedImage, ownsStorageKey, parseSignedImageQuery, verifyImageSignature } from "@/lib/storage";
 
@@ -27,16 +28,18 @@ export const GET = apiRoute(async (request: Request) => {
 
   const image = await getDecryptedImage(ref.key).catch(() => null);
   if (!image) return NextResponse.json({ error: "找不到圖片" }, { status: 404, headers: NO_STORE });
+  const cacheControl = signedImageCacheControl(ref.expiresAt);
 
   // Optional on-the-fly thumbnail, same as the per-food image route. The width is
   // not part of the signature: it only bounds output size, and resizing is
-  // skipped when the object can't be processed.
+  // skipped when the object can't be processed. Cached responses never outlive
+  // the signed link's expiry.
   const width = parseThumbWidth(url.searchParams.get("w"));
   if (width != null) {
     const thumb = await resizeImageBytes(image.body, image.contentType, width);
     if (thumb) {
       return new NextResponse(new Uint8Array(thumb.body), {
-        headers: { "Content-Type": thumb.contentType, "Cache-Control": "private, max-age=3600" }
+        headers: { "Content-Type": thumb.contentType, "Cache-Control": cacheControl }
       });
     }
   }
@@ -45,7 +48,7 @@ export const GET = apiRoute(async (request: Request) => {
     headers: {
       "Content-Type": image.contentType,
       // Short-lived links must not outlive their signature in a client cache.
-      "Cache-Control": "private, max-age=60"
+      "Cache-Control": cacheControl
     }
   });
 });

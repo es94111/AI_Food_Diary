@@ -492,7 +492,7 @@
   `src/app/api/meals/analyze*`、`src/app/api/saved-foods*`、`dashboard/page.tsx`、web 元件、測試、文件。
 - **Rollback:** 還原 PR；或清空 `APP_PUBLIC_URL` 重啟即可讓 AI 路徑退回伺服器端解密（bucket 權限不需變更）。
 - **隱私不變量:** bucket 維持私有、signed URL 短效（user 10 分／ai 5 分）、scope 參與簽章、
-  失敗一律同一 404、不寫入日誌、回應 `private, no-store`。
+  失敗一律同一 404、不寫入日誌、回應 `private` 且快取不超過簽章效期（AI response `no-store`）。
 
 ## Working notes
 
@@ -505,5 +505,7 @@
 ## Results
 
 - `npm run build`：通過（`tsc --noEmit` 乾淨、`/api/images`、`/api/images/ai` 進入路由表）。
-- `npm run test:storage`：15/15；`test:mcp`：36/36；`test:nouriledger`：8 通過、13 略過（未設 `FOOD_TEST_DATABASE_URL`）。
+- `npm run test:storage`：18/18；`test:mcp`：36/36；`test:nouriledger`：8 通過、13 略過（未設 `FOOD_TEST_DATABASE_URL`）。
+- PR review 修復：legacy signed-image thumbnail 正確選擇 `?`／`&`；`/api/images` 私有快取效期不超過 signed link；Sentry 關閉 URL query 自動收集，避免 capability 參數進 trace。
+- `npx eslint` 無法執行：repo 沒有 ESLint 9+ 要求的 `eslint.config.*`（既有設定問題）；`npm run lint` 使用已移除的 `next lint`。`npm run build` 包含 TypeScript 檢查且通過。
 - 未執行：實機／瀏覽器端到端（無 live MinIO＋APP_PUBLIC_URL 環境），已於 `docs/photo-lifecycle.md` 列出可手動驗證步驟。

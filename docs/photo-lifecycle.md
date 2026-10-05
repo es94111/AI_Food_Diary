@@ -31,7 +31,7 @@
   常數時間 `crypto.timingSafeEqual`。key 由既有 `AUTH_SECRET` 衍生，不新增環境變數。
 - scope 參與簽章：`user` 連結不能當 `ai` 連結使用，反之亦然。
 - 全部失敗（格式錯誤、簽章不符、過期、非本人、物件不存在）一律回同一個 `404`，避免探測 key。
-- 回應 `Cache-Control: private, no-store`／`max-age=60`，簽章連結不進共享快取。
+- 回應採 `Cache-Control: private`，最大快取 60 秒，且動態不超過簽章剩餘效期；`ai` capability 回應為 `private, no-store`。Sentry 關閉 URL query 自動收集，避免簽章值進入 trace。
 - 端點不寫入任何日誌（僅在 `IMAGE_UNREADABLE` 等失敗時回傳通用錯誤訊息），符合隱私基線。
 
 ### AI 不再收到 data URL
