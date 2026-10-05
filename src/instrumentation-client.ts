@@ -1,5 +1,6 @@
 // Sentry init for the browser. Next.js loads this on the client automatically.
 import * as Sentry from "@sentry/nextjs";
+import { sentryDataCollection } from "@/lib/sentry-privacy";
 
 Sentry.init({
   dsn: "https://b855c3e74c55b787ff0b6fc572fbc4e2@o4511575169040384.ingest.de.sentry.io/4511575644176464",
@@ -27,8 +28,8 @@ Sentry.init({
       // `sentry-unblock` class (or matching data-* attribute) to it.
     }),
   ],
-  // Send logs to Sentry.
-  enableLogs: true,
+  // Keep user content (meal photos, text, DB payloads) out of Sentry.
+  dataCollection: sentryDataCollection,
   // Capture 100% of transactions for tracing. Lower this in production if the
   // event volume gets too high. Tracing must be enabled for profiling to work.
   tracesSampleRate: 1,
