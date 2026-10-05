@@ -3,11 +3,19 @@ import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
 import { apiRoute } from "@/lib/http";
+import { savedFoodImagePath } from "@/lib/image-links";
 import { enforceSavedFoodWriteRateLimit } from "@/lib/rate-limit";
 import { uploadImage } from "@/lib/storage";
 import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import { savedFoodCreateSchema } from "@/lib/validators";
 import { canonicalBarcode, findSavedFoodMatches, type SavedFoodMatchCandidate } from "@/lib/saved-food-matching";
+
+// Saved-food rows handed to the web UI carry a short-lived signed `imageUrl`
+// instead of only a `hasImage` flag, so thumbnails can be rendered straight from
+// the private bucket's streaming endpoint.
+export function savedFoodResponse<T extends { id: string; imageStorageKey: string | null }>(food: T) {
+  return { ...decryptSavedFood(food), imageUrl: savedFoodImagePath(food) };
+}
 
 // Resolves the imageStorageKey change for a saved-food write: upload a new
 // photo, clear it, or leave it untouched. Returns a partial to spread into the
@@ -46,13 +54,13 @@ export const GET = apiRoute(async (request: Request) => {
       });
       food = legacyFoods.find((candidate) => canonicalBarcode(candidate.barcode) === barcode) ?? null;
     }
-    return NextResponse.json({ food: food ? decryptSavedFood(food) : null });
+    return NextResponse.json({ food: food ? savedFoodResponse(food) : null });
   }
   const foods = await prisma.savedFood.findMany({
     where: { userId: user.id, archivedAt: archived ? { not: null } : null },
     orderBy: [{ isFavorite: "desc" }, { lastUsedAt: "desc" }, { useCount: "desc" }, { updatedAt: "desc" }]
   });
-  return NextResponse.json({ foods: foods.map(decryptSavedFood) });
+  return NextResponse.json({ foods: foods.map(savedFoodResponse) });
 });
 
 export const POST = apiRoute(async (request: Request) => {
@@ -115,7 +123,7 @@ export const POST = apiRoute(async (request: Request) => {
         ...imageData
       }
     });
-    return NextResponse.json({ food: decryptSavedFood(food) });
+    return NextResponse.json({ food: savedFoodResponse(food) });
   } catch (error) {
     if (imageData.imageStorageKey) {
       await deleteImageIfUnreferenced(imageData.imageStorageKey).catch(() => undefined);

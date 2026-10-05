@@ -17,7 +17,9 @@ export const sentryDataCollection: DataCollection = {
     response: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
   },
   httpBodies: [],
-  urlQueryParams: { deny: ["forwarded", "-ip", "remote-", "via", "-user"] },
+  // Signed image URLs carry their short-lived HMAC capability in query params;
+  // disable automatic query collection entirely so traces cannot retain it.
+  urlQueryParams: false,
   genAI: { inputs: false, outputs: false },
   databaseQueryData: false,
   graphQL: { document: false, variables: false },

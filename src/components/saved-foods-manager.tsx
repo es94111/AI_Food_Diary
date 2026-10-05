@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { withImageWidth } from "@/lib/image-url";
 
 export type SavedFoodSource = "MANUAL" | "NUTRITION_LABEL" | "BARCODE" | "MEAL_ITEM" | "BRAND_SEARCH";
 
@@ -22,6 +23,9 @@ type SavedFood = {
   updatedAt?: string | null;
   archivedAt?: string | null;
   hasImage?: boolean;
+  // Short-lived signed link to the private bucket's streaming endpoint; present
+  // (non-null) exactly when the food has a photo.
+  imageUrl?: string | null;
 };
 
 function fileToDataUrl(file: File): Promise<string> {
@@ -437,8 +441,8 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
           <label className="flex items-center gap-2 rounded-xl border border-stone-200 bg-white px-3 py-2 text-sm font-semibold text-stone-700"><input checked={!!draft.isFavorite} onChange={(event) => setDraft((v) => ({ ...v, isFavorite: event.target.checked }))} type="checkbox" />加入常用</label>
           <div className="flex items-center gap-3 rounded-xl border border-stone-200 bg-white px-3 py-2 sm:col-span-2">
             {(() => {
-              const existing = editingId && !removeImage && foods.find((f) => f.id === editingId)?.hasImage;
-              const src = draftImage ?? (existing ? `/api/saved-foods/${editingId}/image` : null);
+              const existing = editingId ? foods.find((f) => f.id === editingId) : undefined;
+              const src = draftImage ?? (!removeImage ? existing?.imageUrl ?? (existing?.hasImage ? `/api/saved-foods/${editingId}/image` : null) : null);
               return src ? <img alt="食物照片" className="h-16 w-16 rounded-lg object-cover" src={src} /> : <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-stone-100 text-xs text-stone-400">無照片</div>;
             })()}
             <label className="cursor-pointer rounded-full bg-stone-100 px-3 py-1.5 text-sm font-semibold text-stone-700">上傳食物照片<input accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setDraftImage(await fileToDataUrl(file)); setRemoveImage(false); event.target.value = ""; }} type="file" /></label>
@@ -483,7 +487,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={food.id}>
             <div className="flex items-center gap-3">
               {activeTab !== "archived" ? <input aria-label={`選取 ${food.name}`} checked={selectedIds.has(food.id)} className="h-4 w-4 accent-amber-700" onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(food.id); else next.delete(food.id); return next; })} type="checkbox" /> : null}
-              {food.hasImage ? <img alt={food.name} className="h-14 w-14 flex-none rounded-xl object-cover" decoding="async" loading="lazy" src={`/api/saved-foods/${food.id}/image?w=256`} /> : null}
+              {(food.imageUrl ?? (food.hasImage ? `/api/saved-foods/${food.id}/image?w=256` : null)) ? <img alt={food.name} className="h-14 w-14 flex-none rounded-xl object-cover" decoding="async" loading="lazy" src={food.imageUrl ? withImageWidth(food.imageUrl, 256) : `/api/saved-foods/${food.id}/image?w=256`} /> : null}
               <div>
                 <p className="font-bold text-stone-900">{food.isFavorite ? "★ " : ""}{food.brand ? `${food.brand} ` : ""}{food.name} <span className="font-normal text-stone-500">· {food.estimatedAmount}</span></p>
                 <p className="mt-1 text-sm text-stone-500">{food.calories} kcal · 蛋白質 {food.protein}g · 脂肪 {food.fat}g · 碳水 {food.carbs}g{food.barcode ? ` · 條碼 ${food.barcode}` : ""}</p>

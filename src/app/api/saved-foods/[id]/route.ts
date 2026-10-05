@@ -5,7 +5,7 @@ import { decryptSavedFood, encryptSavedFoodWrite } from "@/lib/b2-crypto";
 import { apiRoute } from "@/lib/http";
 import { enforceSavedFoodWriteRateLimit } from "@/lib/rate-limit";
 import { savedFoodPatchSchema } from "@/lib/validators";
-import { resolveSavedFoodImage } from "../route";
+import { resolveSavedFoodImage, savedFoodResponse } from "../route";
 import { canonicalBarcode, findSavedFoodMatches } from "@/lib/saved-food-matching";
 import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 
@@ -86,7 +86,7 @@ export const PATCH = apiRoute(async (request: Request, context: { params: Promis
         console.error("Failed to clean up replaced saved-food image", error);
       });
     }
-    return NextResponse.json({ food: decryptSavedFood(food) });
+    return NextResponse.json({ food: savedFoodResponse(food) });
   } catch (error) {
     if (imageData.imageStorageKey && imageData.imageStorageKey !== existing.imageStorageKey) {
       await deleteImageIfUnreferenced(imageData.imageStorageKey).catch(() => undefined);
@@ -104,7 +104,7 @@ export const POST = apiRoute(async (_request: Request, context: { params: Promis
     where: { id },
     data: { useCount: { increment: 1 }, lastUsedAt: new Date() }
   });
-  return NextResponse.json({ food: decryptSavedFood(food) });
+  return NextResponse.json({ food: savedFoodResponse(food) });
 });
 
 export const DELETE = apiRoute(async (_request: Request, context: { params: Promise<{ id: string }> }) => {

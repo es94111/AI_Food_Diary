@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import OpenAI from "openai";
 import { z } from "zod";
 import { fetchWithPinnedPublicAddress } from "@/lib/url-guard";
+import type { VisionImageInput } from "@/lib/vision-images";
 
 const foodAnalysisSchema = z.object({
   foods: z.array(
@@ -389,7 +390,7 @@ function renderPrompt(template: string, values: Record<string, string | number>)
 
 async function requestMealImageAnalysis(
   config: AiConfig,
-  imageDataUrls: string[],
+  images: VisionImageInput[],
   options: { temperature?: number; seed?: number | null } = {}
 ): Promise<FoodAnalysis> {
   const response = await createCompletion(config, {
@@ -406,7 +407,7 @@ async function requestMealImageAnalysis(
           // "high" detail gives the model the resolution it needs to judge
           // portion size, which is the dominant source of calorie error. Several
           // images of the same meal are sent together so the model can combine them.
-          ...imageDataUrls.map((url) => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } }))
+          ...images.map((image) => ({ type: "image_url" as const, image_url: { url: image.value, detail: "high" as const } }))
         ]
       }
     ]
@@ -415,8 +416,8 @@ async function requestMealImageAnalysis(
   return parseMealAnalysisText(completionText(response));
 }
 
-export async function analyzeMealImage(config: AiConfig, imageDataUrls: string[] = []): Promise<FoodAnalysis> {
-  if (imageDataUrls.length === 0) {
+export async function analyzeMealImage(config: AiConfig, images: VisionImageInput[] = []): Promise<FoodAnalysis> {
+  if (images.length === 0) {
     return {
       foods: [],
       total: { calories: 0, protein: 0, fat: 0, carbs: 0 },
@@ -426,7 +427,7 @@ export async function analyzeMealImage(config: AiConfig, imageDataUrls: string[]
   }
 
   return withAgent("meal-photo-analysis", config.visionModel, () =>
-    requestMealImageAnalysis(config, imageDataUrls));
+    requestMealImageAnalysis(config, images));
 }
 
 // Self-consistency for the photo flow: run the same image several times and keep
@@ -438,18 +439,18 @@ export async function analyzeMealImage(config: AiConfig, imageDataUrls: string[]
 // when sampling is disabled or no image is given.
 export async function analyzeMealImageStable(
   config: AiConfig,
-  imageDataUrls: string[] = [],
+  images: VisionImageInput[] = [],
   samples = PRECISE_SAMPLES
 ): Promise<FoodAnalysis> {
   const count = Math.max(1, Math.min(Math.round(samples), 5));
-  if (imageDataUrls.length === 0 || count === 1) return analyzeMealImage(config, imageDataUrls);
+  if (images.length === 0 || count === 1) return analyzeMealImage(config, images);
 
   // One agent span for the whole self-consistency run, so its N parallel chat
   // completions show up nested under a single "meal-photo-analysis" agent call.
   return withAgent("meal-photo-analysis", config.visionModel, async () => {
     const settled = await Promise.allSettled(
       Array.from({ length: count }, (_unused, index) =>
-        requestMealImageAnalysis(config, imageDataUrls, { temperature: PRECISE_TEMPERATURE, seed: ANALYSIS_SEED + index })
+        requestMealImageAnalysis(config, images, { temperature: PRECISE_TEMPERATURE, seed: ANALYSIS_SEED + index })
       )
     );
     const analyses = settled
@@ -472,7 +473,7 @@ export async function analyzeMealImageStable(
   });
 }
 
-export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrls: string[]): Promise<FoodAnalysis> {
+export async function analyzeNutritionLabelImage(config: AiConfig, images: VisionImageInput[]): Promise<FoodAnalysis> {
   const response = await withAgent("nutrition-label-analysis", config.visionModel, () =>
     createCompletion(config, {
       model: config.visionModel,
@@ -485,7 +486,7 @@ export async function analyzeNutritionLabelImage(config: AiConfig, imageDataUrls
               type: "text",
               text: promptFromEnv("AI_NUTRITION_LABEL_ANALYSIS_PROMPT", defaultNutritionLabelAnalysisPrompt)
             },
-            ...imageDataUrls.map((url) => ({ type: "image_url" as const, image_url: { url, detail: "high" as const } }))
+            ...images.map((image) => ({ type: "image_url" as const, image_url: { url: image.value, detail: "high" as const } }))
           ]
         }
       ]

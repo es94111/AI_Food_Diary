@@ -1,4 +1,5 @@
 import "server-only";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { encryptBytes, decryptBytes } from "./encryption";
 
@@ -198,5 +199,97 @@ export async function deleteImage(key: string): Promise<void> {
 // Returns true when the value is an S3 object key (not a legacy data URL)
 export function isStorageKey(value: string): boolean {
   return !value.startsWith("data:") && !value.startsWith("http://") && !value.startsWith("https://");
+}
+
+// ── Signed image links ───────────────────────────────────────────────────────
+// Photos live in a private bucket, are encrypted at rest, and are only handed
+// out through a short-lived signed link. Because the object body is an
+// encryption envelope, a raw S3 presigned URL would hand the caller ciphertext —
+// so the signed link always points back at this service, which decrypts and
+// streams. The signature is an app-level HMAC over (scope, key, expiry) that the
+// streaming endpoints verify *before* touching object storage, so an
+// unauthenticated caller cannot probe keys at all. The HMAC key is derived from
+// AUTH_SECRET with its own label (same pattern as the NouriLedger hand-off), so
+// no new environment variable is introduced.
+//
+// Two scopes keep the link purposes apart: `user` links are additionally bound
+// to the logged-in owner by the streaming route, while `ai` links are a pure
+// capability URL handed to the AI provider (which sends no session cookie) and
+// therefore carry a shorter lifetime. Neither scope verifies for the other.
+
+const SIGNED_IMAGE_TTL_MS = 10 * 60 * 1000;
+const SIGNED_AI_IMAGE_TTL_MS = 5 * 60 * 1000;
+const SIGNED_IMAGE_KEY_VERSION = "v1";
+
+export type ImageLinkScope = "user" | "ai";
+
+export type SignedImage = { key: string; expiresAt: number; signature: string };
+
+function signatureKey(): Buffer {
+  const secret = process.env.AUTH_SECRET;
+  if (!secret) throw new Error("AUTH_SECRET is required to sign image links");
+  return createHmac("sha256", secret).update("image-signed-url:v1").digest();
+}
+
+function signaturePayload(scope: ImageLinkScope, key: string, expiresAt: number): string {
+  return `${SIGNED_IMAGE_KEY_VERSION}:${scope}:${expiresAt}:${key}`;
+}
+
+function signPayload(scope: ImageLinkScope, key: string, expiresAt: number): string {
+  return createHmac("sha256", signatureKey()).update(signaturePayload(scope, key, expiresAt)).digest("base64url");
+}
+
+export function defaultImageTtlMs(scope: ImageLinkScope): number {
+  return scope === "ai" ? SIGNED_AI_IMAGE_TTL_MS : SIGNED_IMAGE_TTL_MS;
+}
+
+export function signImageKey(scope: ImageLinkScope, key: string, ttlMs?: number): SignedImage {
+  const expiresAt = Date.now() + (ttlMs ?? defaultImageTtlMs(scope));
+  return { key, expiresAt, signature: signPayload(scope, key, expiresAt) };
+}
+
+// Verifies a signed image reference: constant-time signature check, then expiry.
+// Returns false rather than throwing so callers can answer with one uniform 404.
+export function verifyImageSignature(scope: ImageLinkScope, ref: SignedImage): boolean {
+  if (!ref.key || !Number.isFinite(ref.expiresAt) || !ref.signature) return false;
+  const expected = Buffer.from(signPayload(scope, ref.key, ref.expiresAt));
+  const provided = Buffer.from(ref.signature);
+  if (expected.length !== provided.length || !timingSafeEqual(expected, provided)) return false;
+  return Date.now() <= ref.expiresAt;
+}
+
+// The HMAC only proves *this app* minted the link; it says nothing about who
+// owns the object. Upload keys are namespaced by owner (`meals/<userId>/...`),
+// so also require the key to live under the caller's own prefix. Rejecting `..`
+// keeps the prefix test from being bypassed by a path-traversal-shaped key.
+export function ownsStorageKey(key: string, userId: string): boolean {
+  if (!isStorageKey(key)) return false;
+  if (key.includes("..") || key.startsWith("/")) return false;
+  return key.startsWith(`meals/${userId}/`);
+}
+
+export function parseSignedImageQuery(url: URL): SignedImage | null {
+  const key = url.searchParams.get("k");
+  const signature = url.searchParams.get("s");
+  const rawExpires = url.searchParams.get("e");
+  if (!key || !signature || !rawExpires) return null;
+  const expiresAt = Number(rawExpires);
+  if (!Number.isFinite(expiresAt)) return null;
+  return { key, expiresAt, signature };
+}
+
+// Relative link to the streaming endpoint. Kept same-origin so the browser's
+// session cookie rides along for the ownership check.
+export function signedImagePath(scope: ImageLinkScope, key: string, ttlMs?: number): string {
+  const { expiresAt, signature } = signImageKey(scope, key, ttlMs);
+  const params = new URLSearchParams({ k: key, e: String(expiresAt), s: signature });
+  const base = scope === "ai" ? "/api/images/ai" : "/api/images";
+  return `${base}?${params.toString()}`;
+}
+
+// Absolute link for consumers that talk to this service directly (e.g. an
+// external AI provider). Requires a publicly reachable origin.
+export function signedImageAbsoluteUrl(origin: string, scope: ImageLinkScope, key: string, ttlMs?: number): string {
+  return new URL(signedImagePath(scope, key, ttlMs), origin).toString();
 }
 
