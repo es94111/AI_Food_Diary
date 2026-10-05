@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from "@sentry/nextjs";
+// Sentry v11 moved the build-time config to its own entry point.
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const isDev = process.env.NODE_ENV !== "production";
 
@@ -55,8 +56,13 @@ export default withSentryConfig(nextConfig, {
   silent: !process.env.CI,
   // Upload a wider set of client source maps for readable stack traces.
   widenClientFileUpload: true,
-  // Tree-shake Sentry logger statements to shrink the client bundle.
-  disableLogger: true,
+  // Tree-shake Sentry SDK debug-logger statements to shrink the client bundle.
+  // (v11 renamed the top-level `disableLogger` to this webpack option.)
+  webpack: {
+    treeshake: {
+      removeDebugLogging: true,
+    },
+  },
   // Source-map upload needs SENTRY_AUTH_TOKEN at build time; without it the
   // build still succeeds, just without uploaded maps.
   release: {

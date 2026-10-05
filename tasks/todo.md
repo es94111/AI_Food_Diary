@@ -1,4 +1,43 @@
-# 2026-10-04 舊站一鍵匯入 NouriLedger（Food Diary 提供端）
+# 2026-10-05 升級 Sentry JS SDK 10.75 → 11.0（合併 #148／#149）
+
+## Goal + acceptance criteria
+
+- [x] 把 `@sentry/nextjs` 與 `@sentry/profiling-node` 一起升到 11.0.0（兩者必須同版），取代兩個各自失敗的 Dependabot PR（#148、#149）。
+- [x] 依官方 v10→v11 migration guide 修掉所有 breaking change。
+- [x] **維持既有的隱私基線**：v11 把 `dataCollection` 預設改成「全部收集」，必須明確關回不送出使用者內容。
+- [x] `npm run build`（`prisma generate` + `tsc --noEmit` + `next build`）、`test:mcp`、`test:nouriledger` 通過。
+
+## Risk & rollback
+
+- **Risk level:** medium（可觀測性套件大版號；無 schema／資料變更）。
+- **Affected components:** `package.json`、`package-lock.json`、`next.config.ts`、`sentry.server.config.ts`、`sentry.edge.config.ts`、`src/instrumentation-client.ts`，新增 `src/lib/sentry-privacy.ts`。
+- **Rollback:** 還原此 PR 即回到 10.75.0；沒有資料遷移或 schema 需要回復。
+- **隱私風險（升級當下才出現）:** 見下方 Working notes。
+
+## Dependencies & Environment
+
+- v11 需 Node `>=20.19.0 <22.0.0 || >=22.12.0`：CI 用 Node 22、Dockerfile 用 `node:24.21.0`，皆在範圍內（**22.12 為下限，不是 22.0**）。
+- 未新增相依；`@sentry/profiling-node` 仍保留（原生繫結，`serverExternalPackages` 不變）。
+
+## Working notes
+
+- **v11 breaking changes 與本專案對應修法**
+  - `withSentryConfig` 移到子路徑 → `@sentry/nextjs/config`。
+  - `enableLogs` 移除 → 直接刪除；有加 `consoleLoggingIntegration()` 就會送 log。
+  - `nodeProfilingIntegration()` 型別簽章改變（`Integration & { name }` 與 `Integration` 衝突）→ 直接沿用，型別現在可通過；`profiler()` 是 `@sentry/node` 的手動生命週期 API，不是替換品。
+  - `disableLogger` → `webpack.treeshake.removeDebugLogging`。
+  - `streamGenAiSpans` 移除（GenAI span 一律串流，本來就是 true）。
+  - `sendDefaultPii` → `dataCollection`，且**預設由保守翻轉為全收**（userInfo／cookies／httpBodies／databaseQueryData／queues／stackFrameVariables／genAI 輸入輸出）。本專案把 v10 的保守基線寫進 `src/lib/sentry-privacy.ts` 並在三個 runtime（server／edge／client）共用。
+- 選 `11.0.0` 而非最新 11.x：repo 有 7 天 `min-release-age` 冷卻期與 `.github/dependabot.yml` cooldown；今天只有 11.0.0 通過冷卻期，與 Dependabot 原本提議的版本一致。之後可再走一次群組升級。
+
+## Results
+
+- `npm run build`：通過（`tsc --noEmit` 乾淨、Next.js 路由表完整、無 deprecation／removed-option 警告）。
+- `npm run test:mcp`：36/36 通過；`npm run test:nouriledger`：8 通過、13 略過（未設 `FOOD_TEST_DATABASE_URL`）。
+- 執行期驗證（拋棄式 `tsx`）：`Sentry.getClient().getOptions().dataCollection` 解析後 `genAI.inputs=false`、`httpBodies=[]`、`databaseQueryData=false`、`stackFrameVariables=false`；server config 的 integrations 含 `ProfilingIntegration`、`ConsoleLogs`、`OpenAI`，`profileLifecycle='trace'`、`profileSessionSampleRate=1`。
+- 用戶端：Session Replay／瀏覽器 profiling 的程式碼仍在 client chunk（升級後兩者都是頂層匯出，原本「只在 client build」的行為未改變）。
+
+
 
 ## Goal + acceptance criteria
 

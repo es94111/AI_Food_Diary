@@ -1,5 +1,11 @@
 # Lessons
 
+## 2026-10-05 — Major-version dependency bumps need their own PR (and a data-collection audit)
+
+- **Failure mode:** Dependabot opened `@sentry/nextjs` and `@sentry/profiling-node` 10.75 → 11.0 as two separate PRs. Each failed CI on its own (`enableLogs` removed, `nodeProfilingIntegration()` type mismatch) because the two packages must move together, and the migration guide also flips `dataCollection` defaults to *collect everything* — which for this app would start shipping meal photos and AI replies to Sentry. The two green "minor-patch group" PRs were safe; the two red ones were not.
+- **Detection signal:** `gh pr checks <n>` showed `Build=fail` while the other two PRs were `CLEAN`; `gh run view --job <id> --log-failed` named the removed options; `npm view @sentry/nextjs@11.0.0 engines` showed `>=22.12.0` (CI uses Node 22 — verify the minor, not just the major).
+- **Prevention rule:** For a major bump, read the vendor migration guide before touching code, land it on one branch with every package that must move in lockstep, and explicitly re-pin any privacy/PII default that the major changed. After `npm install`, prove the resolved runtime config with a throwaway `tsx` script (`Sentry.getClient().getOptions()`) instead of trusting the source.
+
 ## 2026-10-04 — Do not create a partial `.env` when the file is absent
 
 - **Failure mode:** A settings helper continued after an absent-file read error and created an incomplete `.env` containing only the new integration setting.
