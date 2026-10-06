@@ -61,6 +61,7 @@ async function setup() {
   await prisma.waterLog.create({ data: { userId: alice.id, amountMl: 500 } });
   await prisma.waterLog.create({ data: { userId: bob.id, amountMl: 250 } });
   await prisma.dailySummary.create({ data: { userId: alice.id, summaryDate: new Date("2026-10-01T00:00:00Z"), totalCalories: 700, aiSummary: "Alice 的摘要" } });
+  await prisma.weeklySummary.create({ data: { userId: alice.id, weekStart: new Date("2026-09-28T00:00:00Z"), totalCalories: 4200, totalProtein: 300, totalFat: 140, totalCarbs: 400, waterTotalMl: 14000, aiSummary: "Alice 的週報" } });
   await prisma.healthMetric.create({ data: { userId: alice.id, source: "HEALTH_CONNECT", type: "WEIGHT", value: 61.5, unit: "kg", measuredAt: new Date("2026-10-02T00:00:00Z") } });
   await prisma.healthMetric.create({ data: { userId: bob.id, source: "HEALTH_CONNECT", type: "WEIGHT", value: 99, unit: "kg", measuredAt: new Date("2026-10-02T00:00:00Z") } });
   await prisma.appConfig.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton", registrationOpen: true } });
@@ -86,9 +87,19 @@ test("a scoped export contains only that account and none of its secrets", { ski
   assert.deepEqual(envelope.data.meals.map((meal) => meal.id), [aliceMeal.id]);
   assert.equal(envelope.data.mealItems.length, 2, "only the items of this account's meals");
   assert.ok(envelope.data.mealItems.every((item) => item.mealId === aliceMeal.id));
-  for (const rows of [envelope.data.waterLogs, envelope.data.savedFoods, envelope.data.healthMetrics, envelope.data.dailySummaries, envelope.data.userProfiles]) {
+  for (const rows of [envelope.data.waterLogs, envelope.data.savedFoods, envelope.data.healthMetrics, envelope.data.dailySummaries, envelope.data.weeklySummaries, envelope.data.userProfiles]) {
     assert.ok(rows.length > 0 && rows.every((row) => row.userId === alice.id));
   }
+  // Weekly summaries must survive a round-trip: the exporter's own envelope has
+  // to satisfy the schema the importer parses, or a restore silently 400s.
+  const roundTripped = exporter.exportEnvelopeSchema.parse(JSON.parse(text));
+  assert.equal(roundTripped.data.weeklySummaries.length, 1);
+  assert.equal(roundTripped.data.weeklySummaries[0].waterTotalMl, 14000);
+  assert.equal(roundTripped.data.weeklySummaries[0].aiSummary, "Alice 的週報");
+  // The weekly row was written raw (not through a mapper) — guard against the
+  // daily mapper's `summaryDate: ""` leaking into the artifact again.
+  assert.ok(!("summaryDate" in envelope.data.weeklySummaries[0]), "weekly rows carry no summaryDate");
+  assert.equal(envelope.data.weeklySummaries[0].weekStart, "2026-09-28T00:00:00.000Z");
   assert.equal(envelope.data.userProfiles.length, 1);
   assert.deepEqual(envelope.data.appConfig, [], "the global settings row is never part of a personal export");
   for (const foreign of [bob.id, bobMeal.id, "Bob 的秘密晚餐", "Bob 的食物", `bob-${suffix}`, `google-bob-${suffix}`, "sk-bob-secret"]) assert.ok(!text.includes(foreign), `leaked: ${foreign}`);
@@ -160,14 +171,14 @@ test("the package satisfies the importer's contract (one owner, referential inte
   const payload = JSON.parse(await (result.form.get("file") as File).text()) as { format: string; version: number; counts: Record<string, number>; data: Record<string, Array<Record<string, unknown>>> };
   assert.equal(payload.format, "ai-food-diary-export");
   assert.equal(payload.version, 1);
-  for (const key of ["users", "userProfiles", "meals", "mealItems", "waterLogs", "savedFoods", "mealBundles", "mealBundleItems", "dailySummaries", "dailyRecommendations", "healthMetrics", "appConfig"]) assert.ok(Array.isArray(payload.data[key]), key);
+  for (const key of ["users", "userProfiles", "meals", "mealItems", "waterLogs", "savedFoods", "mealBundles", "mealBundleItems", "dailySummaries", "weeklySummaries", "dailyRecommendations", "healthMetrics", "appConfig"]) assert.ok(Array.isArray(payload.data[key]), key);
   for (const [key, declared] of Object.entries(payload.counts)) assert.equal(payload.data[key].length, declared, `declared count for ${key}`);
   assert.equal(payload.data.users.length, 1);
   const owner = String(payload.data.users[0].id);
   const mealIds = new Set<string>();
   for (const meal of payload.data.meals) { assert.equal(meal.userId, owner); mealIds.add(String(meal.id)); }
   for (const item of payload.data.mealItems) assert.ok(mealIds.has(String(item.mealId)));
-  for (const key of ["userProfiles", "waterLogs", "savedFoods", "dailySummaries", "healthMetrics"]) for (const row of payload.data[key]) assert.equal(row.userId, owner, key);
+  for (const key of ["userProfiles", "waterLogs", "savedFoods", "dailySummaries", "weeklySummaries", "healthMetrics"]) for (const row of payload.data[key]) assert.equal(row.userId, owner, key);
   const manifest = JSON.parse(String(result.form.get("attachmentsManifest"))) as Array<{ objectKey: string; fileField: string; sha256: string }>;
   assert.equal(new Set(manifest.map((entry) => entry.objectKey)).size, manifest.length, "manifest keys are unique");
   assert.equal(new Set(manifest.map((entry) => entry.fileField)).size, manifest.length);

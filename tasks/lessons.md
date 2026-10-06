@@ -1,5 +1,18 @@
 # Lessons
 
+## 2026-10-06 — New AI feature: decrypt at the response boundary, and never spread a sibling mapper
+
+- **Failure mode:** Two defects in the same change. (1) The on-demand `generate=1` route returned the raw Prisma row from `generateAndStoreWeeklySummary`. Because the write helper moves AI text into `enc*` columns and leaves the plaintext columns `null`, clients received literal nulls — the web card rendered `null\n\nnull` and the app card looked correct only after a reload (which took the decrypted peek path). (2) `toExportWeeklySummary` spread `toExportDailySummary`, injecting a `summaryDate: ""` field the weekly table has no column for into every exported row.
+- **Detection signal:** Compare the new route against its sibling line by line: `/api/daily-summary` ends with `decryptDailySummary(summary)` while `/api/weekly-summary` ended with the bare `summary`. For the export, `assert.ok(!("summaryDate" in row))` on the emitted artifact; a spread of a sibling mapper is the tell.
+- **Prevention rule:** When a feature mirrors an existing one, diff the two implementations side by side and copy every boundary step (here: encrypt-on-write ⇒ decrypt-on-response, and never return the Prisma row directly). Prefer building an export row field-by-field over spreading a different model's mapper, and assert the artifact's exact shape. Add a behavioral route test — Node's `mock.module` can mock only `requireUser` and the AI call, leaving encryption, the DB write and the response body as real code — so the client-visible payload is asserted, not just the stored row.
+
+## 2026-10-06 — Adding a new table silently drops it from admin export/import
+
+- **Failure mode:** Adding the `WeeklySummary` table only to `prisma/schema.prisma` would have left it out of `src/lib/admin-export.ts` (`TABLE_KEYS`, the export schema, `buildExportEnvelope`, and the `writers` map). A backup-then-restore would then silently lose every user's weekly recaps — no error, no drift warning, just missing rows after a restore.
+- **Detection signal:** `rg "dailySummaries|TABLE_KEYS" src` after adding a model shows the enumerated table lists; if the new model's name appears only in `prisma/` and in the generated client, the export/import path does not know about it.
+- **Prevention rule:** When adding a Prisma model that stores user-generated content, grep for an existing sibling table (`dailySummaries`, `mealBundles`) and extend every enumerated list in `src/lib/admin-export.ts` — schema, envelope, `TABLE_KEYS` (this also drives `IMPORT_ORDER`), `buildExportEnvelope`'s query tuple and `data` map, plus the `writers` entry and its export-shape test — in the same PR.
+
+
 ## 2026-10-06 — Do not apply Dart formatting after a check flags baseline churn
 
 - **Failure mode:** Running `dart format` across three modified legacy files introduced hundreds of unrelated line-wrap changes.

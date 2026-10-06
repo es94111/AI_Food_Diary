@@ -264,6 +264,15 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
               canGenerate={canGenerateDailySummary}
               blockedMessage="今日總結需等今天結束後才能產生。"
             />
+            {view === "week" ? (
+              <AiInfoCard
+                title="本週週報"
+                endpoint={`/api/weekly-summary?date=${selectedDateStr}&tz=${encodeURIComponent(tzName(tz))}`}
+                type="summary"
+                canGenerate={weekStartStrValue < weekStartStr(todayStrValue)}
+                blockedMessage="本週尚未結束，需等下週才能產生週報。"
+              />
+            ) : null}
           </aside>
         </div>
       </div>

@@ -35,6 +35,7 @@ model User {
   meals                      Meal[]
   waterLogs                  WaterLog[]
   summaries                  DailySummary[]
+  weeklySummaries            WeeklySummary[]
   savedFoods                 SavedFood[]
   mealBundles                MealBundle[]
   recommendations            DailyRecommendation[]
@@ -244,6 +245,32 @@ model DailySummary {
   updatedAt           DateTime @updatedAt
 
   @@unique([userId, summaryDate])
+}
+
+/// One AI recap per user per (Mon–Sun) week. `weekStart` is the UTC instant of
+/// Monday 00:00 in the user's timezone, so "same week" is always decided in the
+/// user's zone and the (userId, weekStart) unique key makes worker retries
+/// idempotent. Kept separate from DailySummary because the weekly payload has a
+/// different shape (trends, water, weight) and its own lifecycle.
+model WeeklySummary {
+  id                  String   @id @default(cuid())
+  userId              String
+  weekStart           DateTime
+  totalCalories       Decimal  @default(0) @db.Decimal(8, 2)
+  totalProtein        Decimal  @default(0) @db.Decimal(8, 2)
+  totalFat            Decimal  @default(0) @db.Decimal(8, 2)
+  totalCarbs          Decimal  @default(0) @db.Decimal(8, 2)
+  waterTotalMl        Int      @default(0)
+  // Legacy plaintext columns. Kept nullable while B2 rows are backfilled.
+  aiSummary           String?
+  aiRecommendation    String?
+  encAiSummary        Json?
+  encAiRecommendation Json?
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([userId, weekStart])
 }
 
 model DailyRecommendation {

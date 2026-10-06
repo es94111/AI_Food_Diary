@@ -283,6 +283,38 @@ class DailySummary {
   );
 }
 
+/// One AI recap for a Mon–Sun week (`/api/weekly-summary`). Same shape as
+/// [DailySummary] plus the week's water total, which the weekly prompt covers.
+class WeeklySummary {
+  final String aiSummary;
+  final String aiRecommendation;
+  final double totalCalories;
+  final double totalProtein;
+  final double totalFat;
+  final double totalCarbs;
+  final int waterTotalMl;
+
+  WeeklySummary({
+    required this.aiSummary,
+    required this.aiRecommendation,
+    required this.totalCalories,
+    required this.totalProtein,
+    required this.totalFat,
+    required this.totalCarbs,
+    required this.waterTotalMl,
+  });
+
+  factory WeeklySummary.fromJson(Map<String, dynamic> j) => WeeklySummary(
+    aiSummary: (j['aiSummary'] as String?) ?? '',
+    aiRecommendation: (j['aiRecommendation'] as String?) ?? '',
+    totalCalories: _toDouble(j['totalCalories']),
+    totalProtein: _toDouble(j['totalProtein']),
+    totalFat: _toDouble(j['totalFat']),
+    totalCarbs: _toDouble(j['totalCarbs']),
+    waterTotalMl: (j['waterTotalMl'] as num?)?.toInt() ?? 0,
+  );
+}
+
 /// One sleep stage interval (deep/light/REM/awake) with local-time bounds,
 /// decoded from a SLEEP metric's `raw` timeline for the hypnogram.
 class SleepSegment {
