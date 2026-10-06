@@ -1,5 +1,11 @@
 # Lessons
 
+## 2026-10-06 — Use calendar arithmetic for weekly navigation
+
+- **Failure mode:** Shifting a local date by `Duration(days: 7)` can land on the adjacent calendar day across daylight-saving changes, causing the selected weekly range to skip an extra week.
+- **Detection signal:** Check whether date-only navigation uses elapsed durations; test both directions around DST boundaries and verify the resulting `yyyy-MM-dd` values.
+- **Prevention rule:** Use calendar constructors for date-only week/month navigation; reserve `Duration` arithmetic for elapsed time.
+
 ## 2026-10-05 — Major-version dependency bumps need their own PR (and a data-collection audit)
 
 - **Failure mode:** Dependabot opened `@sentry/nextjs` and `@sentry/profiling-node` 10.75 → 11.0 as two separate PRs. Each failed CI on its own (`enableLogs` removed, `nodeProfilingIntegration()` type mismatch) because the two packages must move together, and the migration guide also flips `dataCollection` defaults to *collect everything* — which for this app would start shipping meal photos and AI replies to Sentry. The two green "minor-patch group" PRs were safe; the two red ones were not.
