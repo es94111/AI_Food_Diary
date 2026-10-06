@@ -19,10 +19,10 @@
  * Options:
  *   --json <path>      Write raw per-sample results as JSON.
  *   --report <path>    Write a Markdown report.
- *   --replace <path>   JSON array of { brand, itemName, note? } replacing the
- *                      default list 1:1 (quickstart.md §SC-002 step 4 allows
- *                      swapping discontinued products; record the reason in
- *                      the `note` field).
+ *   --replace <path>   JSON array of exactly 20 { brand, itemName, note? }
+ *                      entries replacing the default list 1:1 (quickstart.md
+ *                      §SC-002 step 4 allows swapping discontinued products;
+ *                      record the reason in the `note` field).
  *   --threshold <n>    Pass mark in percent (default 85).
  *   --delay <ms>       Pause between samples (default 1200) to stay gentle on
  *                      the shared Tavily quota.
@@ -99,7 +99,12 @@ function parseArgs(argv: string[]): Options {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    const next = () => argv[++index];
+    const next = () => {
+      const value = argv[index + 1];
+      if (!value || value.startsWith("--")) throw new Error(`${arg} requires a value`);
+      index += 1;
+      return value;
+    };
     switch (arg) {
       case "--json": options.jsonPath = next(); break;
       case "--report": options.reportPath = next(); break;
@@ -124,8 +129,8 @@ function parseArgs(argv: string[]): Options {
 function loadSamples(replacePath: string | null): Sample[] {
   if (!replacePath) return DEFAULT_SAMPLES;
   const parsed: unknown = JSON.parse(readFileSync(resolve(replacePath), "utf8"));
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error("--replace expects a non-empty JSON array of { brand, itemName }");
+  if (!Array.isArray(parsed) || parsed.length !== DEFAULT_SAMPLES.length) {
+    throw new Error(`--replace expects exactly ${DEFAULT_SAMPLES.length} samples (one-for-one with the SC-002 sample list)`);
   }
   return parsed.map((entry, index) => {
     const candidate = entry as Record<string, unknown>;

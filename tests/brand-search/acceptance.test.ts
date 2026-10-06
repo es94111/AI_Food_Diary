@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { parseBrandSearchAnalysis } from "../../src/lib/ai";
 import { enforceBrandSearchRateLimit } from "../../src/lib/rate-limit";
@@ -11,6 +15,40 @@ import { WebSearchNotConfiguredError, WebSearchRequestError, webSearch } from ".
 // The parts that genuinely require live infrastructure are covered separately
 // by quickstart.md (browser + Android) and scripts/brand-search-hit-rate.ts
 // (SC-002 hit-rate measurement).
+
+function runHitRateCli(args: string[]) {
+  const env = { ...process.env };
+  delete env.TAVILY_API_KEY;
+  delete env.OPENAI_API_KEY;
+  return spawnSync(
+    process.execPath,
+    ["--conditions=react-server", "--import", "tsx", "scripts/brand-search-hit-rate.ts", ...args],
+    { cwd: process.cwd(), env, encoding: "utf8", timeout: 10_000 }
+  );
+}
+
+test("hit-rate CLI rejects missing option values before configuration or network access", () => {
+  for (const option of ["--json", "--report", "--replace", "--threshold", "--delay"]) {
+    const result = runHitRateCli([option]);
+    assert.equal(result.status, 2, `${option} should fail: ${result.stderr}`);
+    assert.match(result.stderr, new RegExp(`${option} requires a value`));
+    assert.doesNotMatch(result.stderr, /TAVILY_API_KEY is required/);
+  }
+});
+
+test("replacement samples must preserve the 20-item SC-002 denominator", () => {
+  const dir = mkdtempSync(join(tmpdir(), "brand-search-hit-rate-"));
+  const samplePath = join(dir, "samples.json");
+  try {
+    writeFileSync(samplePath, JSON.stringify([{ brand: "測試品牌", itemName: "測試品項" }]));
+    const result = runHitRateCli(["--replace", samplePath, "--dry-run"]);
+    assert.equal(result.status, 2, result.stderr);
+    assert.match(result.stderr, /--replace expects exactly 20 samples/);
+    assert.doesNotMatch(result.stdout, /Would measure/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 // ── FR-001: both the brand and the item name are required ───────────────────
 
@@ -162,15 +200,27 @@ test("a response with no results key returns an empty array (FR-007), not a cras
 
 // ── Operator quota protection (research.md §5) ──────────────────────────────
 
-test("the shared operator search quota is capped per user", async () => {
-  const userId = `brand-search-test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  for (let attempt = 1; attempt <= 10; attempt += 1) {
-    assert.equal(await enforceBrandSearchRateLimit(userId), null, `attempt ${attempt} should be allowed`);
+test("the shared operator search quota is capped per user using the memory-only limiter", async () => {
+  const redisState = globalThis as typeof globalThis & { redisClient?: unknown };
+  const previousRedisClient = redisState.redisClient;
+  const previousRedisUrl = process.env.REDIS_URL;
+  redisState.redisClient = null;
+  delete process.env.REDIS_URL;
+  try {
+    const userId = `brand-search-test-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    for (let attempt = 1; attempt <= 10; attempt += 1) {
+      assert.equal(await enforceBrandSearchRateLimit(userId), null, `attempt ${attempt} should be allowed`);
+    }
+    const limited = await enforceBrandSearchRateLimit(userId);
+    assert.ok(limited, "the 11th attempt within the window should be limited");
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("Retry-After"), "600");
+  } finally {
+    if (previousRedisClient === undefined) delete redisState.redisClient;
+    else redisState.redisClient = previousRedisClient;
+    if (previousRedisUrl === undefined) delete process.env.REDIS_URL;
+    else process.env.REDIS_URL = previousRedisUrl;
   }
-  const limited = await enforceBrandSearchRateLimit(userId);
-  assert.ok(limited, "the 11th attempt within the window should be limited");
-  assert.equal(limited.status, 429);
-  assert.equal(limited.headers.get("Retry-After"), "600");
 });
 
 // ── FR-012: same brand + similar item name is a duplicate on its own ────────

@@ -250,7 +250,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 
 ### 品牌搜尋 SC-002 命中率量測
 
-`npm run test:brand-search:hit-rate` 使用 quickstart.md 的 20 筆固定樣本，執行 Tavily 搜尋與 AI 判斷，產生逐筆命中率報告。需要 `TAVILY_API_KEY`、`OPENAI_API_KEY`（或相容端點）；可用 `--dry-run` 預覽樣本，並用 `--json`、`--report`、`--replace` 保存結果或替換已下架商品。退出碼為達標 `0`、未達標 `1`、設定錯誤 `2`。
+`npm run test:brand-search:hit-rate` 使用 quickstart.md 的 20 筆固定樣本，執行 Tavily 搜尋與 AI 判斷，產生逐筆命中率報告。需要 `TAVILY_API_KEY`、`OPENAI_API_KEY`（或相容端點）；可用 `--dry-run` 預覽樣本，並用 `--json`、`--report`、`--replace` 保存結果或一對一替換下架商品（替換檔必須恰為 20 筆）。退出碼為達標 `0`、未達標 `1`、設定錯誤 `2`。
 
 ```bash
 npm run test:brand-search:hit-rate -- --dry-run

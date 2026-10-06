@@ -125,7 +125,7 @@ npm run test:brand-search
 # 需要 TAVILY_API_KEY 與 OPENAI_API_KEY（或相容端點）
 npm run test:brand-search:hit-rate
 
-# 產出報告，並可替換下架樣本（步驟 4）
+# 產出報告；替換下架樣本時，JSON 必須維持 20 筆（一對一替換，步驟 4）
 npm run test:brand-search:hit-rate -- --json hit-rate.json --report hit-rate.md --replace ./my-samples.json
 
 # 只印出即將查詢的樣本，不發出任何網路請求
