@@ -17,10 +17,12 @@ current ceiling — bump patch for fixes, minor for features, major for mileston
 1. **Make sure the working tree is clean and on `main`** (`git status`,
    `git branch --show-current`). Commit or stop if there are stray changes.
 
-2. **Bump the version in both manifests to `X.Y.Z`:**
+2. **Bump the version in all three manifests to `X.Y.Z`:**
    - `package.json` → `"version": "X.Y.Z"` (the web's "目前版本").
    - `mobile/pubspec.yaml` → `version: X.Y.Z+<n>` (bump the `+n` build number;
      CI overrides build-name/number from the tag, this is the local fallback).
+   - `changelog.json` → set `"currentVersion": "X.Y.Z"` **and prepend** a release
+     object to `"releases"` (see "Keeping changelog.json current" below).
 
 3. **Commit** the bump (and any pending work):
    `git commit -am "chore: release vX.Y.Z"` (end with the Co-Authored-By line).
@@ -53,11 +55,29 @@ current ceiling — bump patch for fixes, minor for features, major for mileston
    - `.github/workflows/docker-image.yml`: builds + pushes the Docker image
      tagged `X.Y.Z` and `latest`.
 
+## Keeping changelog.json current
+
+`changelog.json` is the in-repo release history. No runtime code reads it — it
+is maintained by hand as part of each release, so it is easy to forget and drift
+behind the tags (it was stale from 0.80.1 through 0.85.0 before being backfilled).
+Keep it in step with the tag in step 2.
+
+- Shape: `{ "currentVersion": "X.Y.Z", "releases": [ … ] }`, newest release **first**.
+- Each release needs `version`, `date` (`YYYY-MM-DD`), `title`, `type`, and
+  `changes[]`, where each change is `{ "tag", "text" }`.
+- `type` is normally `"feature"` or `"fixed"`. `changes[].tag` is a short
+  Traditional-Chinese label; the file also has legacy `"fixed"`/`"new"`/
+  `"improved"` tags, so either style is accepted.
+- Reuse the same wording as the GitHub Release notes, then verify:
+  `node -e "const c=require('./changelog.json'); console.log(c.currentVersion, c.releases.map(r=>r.version).join(','))"`
+
 ## How the version surfaces (sanity check after CI)
 - **App 目前版本**: from the build (`--build-name=X.Y.Z`).
 - **App/Web 最新版本**: `GET /api/app/version` → `lib/app-release.ts` parses the
   highest `\d+.\d+.\d+` from the S3 `downloads/` APK filenames (so `ai-food-vX.Y.Z.apk`).
 - **Web 目前版本**: `package.json` version (that's why step 2 bumps it).
+- **`changelog.json`**: not read by any runtime code — it is the in-repo release
+  history that must be kept in step with the tags manually (step 2).
 - **Release notes** (optional): upload `notes/X.Y.Z.md` to the S3 bucket; it shows
   in the in-app update prompt and on the web version card.
 
