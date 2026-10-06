@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AiNotConfiguredError } from "@/lib/ai-config";
 import { requireUser } from "@/lib/auth";
+import { decryptWeeklySummary } from "@/lib/b2-crypto";
 import { normalizeDateStr, todayStr, weekStartStr } from "@/lib/dates";
 import { apiRoute, isCrossSiteNavigation } from "@/lib/http";
 import { enforceAiRateLimit } from "@/lib/rate-limit";
@@ -52,5 +53,9 @@ export const GET = apiRoute(async (request: Request) => {
   // No meals that week → nothing to summarise.
   if (!summary) return NextResponse.json({ summary: null });
 
-  return NextResponse.json({ summary });
+  // Decrypt at the response boundary, exactly like /api/daily-summary: the row
+  // stores the AI text in the enc* columns (aiSummary/aiRecommendation are left
+  // null), so returning it raw would ship literal nulls to the client and leak
+  // the ciphertext fields.
+  return NextResponse.json({ summary: decryptWeeklySummary(summary) });
 });

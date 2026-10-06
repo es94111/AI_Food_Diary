@@ -560,10 +560,27 @@ function toExportDailySummary(row: DbRow, anomalies: Anomalies): ExportDailySumm
 }
 
 function toExportWeeklySummary(row: DbRow, anomalies: Anomalies): ExportWeeklySummary {
+  // Built explicitly rather than spreading toExportDailySummary: WeeklySummary
+  // has no `summaryDate` column, so the daily mapper would inject a meaningless
+  // `summaryDate: ""` into every exported row of the backup file.
   return {
-    ...toExportDailySummary(row, anomalies),
+    id: row.id as string,
+    userId: row.userId as string,
     weekStart: isoOf(row.weekStart) ?? "",
-    waterTotalMl: Number(row.waterTotalMl ?? 0)
+    totalCalories: Number(row.totalCalories ?? 0),
+    totalProtein: Number(row.totalProtein ?? 0),
+    totalFat: Number(row.totalFat ?? 0),
+    totalCarbs: Number(row.totalCarbs ?? 0),
+    waterTotalMl: Number(row.waterTotalMl ?? 0),
+    aiSummary: decCounted<string | null>(row.encAiSummary, (row.aiSummary as string | null) ?? null, anomalies, "WeeklySummary.encAiSummary"),
+    aiRecommendation: decCounted<string | null>(
+      row.encAiRecommendation,
+      (row.aiRecommendation as string | null) ?? null,
+      anomalies,
+      "WeeklySummary.encAiRecommendation"
+    ),
+    createdAt: isoOf(row.createdAt),
+    updatedAt: isoOf(row.updatedAt)
   };
 }
 

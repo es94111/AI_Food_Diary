@@ -96,6 +96,10 @@ test("a scoped export contains only that account and none of its secrets", { ski
   assert.equal(roundTripped.data.weeklySummaries.length, 1);
   assert.equal(roundTripped.data.weeklySummaries[0].waterTotalMl, 14000);
   assert.equal(roundTripped.data.weeklySummaries[0].aiSummary, "Alice 的週報");
+  // The weekly row was written raw (not through a mapper) — guard against the
+  // daily mapper's `summaryDate: ""` leaking into the artifact again.
+  assert.ok(!("summaryDate" in envelope.data.weeklySummaries[0]), "weekly rows carry no summaryDate");
+  assert.equal(envelope.data.weeklySummaries[0].weekStart, "2026-09-28T00:00:00.000Z");
   assert.equal(envelope.data.userProfiles.length, 1);
   assert.deepEqual(envelope.data.appConfig, [], "the global settings row is never part of a personal export");
   for (const foreign of [bob.id, bobMeal.id, "Bob 的秘密晚餐", "Bob 的食物", `bob-${suffix}`, `google-bob-${suffix}`, "sk-bob-secret"]) assert.ok(!text.includes(foreign), `leaked: ${foreign}`);
