@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 
 const PAGE_LABELS: Record<string, string> = {
+  "/dashboard/insights": "趨勢洞察",
   "/dashboard/health": "健康概覽",
   "/dashboard/foods": "我的食物",
   "/dashboard/meal-bundles": "我的餐組",

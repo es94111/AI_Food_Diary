@@ -28,6 +28,7 @@ import 'login_screen.dart';
 import 'meal_capture_screen.dart';
 import 'meal_bundles_screen.dart';
 import 'saved_foods_screen.dart';
+import 'insights_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -64,7 +65,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   String? _error;
   int _mealLoadGeneration = 0;
 
-  static const _tabTitles = ['飲食', '健康', '設定'];
+  static const _tabTitles = ['飲食', '健康', '趨勢', '設定'];
 
   final _analysis = MealAnalysisController.instance;
   final _captureController = MealCaptureController();
@@ -657,6 +658,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               ? _healthTab(metabolism)
               : const SizedBox.shrink(),
           _mountedTabs.contains(2)
+              ? const InsightsScreen()
+              : const SizedBox.shrink(),
+          _mountedTabs.contains(3)
               ? _settingsTab(metabolism)
               : const SizedBox.shrink(),
         ],
@@ -677,6 +681,11 @@ class _DashboardScreenState extends State<DashboardScreen>
             icon: Icon(Icons.favorite_outline),
             selectedIcon: Icon(Icons.favorite),
             label: '健康',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.insights_outlined),
+            selectedIcon: Icon(Icons.insights),
+            label: '趨勢',
           ),
           NavigationDestination(
             icon: Icon(Icons.settings_outlined),
