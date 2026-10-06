@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../models/insights.dart';
 import '../services/insights_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/insights_dates.dart';
 import '../utils/metabolism.dart';
 
 class InsightsScreen extends StatefulWidget {
@@ -58,9 +59,11 @@ class _InsightsScreenState extends State<InsightsScreen> {
   }
 
   void _movePeriod(int amount) {
-    final next = _period == 'week'
-        ? _selectedDate.add(Duration(days: 7 * amount))
-        : DateTime(_selectedDate.year, _selectedDate.month + amount, 1);
+    final next = shiftInsightsDate(
+      _selectedDate,
+      monthly: _period == 'month',
+      amount: amount,
+    );
     setState(() => _selectedDate = next);
     unawaited(_load(_period, next));
   }
