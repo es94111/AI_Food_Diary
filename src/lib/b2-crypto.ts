@@ -54,6 +54,10 @@ type DecryptedDailySummary<T> = Omit<
   totalCarbs: number;
 };
 
+type WeeklySummaryLike = DailySummaryLike & { waterTotalMl?: unknown };
+
+type DecryptedWeeklySummary<T> = DecryptedDailySummary<T> & { waterTotalMl: number };
+
 type MealItemOf<T> = T extends { items?: (infer I)[] }
   ? I extends MealItemLike
     ? I
@@ -230,6 +234,11 @@ export function decryptDailySummary<T extends DailySummaryLike>(summary: T): Dec
     totalFat: Number(totalFat ?? 0),
     totalCarbs: Number(totalCarbs ?? 0)
   } as DecryptedDailySummary<T>;
+}
+
+export function decryptWeeklySummary<T extends WeeklySummaryLike>(summary: T): DecryptedWeeklySummary<T> {
+  const { waterTotalMl, ...rest } = decryptDailySummary(summary);
+  return { ...rest, waterTotalMl: Number(waterTotalMl ?? 0) } as DecryptedWeeklySummary<T>;
 }
 
 export function decryptMeal<

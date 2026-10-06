@@ -293,6 +293,24 @@ class MealService {
     return DailySummary.fromJson(summary as Map<String, dynamic>);
   }
 
+    /// Weekly recap for the week containing [day]. With [generate] false (default)
+  /// it returns an already stored summary (null if none) without spending AI
+  /// quota; with true it generates one if missing (past weeks only).
+  static Future<WeeklySummary?> weeklySummary(DateTime day,
+      {bool generate = false}) async {
+    final res = await _api.get('/api/weekly-summary', query: {
+      'date': isoDate(day),
+      'tzOffset': '${localTzOffsetMinutes()}',
+      if (generate) 'generate': '1',
+    });
+    if (!ApiClient.ok(res)) {
+      throw ApiException(ApiClient.errorMessage(res, '無法產生週報'));
+    }
+    final summary = res.data['summary'];
+    if (summary == null) return null;
+    return WeeklySummary.fromJson(summary as Map<String, dynamic>);
+  }
+
   /// Regenerates and returns today's next-meal advice (spends AI quota).
   /// Sends the device's local date so the recommendation is keyed to the
   /// user's day, not the server's timezone.

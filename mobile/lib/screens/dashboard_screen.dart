@@ -748,7 +748,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           const SizedBox(height: 12),
           _mealsSection(),
           const SizedBox(height: 12),
-          _DailySummaryCard(date: _selectedDate, key: ValueKey(_selectedDate)),
+          if (_weekView)
+            _WeeklySummaryCard(date: _selectedDate, key: ValueKey('weekly-$_selectedDate'))
+          else
+            _DailySummaryCard(date: _selectedDate, key: ValueKey(_selectedDate)),
         ],
       ),
     );
@@ -1554,6 +1557,136 @@ class _DailySummaryCardState extends State<_DailySummaryCard> {
                   children: [
                     Text(
                       '建議',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: context.palette.amberInk,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    MarkdownText(
+                      _summary!.aiRecommendation,
+                      style: TextStyle(color: context.palette.amberInkSoft),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// AI weekly recap card — same peek/generate flow as [_DailySummaryCard], but
+/// keyed to the Mon–Sun week and only generatable once that week has ended.
+class _WeeklySummaryCard extends StatefulWidget {
+  const _WeeklySummaryCard({required this.date, super.key});
+  final DateTime date;
+
+  @override
+  State<_WeeklySummaryCard> createState() => _WeeklySummaryCardState();
+}
+
+class _WeeklySummaryCardState extends State<_WeeklySummaryCard> {
+  WeeklySummary? _summary;
+  bool _loading = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _peek();
+  }
+
+  // Auto-display an already-stored weekly recap on open (no AI spend).
+  Future<void> _peek() async {
+    try {
+      final s = await MealService.weeklySummary(widget.date);
+      if (mounted && s != null) setState(() => _summary = s);
+    } catch (_) {}
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final s = await MealService.weeklySummary(widget.date, generate: true);
+      if (!mounted) return;
+      setState(() => _summary = s);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canGenerate = startOfLocalWeek(
+      widget.date,
+    ).isBefore(startOfLocalWeek(DateTime.now()));
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '本週週報',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+                const Spacer(),
+                if (_summary == null && !_loading)
+                  TextButton(
+                    onPressed: canGenerate ? _load : null,
+                    child: const Text('產生 AI 週報'),
+                  ),
+              ],
+            ),
+            if (_summary == null && !_loading && !canGenerate)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '本週尚未結束，需等下週才能產生週報。',
+                  style: TextStyle(
+                    color: context.palette.inkSoft,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            if (_loading)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  'AI 正在回顧本週飲食...',
+                  style: TextStyle(color: context.palette.brand),
+                ),
+              ),
+            if (_error != null)
+              Text(_error!, style: TextStyle(color: context.palette.danger)),
+            if (_summary != null) ...[
+              const SizedBox(height: 8),
+              MarkdownText(_summary!.aiSummary),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: context.palette.amberSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: context.palette.amberBorder),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '下週建議',
                       style: TextStyle(
                         fontWeight: FontWeight.w900,
                         color: context.palette.amberInk,

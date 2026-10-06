@@ -1,3 +1,52 @@
+# 2026-10-06 新增週報 AI 摘要（issue #161，feature-gap-analysis C3）
+
+## Goal + acceptance criteria
+
+- [x] 擴充 `src/worker.ts` 既有 BullMQ 每小時排程，新增 `precompute-weekly-summaries`，對**本地時間為週一凌晨 1 點**的使用者產生上一個 Mon–Sun 週的摘要。
+- [x] 重用既有管線：`withAgent` / `completionOptions({ json: true })` / `renderPrompt`，prompt 以 `AI_WEEKLY_SUMMARY_PROMPT` 覆寫（比照 `AI_DAILY_SUMMARY_PROMPT`）。
+- [x] 新增 `WeeklySummary` 表（`(userId, weekStart)` 唯一），沿用 `encryptDailySummaryWrite` 的加密模式；Web／App 讀取時不跑即時 AI（peek）。
+- [x] 冪等：既有列直接回傳、`P2002` 併發插入回讀既有列，worker 重啟不重複產生。
+- [x] 時區一律走 `TzSpec`（`weekStartStr` / `weekRangeUtc`），不以伺服器 UTC 判斷「上週」。
+- [x] `npm run build`（`prisma generate` + `tsc --noEmit` + `next build`）與既有測試套件通過。
+
+## Risk & rollback
+
+- **Risk level:** medium（新增資料表 + 背景 AI 花費路徑；無破壞性變更）。
+- **Affected components:**
+  - `prisma/schema.prisma`、`prisma/migrations/20261006000000_add_weekly_summary/`
+  - 新增 `src/lib/weekly-summary-stats.ts`（純聚合）、`src/lib/weekly-summary.ts`（DB/AI 編排）、`src/app/api/weekly-summary/route.ts`
+  - `src/worker.ts`、`src/lib/ai.ts`、`src/lib/b2-crypto.ts`、`src/lib/admin-export.ts`（匯出/匯入）
+  - `src/app/dashboard/page.tsx`（`AiInfoCard` 週檢視）、`mobile/lib/*`（models／service／dashboard 週檢視卡片）
+  - 文件：`.env.example`、`README.md`、`docs/features.md`
+- **Rollback:** 還原此 PR；migration 只新增一張表，回滾時 `DROP TABLE "WeeklySummary"` 即可，不影響既有資料。
+- **AI 花費風險:** 週報只在「上週有餐點」且「使用者有 AI 金鑰」時產生，且每週每位使用者最多一次（唯一鍵）；on-demand 路徑另受 `enforceAiRateLimit` 與跨站防護限制。
+
+## Dependencies & Environment
+
+- 未新增任何相依套件。
+- 新增環境變數（皆為選填）：`AI_WEEKLY_SUMMARY_PROMPT`、`AI_WEEKLY_SUMMARY_MAX_TOKENS`（預設 1200）。
+- 需要 Redis（BullMQ，既有）與 PostgreSQL（migration）。
+
+## Working notes
+
+- **為何獨立表而非沿用 `DailySummary`:** 週報多出飲水總量與體重趨勢欄位，且生命週期不同（每日 vs 每週）；獨立表讓 `(userId, weekStart)` 唯一鍵直接承擔冪等，不必把週鍵硬塞進 `summaryDate`。
+- **為何純聚合要獨立成 `weekly-summary-stats.ts`:** `src/lib/weekly-summary.ts` 需要 `server-only` 與 DB；把 `weekWindow`／`aggregateWeek` 抽成無相依模組後可用 `node --test` 直接驗證時區邊界。
+- **為何 worker 用「本地週一 1 點」而非 cron 週一:** 沿用每日任務的 `hourInTz` 手法，跨時區不需要為每個時區各註冊一條排程，也不會在伺服器 UTC 週一誤判使用者的「上週」。判斷條件用 `todayStr(tz) === weekStartStr(todayStr(tz))`（週一即為自己的週起始），免去額外 weekday helper。
+- **平均值一律除以 7 天:** 與 web 週檢視的 `totals / 7` 一致；只記錄 3 天的一週會如實呈現為低攝取週，而不是被重新正規化。
+- **體重趨勢需要兩筆:** 只有一天有讀值時 `weightStart/End/Change` 皆為 null，prompt 顯示「本週未同步」／「無法計算」，不從單點捏造趨勢。
+- **冪等重建:** `generateAndStoreWeeklySummary` 先查既有列；create 若撞 `P2002`（worker 與 on-demand 併發）則回讀既有列。
+- **admin 匯出/匯入:** 新增 `weeklySummaries` 表，`skip-existing` 以 `(userId, weekStart)` 找既有列、`overwrite` 走 `upsert`，與 `dailySummaries` 同模式，避免備份還原遺失週報。
+
+## Results
+
+- `npm run build`：通過（`tsc --noEmit` 乾淨、`next build` 路由表含 `/api/weekly-summary`）。
+- `node --import tsx --test tests/insights/*.test.ts tests/dates.test.ts`：14/14 通過（新增 6 個週報案例：視窗對齊、跨月、聚合、空週、跨週邊界排除）。
+- `npm run test:mcp`：36/36 通過；`npm run test:storage`：19/19 通過。
+- `flutter pub get` + `dart analyze`（3 個改動檔）：No issues found。
+- Migration 驗證（拋棄式 postgres:18-alpine，port 55432）：`prisma migrate deploy` 全部套用成功；`prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma` 顯示 `WeeklySummary` 與 schema 零差異（唯一差異是既有的 `AppConfig.updatedAt` baseline，先前即存在）。
+- 執行期驗證（拋棄式 DB + `tsx`）：7 天資料的 `collectWeeklySummaryStats` 回 `daysLogged=7`、`totals={3710,210,105,350}`、`waterTotalMl=7000`、`avg.calories=530`、`weight 70→71.2`；既有列時 `generateAndStoreWeeklySummary` 直接回傳同一列（未花 AI）；空週回 `null`；刪除使用者後 `WeeklySummary` 隨 FK cascade 清除。
+- Worker 觸發驗證（`tsx`）：台北週一 01:00 → 動作且 `lastWeekDate=2026-09-28`；週一 02:00／週二 01:00／週日 01:00 → 不動作；`America/New_York` 週一 01:00（UTC 05:00）亦正確。
+- Prompt 變數檢查（腳本比對 `{{...}}` 與傳入值）：19 個 placeholder 全部有對應值，無未解析殘留。
 # 2026-10-05 升級 Sentry JS SDK 10.75 → 11.0（合併 #148／#149）
 
 ## Goal + acceptance criteria

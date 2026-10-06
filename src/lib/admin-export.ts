@@ -246,6 +246,12 @@ export const dailySummaryExportSchema = z.object({
 });
 export type ExportDailySummary = z.infer<typeof dailySummaryExportSchema>;
 
+export const weeklySummaryExportSchema = dailySummaryExportSchema.extend({
+  weekStart: z.string().datetime(),
+  waterTotalMl: z.number().int()
+});
+export type ExportWeeklySummary = z.infer<typeof weeklySummaryExportSchema>;
+
 export const dailyRecommendationExportSchema = z.object({
   id: z.string().min(1),
   userId: z.string().min(1),
@@ -301,6 +307,7 @@ export const exportEnvelopeSchema = z.object({
     mealBundles: z.array(mealBundleExportSchema).default([]),
     mealBundleItems: z.array(mealBundleItemExportSchema).default([]),
     dailySummaries: z.array(dailySummaryExportSchema).default([]),
+    weeklySummaries: z.array(weeklySummaryExportSchema).default([]),
     dailyRecommendations: z.array(dailyRecommendationExportSchema).default([]),
     healthMetrics: z.array(healthMetricExportSchema).default([]),
     appConfig: z.array(appConfigExportSchema).default([])
@@ -318,6 +325,7 @@ export const TABLE_KEYS = [
   "mealBundles",
   "mealBundleItems",
   "dailySummaries",
+  "weeklySummaries",
   "dailyRecommendations",
   "healthMetrics",
   "appConfig"
@@ -537,6 +545,14 @@ function toExportDailySummary(row: DbRow, anomalies: Anomalies): ExportDailySumm
   };
 }
 
+function toExportWeeklySummary(row: DbRow, anomalies: Anomalies): ExportWeeklySummary {
+  return {
+    ...toExportDailySummary(row, anomalies),
+    weekStart: isoOf(row.weekStart) ?? "",
+    waterTotalMl: Number(row.waterTotalMl ?? 0)
+  };
+}
+
 function toExportDailyRecommendation(row: DbRow): ExportDailyRecommendation {
   return {
     id: row.id as string,
@@ -610,7 +626,7 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
   const anomalies: Anomalies = {};
   const ownedBy = scope ? { userId: scope.userId } : undefined;
   const excludeSecrets = Boolean(scope?.excludeSecrets);
-  const [users, userProfiles, meals, mealItems, waterLogs, savedFoods, mealBundles, mealBundleItems, dailySummaries, dailyRecommendations, healthMetrics, appConfig] =
+  const [users, userProfiles, meals, mealItems, waterLogs, savedFoods, mealBundles, mealBundleItems, dailySummaries, weeklySummaries, dailyRecommendations, healthMetrics, appConfig] =
     await Promise.all([
       prisma.user.findMany({ where: scope ? { id: scope.userId } : undefined, orderBy: { createdAt: "asc" } }),
       prisma.userProfile.findMany({ where: ownedBy }),
@@ -621,6 +637,7 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
       prisma.mealBundle.findMany({ where: ownedBy, orderBy: { createdAt: "asc" } }),
       prisma.mealBundleItem.findMany({ where: scope ? { mealBundle: { userId: scope.userId } } : undefined, orderBy: { createdAt: "asc" } }),
       prisma.dailySummary.findMany({ where: ownedBy }),
+      prisma.weeklySummary.findMany({ where: ownedBy }),
       prisma.dailyRecommendation.findMany({ where: ownedBy }),
       prisma.healthMetric.findMany({ where: ownedBy }),
       scope ? Promise.resolve([]) : prisma.appConfig.findMany()
@@ -636,6 +653,7 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
     mealBundles: mealBundles.map((row) => toExportMealBundle(row as DbRow, anomalies)),
     mealBundleItems: mealBundleItems.map((row) => toExportMealBundleItem(row as DbRow, anomalies)),
     dailySummaries: dailySummaries.map((row) => toExportDailySummary(row as DbRow, anomalies)),
+    weeklySummaries: weeklySummaries.map((row) => toExportWeeklySummary(row as DbRow, anomalies)),
     dailyRecommendations: dailyRecommendations.map((row) => toExportDailyRecommendation(row as DbRow)),
     healthMetrics: healthMetrics.map((row) => toExportHealthMetric(row as DbRow, anomalies)),
     appConfig: appConfig.map((row) => toExportAppConfig(row as DbRow))
@@ -1025,6 +1043,45 @@ const writers: Record<TableKey, RowWriter> = {
     const existing = await tx.dailySummary.findFirst({ where: { userId, summaryDate }, select: { id: true } } as never);
     if (existing) return "skip";
     await tx.dailySummary.create({ data });
+  },
+
+  weeklySummaries: async (tx, rawRow, opts, ctx) => {
+    const row = rawRow as unknown as ExportWeeklySummary;
+    const userId = remapUserId(row.userId, ctx);
+    if (!userId) {
+      throw new Error(`userId ${row.userId} 找不到對應的使用者（孤兒列）`);
+    }
+    const weekStart = toDate(row.weekStart);
+    if (!weekStart) throw new Error("weekStart 缺少或格式不正確");
+    const data = {
+      id: row.id,
+      userId,
+      weekStart,
+      totalCalories: new Prisma.Decimal(row.totalCalories ?? 0),
+      totalProtein: new Prisma.Decimal(row.totalProtein ?? 0),
+      totalFat: new Prisma.Decimal(row.totalFat ?? 0),
+      totalCarbs: new Prisma.Decimal(row.totalCarbs ?? 0),
+      waterTotalMl: Math.trunc(row.waterTotalMl ?? 0),
+      aiSummary: null,
+      encAiSummary: row.aiSummary == null ? Prisma.JsonNull : encryptJson(row.aiSummary),
+      aiRecommendation: null,
+      encAiRecommendation: row.aiRecommendation == null ? Prisma.JsonNull : encryptJson(row.aiRecommendation),
+      ...(toDate(row.createdAt) ? { createdAt: toDate(row.createdAt) as Date } : {}),
+      updatedAt: new Date()
+    };
+    if (opts.mode === "overwrite") {
+      // Compound unique: an edited file with a different id but the same
+      // (userId, weekStart) merges instead of crashing with P2002.
+      await tx.weeklySummary.upsert({
+        where: { userId_weekStart: { userId, weekStart } },
+        create: data,
+        update: data
+      });
+      return;
+    }
+    const existing = await tx.weeklySummary.findFirst({ where: { userId, weekStart }, select: { id: true } } as never);
+    if (existing) return "skip";
+    await tx.weeklySummary.create({ data });
   },
 
   dailyRecommendations: async (tx, rawRow, opts, ctx) => {

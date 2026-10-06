@@ -1,5 +1,12 @@
 # Lessons
 
+## 2026-10-06 — Adding a new table silently drops it from admin export/import
+
+- **Failure mode:** Adding the `WeeklySummary` table only to `prisma/schema.prisma` would have left it out of `src/lib/admin-export.ts` (`TABLE_KEYS`, the export schema, `buildExportEnvelope`, and the `writers` map). A backup-then-restore would then silently lose every user's weekly recaps — no error, no drift warning, just missing rows after a restore.
+- **Detection signal:** `rg "dailySummaries|TABLE_KEYS" src` after adding a model shows the enumerated table lists; if the new model's name appears only in `prisma/` and in the generated client, the export/import path does not know about it.
+- **Prevention rule:** When adding a Prisma model that stores user-generated content, grep for an existing sibling table (`dailySummaries`, `mealBundles`) and extend every enumerated list in `src/lib/admin-export.ts` — schema, envelope, `TABLE_KEYS` (this also drives `IMPORT_ORDER`), `buildExportEnvelope`'s query tuple and `data` map, plus the `writers` entry and its export-shape test — in the same PR.
+
+
 ## 2026-10-06 — Do not apply Dart formatting after a check flags baseline churn
 
 - **Failure mode:** Running `dart format` across three modified legacy files introduced hundreds of unrelated line-wrap changes.

@@ -160,14 +160,14 @@ test("the package satisfies the importer's contract (one owner, referential inte
   const payload = JSON.parse(await (result.form.get("file") as File).text()) as { format: string; version: number; counts: Record<string, number>; data: Record<string, Array<Record<string, unknown>>> };
   assert.equal(payload.format, "ai-food-diary-export");
   assert.equal(payload.version, 1);
-  for (const key of ["users", "userProfiles", "meals", "mealItems", "waterLogs", "savedFoods", "mealBundles", "mealBundleItems", "dailySummaries", "dailyRecommendations", "healthMetrics", "appConfig"]) assert.ok(Array.isArray(payload.data[key]), key);
+  for (const key of ["users", "userProfiles", "meals", "mealItems", "waterLogs", "savedFoods", "mealBundles", "mealBundleItems", "dailySummaries", "weeklySummaries", "dailyRecommendations", "healthMetrics", "appConfig"]) assert.ok(Array.isArray(payload.data[key]), key);
   for (const [key, declared] of Object.entries(payload.counts)) assert.equal(payload.data[key].length, declared, `declared count for ${key}`);
   assert.equal(payload.data.users.length, 1);
   const owner = String(payload.data.users[0].id);
   const mealIds = new Set<string>();
   for (const meal of payload.data.meals) { assert.equal(meal.userId, owner); mealIds.add(String(meal.id)); }
   for (const item of payload.data.mealItems) assert.ok(mealIds.has(String(item.mealId)));
-  for (const key of ["userProfiles", "waterLogs", "savedFoods", "dailySummaries", "healthMetrics"]) for (const row of payload.data[key]) assert.equal(row.userId, owner, key);
+  for (const key of ["userProfiles", "waterLogs", "savedFoods", "dailySummaries", "weeklySummaries", "healthMetrics"]) for (const row of payload.data[key]) assert.equal(row.userId, owner, key);
   const manifest = JSON.parse(String(result.form.get("attachmentsManifest"))) as Array<{ objectKey: string; fileField: string; sha256: string }>;
   assert.equal(new Set(manifest.map((entry) => entry.objectKey)).size, manifest.length, "manifest keys are unique");
   assert.equal(new Set(manifest.map((entry) => entry.fileField)).size, manifest.length);

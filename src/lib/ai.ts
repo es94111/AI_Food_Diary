@@ -73,6 +73,9 @@ const defaultNextMealAdvicePrompt =
 const defaultDailySummaryPrompt =
   "請用繁體中文產生 {{date}} 的飲食總結與今日建議。目標熱量 {{calorieTarget}} kcal。實際攝取 {{totalCalories}} kcal，蛋白質 {{totalProtein}}g，脂肪 {{totalFat}}g，碳水 {{totalCarbs}}g。健康同步資料: {{healthContext}}。請依活動量與體重資訊調整建議，避免醫療診斷。請只用 JSON 輸出，欄位為 summary 與 recommendation。";
 
+const defaultWeeklySummaryPrompt =
+  "請用繁體中文產生 {{weekStart}} 至 {{weekEnd}} 這一週的飲食週報與下週建議。每日熱量目標 {{calorieTarget}} kcal。本週總攝取 {{totalCalories}} kcal（平均每日 {{avgCalories}} kcal），蛋白質 {{totalProtein}}g、脂肪 {{totalFat}}g、碳水 {{totalCarbs}}g。平均每日：蛋白質 {{avgProtein}}g、脂肪 {{avgFat}}g、碳水 {{avgCarbs}}g。有紀錄的天數 {{daysLogged}}/{{daysInWeek}}。本週飲水 {{waterTotalMl}} ml（平均每日 {{avgWaterMl}} ml）。體重（kg）：{{weightStart}} → {{weightEnd}}（本週變化 {{weightChangeKg}}）。健康同步資料: {{healthContext}}。請比較目標與實際、指出趨勢（例如熱量是否穩定、蛋白質是否足夠、飲水與體重變化），避免醫療診斷。請只用 JSON 輸出，欄位為 summary 與 recommendation。";
+
 // Per-request AI configuration, resolved from the calling user's saved settings
 // (see resolveUserAiConfig in ai-config.ts). The key/base/models are no longer
 // read from the environment so the service can be opened to multiple users.
@@ -388,6 +391,12 @@ function renderPrompt(template: string, values: Record<string, string | number>)
   );
 }
 
+// Prompts read better with short decimals than with raw float noise (e.g.
+// 1732.6666666666667). Rounding is display-only — stored totals stay exact.
+function round1(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
 async function requestMealImageAnalysis(
   config: AiConfig,
   images: VisionImageInput[],
@@ -656,6 +665,63 @@ export async function generateDailySummary(config: AiConfig, input: {
     createCompletion(config, {
       model: config.textModel,
       ...completionOptions({ json: true }),
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    }));
+
+  const parsed = parseJsonResponse(completionText(response));
+  return z.object({ summary: z.string(), recommendation: z.string() }).parse(parsed);
+}
+
+export type WeeklySummaryInput = {
+  weekStart: string;
+  weekEnd: string;
+  calorieTarget: number;
+  totals: { calories: number; protein: number; fat: number; carbs: number };
+  averages: { calories: number; protein: number; fat: number; carbs: number; waterMl: number };
+  daysLogged: number;
+  daysInWeek: number;
+  waterTotalMl: number;
+  // null when the week has no weight reading (or no reading at the start/end),
+  // so the prompt says so instead of inventing a trend.
+  weightStartKg: number | null;
+  weightEndKg: number | null;
+  weightChangeKg: number | null;
+  healthContext?: string;
+};
+
+export async function generateWeeklySummary(config: AiConfig, input: WeeklySummaryInput) {
+  const prompt = renderPrompt(promptFromEnv("AI_WEEKLY_SUMMARY_PROMPT", defaultWeeklySummaryPrompt), {
+    weekStart: input.weekStart,
+    weekEnd: input.weekEnd,
+    calorieTarget: input.calorieTarget,
+    totalCalories: round1(input.totals.calories),
+    totalProtein: round1(input.totals.protein),
+    totalFat: round1(input.totals.fat),
+    totalCarbs: round1(input.totals.carbs),
+    avgCalories: round1(input.averages.calories),
+    avgProtein: round1(input.averages.protein),
+    avgFat: round1(input.averages.fat),
+    avgCarbs: round1(input.averages.carbs),
+    daysLogged: input.daysLogged,
+    daysInWeek: input.daysInWeek,
+    waterTotalMl: input.waterTotalMl,
+    avgWaterMl: round1(input.averages.waterMl),
+    weightStart: input.weightStartKg == null ? "本週未同步" : input.weightStartKg.toFixed(1),
+    weightEnd: input.weightEndKg == null ? "本週未同步" : input.weightEndKg.toFixed(1),
+    weightChangeKg: input.weightChangeKg == null ? "無法計算" : input.weightChangeKg.toFixed(1),
+    healthContext: input.healthContext ?? "尚未同步"
+  });
+
+  const response = await withAgent("weekly-summary", config.textModel, () =>
+    createCompletion(config, {
+      model: config.textModel,
+      ...completionOptions({ json: true }),
+      max_tokens: Math.round(numberEnv("AI_WEEKLY_SUMMARY_MAX_TOKENS", 1200)),
       messages: [
         {
           role: "user",

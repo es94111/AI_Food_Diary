@@ -102,7 +102,7 @@ npm install
 npx prisma generate
 npx prisma db push
 npm run dev      # Web
-npm run worker   # 背景排程（昨日總結事前產生）
+npm run worker   # 背景排程（昨日總結、每週週報事前產生）
 ```
 
 ---
@@ -117,12 +117,14 @@ npm run worker   # 背景排程（昨日總結事前產生）
 AI_MEAL_ANALYSIS_PROMPT="餐點圖片分析提示語"
 AI_NEXT_MEAL_ADVICE_PROMPT="下一餐建議提示語"
 AI_DAILY_SUMMARY_PROMPT="每日總結提示語"
+AI_WEEKLY_SUMMARY_PROMPT="每週週報提示語"
 ```
 
 模板變數：
 
 - `AI_NEXT_MEAL_ADVICE_PROMPT`：`{{goal}}`、`{{calorieTarget}}`、`{{todayCalories}}`、`{{todayProtein}}`、`{{todayFat}}`、`{{todayCarbs}}`
 - `AI_DAILY_SUMMARY_PROMPT`：`{{date}}`、`{{calorieTarget}}`、`{{totalCalories}}`、`{{totalProtein}}`、`{{totalFat}}`、`{{totalCarbs}}`
+- `AI_WEEKLY_SUMMARY_PROMPT`：`{{weekStart}}`、`{{weekEnd}}`、`{{calorieTarget}}`、`{{totalCalories}}`、`{{totalProtein}}`、`{{totalFat}}`、`{{totalCarbs}}`、`{{avgCalories}}`、`{{avgProtein}}`、`{{avgFat}}`、`{{avgCarbs}}`、`{{daysLogged}}`、`{{daysInWeek}}`、`{{waterTotalMl}}`、`{{avgWaterMl}}`、`{{weightStart}}`、`{{weightEnd}}`、`{{weightChangeKg}}`
 
 ### 辨識穩定度調校
 
