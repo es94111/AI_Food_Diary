@@ -118,7 +118,7 @@ class MealCaptureForm extends StatefulWidget {
     this.initialImageSource,
   });
 
-  final Future<void> Function() onSaved;
+  final Future<void> Function(DateTime eatenAt) onSaved;
   final MealCaptureController? controller;
   final String initialAdvice;
 
@@ -178,6 +178,7 @@ const _productBarcodeFormats = [
 class _MealCaptureFormState extends State<MealCaptureForm> {
   final _picker = ImagePicker();
   String _mealType = nearestMealType();
+  DateTime _eatenAt = DateTime.now();
   late CaptureMode _mode;
   bool _preciseMode = false;
   final List<String> _imageDataUrls = [];
@@ -379,6 +380,31 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     }
   }
 
+  Future<void> _pickEatenDate() async {
+    final now = DateTime.now();
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _eatenAt,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(now.year, now.month, now.day),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _eatenAt = DateTime(selected.year, selected.month, selected.day, _eatenAt.hour, _eatenAt.minute);
+    });
+  }
+
+  Future<void> _pickEatenTime() async {
+    final selected = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_eatenAt),
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _eatenAt = DateTime(_eatenAt.year, _eatenAt.month, _eatenAt.day, selected.hour, selected.minute);
+    });
+  }
+
   Future<void> _openCameraAndAnalyze() async {
     if (_analysis.isRunning) {
       setState(() => _error = 'AI 正在分析上一餐，完成後再拍下一餐。');
@@ -438,8 +464,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
       final confirmed = await _showConfirmDialog(
         analyzedItems,
         mealTypeOverride: _mealType,
+        eatenAtOverride: _eatenAt,
       );
-      if (confirmed == true) await _afterSave();
+      if (confirmed == true) await _afterSave(_eatenAt);
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
     } finally {
@@ -485,29 +512,30 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         ? manual.map((e) => e.savedFoodId).toList()
         : <String?>[];
     final precise = _preciseMode;
+    final eatenAt = _eatenAt;
     setState(() => _error = null);
     // Fire and forget — the controller owns the analysis. Navigating away (or
     // even backgrounding/killing the app on Android) no longer drops the result.
     if (BackgroundAnalysis.supported) {
       // Android: run it in a WorkManager background isolate that survives the
       // app being minimised/killed and notifies on completion.
-      final eatenAt = DateTime.now().toUtc().toIso8601String();
+      final eatenAtIso = eatenAt.toUtc().toIso8601String();
       final body = switch (mode) {
         CaptureMode.photo => <String, dynamic>{
           'mealType': mealType,
           'imageDataUrls': images,
           'precise': precise,
-          'eatenAt': eatenAt,
+          'eatenAt': eatenAtIso,
         },
         CaptureMode.describe => <String, dynamic>{
           'mealType': mealType,
           'description': desc,
-          'eatenAt': eatenAt,
+          'eatenAt': eatenAtIso,
         },
         CaptureMode.manual => <String, dynamic>{
           'mealType': mealType,
           'manualItems': manualItems.map((e) => e.toPayload()).toList(),
-          'eatenAt': eatenAt,
+          'eatenAt': eatenAtIso,
         },
       };
       _analysis.startBackground(
@@ -518,6 +546,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         mealBundleImageIds: pickedBundleImageIds,
         savedFoodIds: savedFoodIds,
         description: desc,
+        eatenAt: eatenAt,
         body: body,
       );
     } else {
@@ -529,19 +558,23 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         mealBundleImageIds: pickedBundleImageIds,
         savedFoodIds: savedFoodIds,
         description: desc,
+        eatenAt: eatenAt,
         run: () => switch (mode) {
           CaptureMode.photo => MealService.analyzeImage(
             mealType,
             images,
             precise: precise,
+            eatenAt: eatenAt,
           ),
           CaptureMode.describe => MealService.analyzeDescription(
             mealType,
             desc,
+            eatenAt: eatenAt,
           ),
           CaptureMode.manual => MealService.analyzeManual(
             mealType,
             manualItems,
+            eatenAt: eatenAt,
           ),
         },
       );
@@ -567,8 +600,9 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         }).toList(),
       );
       if (confirmed == true) {
+        final eatenAt = _analysis.eatenAt ?? DateTime.now();
         _analysis.reset();
-        await _afterSave();
+        await _afterSave(eatenAt);
       }
     } finally {
       _reviewing = false;
@@ -659,6 +693,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
   Future<bool?> _showConfirmDialog(
     List<EditableItem> items, {
     String? mealTypeOverride,
+    DateTime? eatenAtOverride,
   }) {
     // Use the context captured when the analysis started (held in the
     // controller), not the live form — the user may have changed the form while
@@ -669,6 +704,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     final pickedFoodIds = _analysis.savedFoodImageIds;
     final pickedBundleImageIds = _analysis.mealBundleImageIds;
     final desc = _analysis.description.trim();
+    final mealEatenAt = eatenAtOverride ?? _analysis.eatenAt ?? DateTime.now();
     return Navigator.of(context).push<bool>(
       MaterialPageRoute(
         fullscreenDialog: true,
@@ -681,6 +717,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
           final analyzed = await MealService.reestimate(
             mealType,
             editedItems.map((e) => e.toMealItem()).toList(),
+            eatenAt: mealEatenAt,
           );
           return analyzed.asMap().entries.map((entry) {
             final savedFoodId = entry.key < editedItems.length
@@ -701,6 +738,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
             mealBundleImageIds: pickedBundleImageIds.isNotEmpty ? pickedBundleImageIds : null,
             description: mode == 'describe' && desc.isNotEmpty ? desc : null,
             items: saveItems,
+            eatenAt: mealEatenAt,
           );
           HealthAutoSync.instance.nutritionChanged(eatenAt);
           final usedFoodIds = confirmedItems
@@ -722,7 +760,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
     );
   }
 
-  Future<void> _afterSave() async {
+  Future<void> _afterSave(DateTime eatenAt) async {
     // The background analysis can finish (and the user confirm the review
     // page) after they've navigated away from this screen, so this must not
     // assume the form is still mounted.
@@ -738,7 +776,7 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
         ..add(EditableItem());
       _adviceLoading = true;
     });
-    await widget.onSaved();
+    await widget.onSaved(eatenAt);
     try {
       final advice = await MealService.nextMealAdvice();
       if (mounted) setState(() => _advice = advice);
@@ -1127,6 +1165,38 @@ class _MealCaptureFormState extends State<MealCaptureForm> {
                   )
                   .toList(),
               onChanged: (v) => setState(() => _mealType = v ?? 'LUNCH'),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('用餐日期', style: TextStyle(fontSize: 12, color: p.inkSoft)),
+                      OutlinedButton.icon(
+                        onPressed: _pickEatenDate,
+                        icon: const Icon(Icons.calendar_today_outlined),
+                        label: Text(MaterialLocalizations.of(context).formatMediumDate(_eatenAt)),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('用餐時間', style: TextStyle(fontSize: 12, color: p.inkSoft)),
+                      OutlinedButton.icon(
+                        onPressed: _pickEatenTime,
+                        icon: const Icon(Icons.access_time),
+                        label: Text(TimeOfDay.fromDateTime(_eatenAt).format(context)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             _modeTabs(),

@@ -60,30 +60,32 @@ class MealService {
 
   static Future<List<FoodAnalysisItem>> analyzeImage(
       String mealType, List<String> imageDataUrls,
-      {bool precise = false}) {
+      {bool precise = false, DateTime? eatenAt}) {
     return _analyze('/api/meals/analyze', {
       'mealType': mealType,
       'imageDataUrls': imageDataUrls,
       'precise': precise,
-      'eatenAt': DateTime.now().toUtc().toIso8601String(),
+      'eatenAt': (eatenAt ?? DateTime.now()).toUtc().toIso8601String(),
     }, '分析失敗，請稍後再試');
   }
 
   static Future<List<FoodAnalysisItem>> analyzeDescription(
-      String mealType, String description) {
+      String mealType, String description,
+      {DateTime? eatenAt}) {
     return _analyze('/api/meals/analyze-description', {
       'mealType': mealType,
       'description': description,
-      'eatenAt': DateTime.now().toUtc().toIso8601String(),
+      'eatenAt': (eatenAt ?? DateTime.now()).toUtc().toIso8601String(),
     }, '分析失敗，請稍後再試');
   }
 
   static Future<List<FoodAnalysisItem>> analyzeManual(
-      String mealType, List<MealItem> items) {
+      String mealType, List<MealItem> items,
+      {DateTime? eatenAt}) {
     return _analyze('/api/meals/analyze-manual', {
       'mealType': mealType,
       'manualItems': items.map((e) => e.toPayload()).toList(),
-      'eatenAt': DateTime.now().toUtc().toIso8601String(),
+      'eatenAt': (eatenAt ?? DateTime.now()).toUtc().toIso8601String(),
     }, 'AI 評分失敗，請稍後再試');
   }
 
@@ -91,11 +93,12 @@ class MealService {
   /// macros from the edited name + amount (not the original photo), so fixing a
   /// food name refreshes the whole estimate.
   static Future<List<FoodAnalysisItem>> reestimate(
-      String mealType, List<MealItem> items) {
+      String mealType, List<MealItem> items,
+      {DateTime? eatenAt}) {
     return _analyze('/api/meals/reestimate', {
       'mealType': mealType,
       'manualItems': items.map((e) => e.toPayload()).toList(),
-      'eatenAt': DateTime.now().toUtc().toIso8601String(),
+      'eatenAt': (eatenAt ?? DateTime.now()).toUtc().toIso8601String(),
     }, '重新 AI 辨識失敗，請稍後再試');
   }
 
@@ -185,8 +188,9 @@ class MealService {
     List<String>? mealBundleImageIds,
     String? description,
     required List<MealItem> items,
+    DateTime? eatenAt,
   }) async {
-    final eatenAt = DateTime.now();
+    final mealEatenAt = eatenAt ?? DateTime.now();
     final res = await _api.post('/api/meals', data: {
       'mealType': mealType,
       if (imageDataUrls != null && imageDataUrls.isNotEmpty)
@@ -198,7 +202,7 @@ class MealService {
         'mealBundleImageIds': mealBundleImageIds,
       if (description != null && description.isNotEmpty) 'description': description,
       'manualItems': items.map((e) => e.toPayload()).toList(),
-      'eatenAt': eatenAt.toUtc().toIso8601String(),
+      'eatenAt': mealEatenAt.toUtc().toIso8601String(),
     });
     if (!ApiClient.ok(res)) {
       Sentry.logger.error('Meal save failed', attributes: {
@@ -214,7 +218,7 @@ class MealService {
       1,
       attributes: {'meal_type': SentryAttribute.string(mealType)},
     );
-    return eatenAt;
+    return mealEatenAt;
   }
 
   static Future<void> updateMeal(

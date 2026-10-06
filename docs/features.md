@@ -55,7 +55,7 @@
 | Method | Path | 功能 | 認證 | 說明 |
 | --- | --- | --- | --- | --- |
 | GET | `/api/meals` | 列出某日餐點 | Authed | `?date=YYYY-MM-DD`，時區取自 `afd_tz` cookie／`tz` query／設定檔 |
-| POST | `/api/meals` | 儲存確認的餐點 | Authed | 上傳照片到 S3、計算總計、加密 notes/items。`{ mealType, imageDataUrls?\|imageDataUrl?, description?, manualItems?[], savedFoodImageIds?[], mealBundleImageIds?[], eatenAt? }` |
+| POST | `/api/meals` | 儲存確認的餐點 | Authed | 上傳照片到 S3、計算總計、加密 notes/items。`eatenAt?` 可指定用餐日期與時間（ISO 8601），未提供則使用現在時間，可回補歷史餐點。 |
 | POST | `/api/meals/analyze` | AI 圖片分析（預覽，不儲存） | Authed + AI 限流 | 照片先存 private bucket、改以短效 signed URL 送 AI（`APP_PUBLIC_URL` 未設時退回 data URL）；`precise=true` 跑中位數穩定估算。`{ mealType, imageDataUrls\|imageDataUrl, precise? }` |
 | POST | `/api/meals/analyze-description` | AI 文字描述分析（預覽） | Authed + AI 限流 | `{ mealType, description(2-1200) }` |
 | POST | `/api/meals/analyze-manual` | AI 對手動項目評分（預覽） | Authed + AI 限流 | `{ mealType, manualItems[] }` |
@@ -142,7 +142,7 @@ Android APP 餐點新增／修改／刪除或飲水新增／刪除後，會合�
 | 舊註冊網址 | `/register` | 導向 `/login`；不再提供帳密註冊表單 |
 | 管理 | `/dashboard/admin` | 僅管理員可見（側邊欄多出「管理」項；非管理員被導回儀表板）。`AdminDataForm`：匯出下載、匯入上傳（模式選擇＋備份確認勾選框）與逐表報告 |
 | 儀表板殼 | `/dashboard` | 認證守門（未登入轉 `/login`）；`TimezoneReporter`、品牌 header、`DashboardNav`（飲食／健康／食物／設定［／管理，admin]） |
-| 飲食 | `/dashboard` | 日／週切換；熱量目標卡（TDEE，Health Connect 體重身高覆蓋設定檔）＋巨量環；Health Connect 有 `TOTAL_CALORIES` 時顯示淨熱量卡；`WaterCard`；`MealCaptureForm`（照片／描述／手動／營養標示／條碼／餐組／下一餐建議）；`MealList`；週檢視；`DailySummaryPopup`；`AiInfoCard` |
+| 飲食 | `/dashboard` | 日／週切換；熱量目標卡（TDEE，Health Connect 體重身高覆蓋設定檔）＋巨量環；Health Connect 有 `TOTAL_CALORIES` 時顯示淨熱量卡；`WaterCard`；`MealCaptureForm`（日期／時間可回補歷史餐點、照片／描述／手動／營養標示／條碼／餐組／下一餐建議）；`MealList`；週檢視；`DailySummaryPopup`；`AiInfoCard` |
 | 食物 | `/dashboard/foods` | 「我的食物」`SavedFoodsManager` |
 | 餐組 | `/dashboard/meal-bundles` | 「我的餐組」`MealBundlesManager`；建立／編輯／刪除、選用我的食物、可選照片 |
 | 健康 | `/dashboard/health` | Health Connect 同步儀表板；`ActivityHero`；分組 `HealthGroupCard`（活動／睡眠／身體組成）；`HealthHistoryProvider`（點擊鑽取歷史）；BMR/TDEE 代謝卡（Mifflin-St Jeor） |
@@ -176,7 +176,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | `showDailySummaryPopup` | `daily_summary_popup.dart` | 昨日總結彈窗：kcal 行、`MarkdownText`、amber 建議框、關閉／`知道了`；不觸發 AI |
 | `HealthSyncCard` | `health_sync_card.dart` | Health Connect 同步卡：同步狀態、分類指標圖（活動/身體組成/生命徵象/睡眠/營養）、點指標看趨勢、同步按鈕、同步紀錄 |
 | `MarkdownText` | `markdown_text.dart` | 無依賴 Markdown 渲染：`#/##/###`、`-`/`*`、數字清單、`**粗**`/`*斜*/`` `code` `` |
-| `MealCaptureForm` | `meal_capture_form.dart` | 餐點輸入：照片／描述／手動三模式、餐別下拉（自動取最近）、精準模式、餐組快速加入、條碼掃描、營養標示 OCR、儲存食物流程、下一餐建議 |
+| `MealCaptureForm` | `meal_capture_form.dart` | 餐點輸入：用餐日期／時間（可回補歷史餐點）、照片／描述／手動三模式、餐別下拉（自動取最近）、精準模式、餐組快速加入、條碼掃描、營養標示 OCR、儲存食物流程、下一餐建議 |
 | `MealList`/`_MealCard` | `meal_list.dart` | 餐點卡片：餐別、時間、總 kcal、照片、項目評分、巨量條、`編輯`／`刪除`／`存為餐組`／補上傳照片 |
 | `ProfileFormSheet` | `profile_form.dart` | 底部表單：性別、生日、身高、體重、活動量、目標；即時算 BMR/TDEE/熱量目標；`儲存身體資料` |
 | `SavedFoodEditor` | `saved_food_editor.dart` | 建立／編輯食物：名稱、條碼、份量、巨量、`source` 唯讀鎖、收藏、圖片；處理 `DuplicateFoodException` 衝突（使用/更新/還原/另存） |

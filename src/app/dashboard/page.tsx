@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { addDaysStr, dayRangeUtc, dayStartUtc, normalizeDateStr, todayStr, weekRangeUtc, weekStartStr } from "@/lib/dates";
+import { addDaysStr, dayRangeUtc, dayStartUtc, normalizeDateStr, timeStrInTz, todayStr, weekRangeUtc, weekStartStr } from "@/lib/dates";
 import { resolveUserTz, tzName, TZ_COOKIE } from "@/lib/timezone";
 import { sumMeals } from "@/lib/totals";
 import { decryptProfile } from "@/lib/profile-crypto";
@@ -239,7 +239,13 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
           </section>
 
           <aside className="dashboard-side-stack">
-            <MealCaptureForm initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""} timeZone={tzName(tz)} />
+            <MealCaptureForm
+              initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""}
+              initialDate={view === "day" ? selectedDateStr : todayStrValue}
+              initialTime={timeStrInTz(tz)}
+              timeZone={tzName(tz)}
+              timeZoneSpec={tz}
+            />
             {view === "day" ? (
               <WaterCard
                 key={selectedDateStr}

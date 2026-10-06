@@ -1,5 +1,11 @@
 # Lessons
 
+## 2026-10-06 — Do not apply Dart formatting after a check flags baseline churn
+
+- **Failure mode:** Running `dart format` across three modified legacy files introduced hundreds of unrelated line-wrap changes.
+- **Detection signal:** `git diff --stat` jumped from the intended small edits to 366 insertions/deletions; restoring the files to `HEAD` and reapplying only behavior changes removed the noise.
+- **Prevention rule:** If Dart format reports changes across existing files, do not write its output. Check baseline formatting first and keep only manually formatted changed hunks; inspect `git diff --stat` immediately after any formatter.
+
 ## 2026-10-06 — Use calendar arithmetic for weekly navigation
 
 - **Failure mode:** Shifting a local date by `Duration(days: 7)` can land on the adjacent calendar day across daylight-saving changes, causing the selected weekly range to skip an extra week.
