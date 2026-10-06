@@ -61,6 +61,7 @@ async function setup() {
   await prisma.waterLog.create({ data: { userId: alice.id, amountMl: 500 } });
   await prisma.waterLog.create({ data: { userId: bob.id, amountMl: 250 } });
   await prisma.dailySummary.create({ data: { userId: alice.id, summaryDate: new Date("2026-10-01T00:00:00Z"), totalCalories: 700, aiSummary: "Alice 的摘要" } });
+  await prisma.weeklySummary.create({ data: { userId: alice.id, weekStart: new Date("2026-09-28T00:00:00Z"), totalCalories: 4200, totalProtein: 300, totalFat: 140, totalCarbs: 400, waterTotalMl: 14000, aiSummary: "Alice 的週報" } });
   await prisma.healthMetric.create({ data: { userId: alice.id, source: "HEALTH_CONNECT", type: "WEIGHT", value: 61.5, unit: "kg", measuredAt: new Date("2026-10-02T00:00:00Z") } });
   await prisma.healthMetric.create({ data: { userId: bob.id, source: "HEALTH_CONNECT", type: "WEIGHT", value: 99, unit: "kg", measuredAt: new Date("2026-10-02T00:00:00Z") } });
   await prisma.appConfig.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton", registrationOpen: true } });
@@ -86,9 +87,15 @@ test("a scoped export contains only that account and none of its secrets", { ski
   assert.deepEqual(envelope.data.meals.map((meal) => meal.id), [aliceMeal.id]);
   assert.equal(envelope.data.mealItems.length, 2, "only the items of this account's meals");
   assert.ok(envelope.data.mealItems.every((item) => item.mealId === aliceMeal.id));
-  for (const rows of [envelope.data.waterLogs, envelope.data.savedFoods, envelope.data.healthMetrics, envelope.data.dailySummaries, envelope.data.userProfiles]) {
+  for (const rows of [envelope.data.waterLogs, envelope.data.savedFoods, envelope.data.healthMetrics, envelope.data.dailySummaries, envelope.data.weeklySummaries, envelope.data.userProfiles]) {
     assert.ok(rows.length > 0 && rows.every((row) => row.userId === alice.id));
   }
+  // Weekly summaries must survive a round-trip: the exporter's own envelope has
+  // to satisfy the schema the importer parses, or a restore silently 400s.
+  const roundTripped = exporter.exportEnvelopeSchema.parse(JSON.parse(text));
+  assert.equal(roundTripped.data.weeklySummaries.length, 1);
+  assert.equal(roundTripped.data.weeklySummaries[0].waterTotalMl, 14000);
+  assert.equal(roundTripped.data.weeklySummaries[0].aiSummary, "Alice 的週報");
   assert.equal(envelope.data.userProfiles.length, 1);
   assert.deepEqual(envelope.data.appConfig, [], "the global settings row is never part of a personal export");
   for (const foreign of [bob.id, bobMeal.id, "Bob 的秘密晚餐", "Bob 的食物", `bob-${suffix}`, `google-bob-${suffix}`, "sk-bob-secret"]) assert.ok(!text.includes(foreign), `leaked: ${foreign}`);

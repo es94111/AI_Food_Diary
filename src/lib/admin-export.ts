@@ -246,9 +246,23 @@ export const dailySummaryExportSchema = z.object({
 });
 export type ExportDailySummary = z.infer<typeof dailySummaryExportSchema>;
 
-export const weeklySummaryExportSchema = dailySummaryExportSchema.extend({
+// Derived from the daily shape for the shared AI/nutrition fields, but declared
+// standalone: WeeklySummary has no `summaryDate` (its period key is `weekStart`),
+// so extending dailySummaryExportSchema would demand a field the row never had
+// and reject every backup that contains a weekly report.
+export const weeklySummaryExportSchema = z.object({
+  id: z.string().min(1),
+  userId: z.string().min(1),
   weekStart: z.string().datetime(),
-  waterTotalMl: z.number().int()
+  totalCalories: z.number(),
+  totalProtein: z.number(),
+  totalFat: z.number(),
+  totalCarbs: z.number(),
+  waterTotalMl: z.number().int(),
+  aiSummary: nullableStr,
+  aiRecommendation: nullableStr,
+  createdAt: iso,
+  updatedAt: iso
 });
 export type ExportWeeklySummary = z.infer<typeof weeklySummaryExportSchema>;
 
@@ -618,6 +632,7 @@ export async function buildExportEnvelope(scope?: ExportScope): Promise<{
     mealBundles: ExportMealBundle[];
     mealBundleItems: ExportMealBundleItem[];
     dailySummaries: ExportDailySummary[];
+    weeklySummaries: ExportWeeklySummary[];
     dailyRecommendations: ExportDailyRecommendation[];
     healthMetrics: ExportHealthMetric[];
     appConfig: ExportAppConfig[];
