@@ -94,3 +94,42 @@ SC-002 要求「對於台灣市售常見品牌包裝食品的抽測查詢，至�
 - SC-002 驗證程序執行完成，命中率 ≥85%（見上節，對應 tasks.md T026）。
 - `npm run lint` 與 `tsc --noEmit`（或 `npm run build`）通過。
 - 於實機或模擬器上重複情境 1–3，確認 Web／Android 行為一致（Android／Flutter 端變更已納入本功能範圍，見 tasks.md T025）。
+
+## 自動化驗證（不需要外部服務的部分）
+
+手動情境需要可登入的服務、`TAVILY_API_KEY`、使用者 AI 金鑰，以及 Web／Android 前端，不適合每次回歸都重跑。其中**純規則**的部分已改為自動化測試，可在任何環境執行（含 CI）：
+
+```bash
+npm run test:brand-search
+```
+
+對應關係：
+
+| 自動化測試涵蓋 | Spec 對應 |
+|---|---|
+| 廠牌／品項兩欄必填、去空白、長度上限 | FR-001、Edge Case 1–2 |
+| 最多回傳 5 筆候選 | FR-004 |
+| 查無結果正規化為空候選陣列（API HTTP 200 仍須端到端驗證） | FR-007、情境 3 的後端行為 |
+| 缺漏營養欄位維持 `null`、不得捏造、替代鍵名仍可解析（不涵蓋 UI disabled 狀態） | FR-008、Edge Case 3 |
+| 未設定 `TAVILY_API_KEY` 與非 2xx 分別轉為可映射 503／502 的型別錯誤（實際 HTTP 狀態仍須端到端驗證） | FR-011、Edge Case 4 |
+| 共用搜尋配額 10 次／10 分鐘 | research.md §5 |
+| 同廠牌＋相似品名的比對 helper 回傳品牌重複原因；無廠牌者不參與；條碼／名稱規則不變（不涵蓋 API 409 回應） | FR-012、Edge Case 5 |
+
+仍需手動驗證的部分包括：搜尋畫面與送出流程、缺漏欄位時送出鈕 disabled、實際 API 狀態碼與未寫入資料、重複送出時的 409 `reason: "brand"`、未送出離開，以及 Android 行為一致。請依上方步驟執行。
+
+## SC-002 量測工具
+
+`quickstart.md` 上節的 20 筆樣本清單已內建為可重現腳本，套用與正式路由**完全相同**的「搜尋 → AI 判斷」流程：
+
+```bash
+# 需要 TAVILY_API_KEY 與 OPENAI_API_KEY（或相容端點）
+npm run test:brand-search:hit-rate
+
+# 產出報告；替換下架樣本時，JSON 必須維持 20 筆（一對一替換，步驟 4）
+npm run test:brand-search:hit-rate -- --json hit-rate.json --report hit-rate.md --replace ./my-samples.json
+
+# 只印出即將查詢的樣本，不發出任何網路請求
+npm run test:brand-search:hit-rate -- --dry-run
+```
+
+退出碼：達標 `0`、未達標 `1`、設定錯誤 `2`。命中率未達 85% 時，報告會列出未命中清單（含查詢字串與搜尋結果筆數），供調整 `src/lib/web-search.ts` 的查詢組成或 `analyzeBrandSearchCandidates()` 的判斷邏輯。
