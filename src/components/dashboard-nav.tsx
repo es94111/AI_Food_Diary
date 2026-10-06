@@ -7,16 +7,17 @@ import { BrandMark } from "@/components/brand-mark";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "今日飲食", eyebrow: "01", icon: "plate", exact: true },
   { href: "/dashboard?view=week", label: "歷史與趨勢", eyebrow: "02", icon: "chart", exact: false },
-  { href: "/dashboard/health", label: "健康概覽", eyebrow: "03", icon: "pulse", exact: false },
-  { href: "/dashboard/foods", label: "我的食物", eyebrow: "04", icon: "food", exact: false },
-  { href: "/dashboard/ai-activity", label: "AI 操作紀錄", eyebrow: "05", icon: "ai", exact: false },
-  { href: "/dashboard/settings", label: "設定", eyebrow: "06", icon: "settings", exact: false },
-  { href: "/dashboard/meal-bundles", label: "我的餐組", eyebrow: "07", icon: "bundle", exact: false }
+  { href: "/dashboard/insights", label: "趨勢洞察", eyebrow: "03", icon: "trend", exact: false },
+  { href: "/dashboard/health", label: "健康概覽", eyebrow: "04", icon: "pulse", exact: false },
+  { href: "/dashboard/foods", label: "我的食物", eyebrow: "05", icon: "food", exact: false },
+  { href: "/dashboard/ai-activity", label: "AI 操作紀錄", eyebrow: "06", icon: "ai", exact: false },
+  { href: "/dashboard/settings", label: "設定", eyebrow: "07", icon: "settings", exact: false },
+  { href: "/dashboard/meal-bundles", label: "我的餐組", eyebrow: "08", icon: "bundle", exact: false }
 ] as const;
 
 // Admin-only entry, appended after the standard items (desktop sidebar only —
-// the mobile nav keeps its curated four; admin tools are rarely used on the go).
-const ADMIN_NAV_ITEM = { href: "/dashboard/admin", label: "管理", eyebrow: "08", icon: "shield", exact: false } as const;
+// the mobile nav keeps a curated five; admin tools are rarely used on the go).
+const ADMIN_NAV_ITEM = { href: "/dashboard/admin", label: "管理", eyebrow: "09", icon: "shield", exact: false } as const;
 
 export function DashboardNav({ displayName, email, initials, isAdmin }: { displayName: string; email: string; initials: string; isAdmin?: boolean }) {
   const pathname = usePathname();
@@ -84,14 +85,17 @@ export function DashboardNav({ displayName, email, initials, isAdmin }: { displa
       </aside>
 
       <nav className="dashboard-mobile-nav" aria-label="主要導覽">
-        {/* Curated four (today / history / health / settings); the admin entry
-            stays desktop-only. */}
-        {[NAV_ITEMS[0], NAV_ITEMS[1], NAV_ITEMS[2], NAV_ITEMS[5]].map((item) => {
+        {/* Curated five (today / weekly review / insights / health / settings);
+            the admin entry stays desktop-only. */}
+        {[NAV_ITEMS[0], NAV_ITEMS[1], NAV_ITEMS[2], NAV_ITEMS[3], NAV_ITEMS[6]].map((item) => {
           const active = isActive(item);
+          const label = item.href === "/dashboard?view=week"
+            ? "週回顧"
+            : item.label.replace("健康概覽", "健康").replace("今日飲食", "今日");
           return (
             <Link aria-current={active ? "page" : undefined} className={active ? "is-active" : ""} href={item.href} key={item.href}>
               <span aria-hidden="true"><NavIcon name={item.icon} /></span>
-              <small>{item.label.replace("健康概覽", "健康").replace("今日飲食", "今日")}</small>
+              <small>{label}</small>
             </Link>
           );
         })}
@@ -103,6 +107,7 @@ export function DashboardNav({ displayName, email, initials, isAdmin }: { displa
 function NavIcon({ name }: { name: (typeof NAV_ITEMS)[number]["icon"] | (typeof ADMIN_NAV_ITEM)["icon"] }) {
   const common = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   if (name === "chart") return <svg {...common}><path d="M4 19V5M4 19h16" /><path d="m7 15 3-4 3 2 5-7" /><path d="M18 6h2v2" /></svg>;
+  if (name === "trend") return <svg {...common}><path d="M4 19V5M4 19h16" /><path d="m7 15 4-4 3 2 5-7" /><circle cx="7" cy="15" r="1" /><circle cx="11" cy="11" r="1" /><circle cx="14" cy="13" r="1" /><circle cx="19" cy="6" r="1" /></svg>;
   if (name === "pulse") return <svg {...common}><path d="M3 12h4l2-7 4 14 2-7h6" /></svg>;
   if (name === "food") return <svg {...common}><path d="M4 3v7a3 3 0 0 0 6 0V3M7 3v7M10 3v7M7 13v8" /><path d="M17 3v18M17 3c2.4 0 4 1.8 4 4s-1.6 4-4 4" /></svg>;
   if (name === "ai") return <svg {...common}><path d="M12 3v3M12 18v3M3 12h3M18 12h3" /><path d="m5.6 5.6 2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" /><circle cx="12" cy="12" r="4" /><path d="m10.5 12 1 1 2-2" /></svg>;
