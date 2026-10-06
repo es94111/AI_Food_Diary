@@ -37,6 +37,16 @@
 - **冪等重建:** `generateAndStoreWeeklySummary` 先查既有列；create 若撞 `P2002`（worker 與 on-demand 併發）則回讀既有列。
 - **admin 匯出/匯入:** 新增 `weeklySummaries` 表，`skip-existing` 以 `(userId, weekStart)` 找既有列、`overwrite` 走 `upsert`，與 `dailySummaries` 同模式，避免備份還原遺失週報。
 
+## Code review fixes (post-PR)
+
+Review of PR #171 surfaced two defects in this change, both reproduced with a failing test before fixing:
+
+1. **HIGH — generate 路徑回傳未解密的原始列。** `generateAndStoreWeeklySummary` 以 `encryptDailySummaryWrite` 寫入，`aiSummary`／`aiRecommendation` 為 `null`，文字在 `encAiSummary`／`encAiRecommendation`。route 的 `generate=1` 分支原本直接回傳該列 → Web `AiInfoCard` 渲染成 `null\n\nnull`、App 卡片在重新載入（走已解密的 peek 路徑）前是空白，且回應外洩 ciphertext 欄位。修法：比照 `/api/daily-summary` 在回應邊界解密。驗證：新 route 整合測試在修正前 `actual: null`、修正後通過。
+2. **LOW — 匯出列夾帶 `summaryDate: ""`。** `toExportWeeklySummary` 用 spread 重用 `toExportDailySummary`，而 `WeeklySummary` 沒有 `summaryDate` 欄位，導致備份檔每一列週報都多一個無意義欄位。修法：明確逐欄組出匯出列；測試斷言週報列不含 `summaryDate`。
+
+- 新增 `tests/insights/weekly-summary-route.integration.test.ts`：驅動真實 route（僅 mock `requireUser` 與 AI 呼叫），涵蓋解密、peek 不花配額、同週別名指向同一列、單列冪等、未結束週拒絕、空週略過。
+- 新增 `npm run test:insights`（route 測試需要 Node 的 module mocking）。
+
 ## Results
 
 - `npm run build`：通過（`tsc --noEmit` 乾淨、`next build` 路由表含 `/api/weekly-summary`）。
