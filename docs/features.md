@@ -246,6 +246,16 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | `npm run test:storage` | 照片 signed URL：HMAC 簽章、`user`／`ai` scope 隔離、過期、竄改、擁有者前綴、舊版 data URL 相容、AI 圖片來源解析 |
 | `npm run test:mcp` | MCP 工具、政策與傳輸契約 |
 | `npm run test:nouriledger` | 舊站匯出／授權碼（資料庫測試需 `FOOD_TEST_DATABASE_URL`） |
+| `npm run test:brand-search` | 品牌搜尋的可離線驗收規則（FR-001／004／007／008／011／012） |
+
+### 品牌搜尋 SC-002 命中率量測
+
+`npm run test:brand-search:hit-rate` 使用 quickstart.md 的 20 筆固定樣本，執行 Tavily 搜尋與 AI 判斷，產生逐筆命中率報告。需要 `TAVILY_API_KEY`、`OPENAI_API_KEY`（或相容端點）；可用 `--dry-run` 預覽樣本，並用 `--json`、`--report`、`--replace` 保存結果或替換已下架商品。退出碼為達標 `0`、未達標 `1`、設定錯誤 `2`。
+
+```bash
+npm run test:brand-search:hit-rate -- --dry-run
+npm run test:brand-search:hit-rate -- --json hit-rate.json --report hit-rate.md
+```
 
 ### WEB HTTP 煙霧測試
 

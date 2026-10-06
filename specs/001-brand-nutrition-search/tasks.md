@@ -9,7 +9,7 @@ description: "Task list for 廠牌食品營養標示搜尋"
 
 **Prerequisites**: plan.md, spec.md, research.md, data-model.md, contracts/brand-search-api.md, quickstart.md
 
-**Tests**: 專案未設置自動化測試框架（見 plan.md Testing）。完成證據為 `npm run lint`／`tsc --noEmit`（或 `npm run build`）＋ quickstart.md 手動驗證，因此本清單不包含自動化測試任務。
+**Tests**: 使用 Node 內建測試執行器（不新增測試依賴）。`npm run test:brand-search` 覆蓋不需外部服務的確定性驗收規則；quickstart.md 的登入後瀏覽器流程、真實服務命中率與 Android 實機／模擬器一致性仍須手動執行。
 
 **Organization**: 任務依 spec.md 的 User Story（P1/P2/P3）分組，Foundational 階段完成後每個 Story 皆可獨立實作與驗證。
 
@@ -110,8 +110,13 @@ description: "Task list for 廠牌食品營養標示搜尋"
 
 - [X] T023 [P] 執行 `npm run lint` 與 `tsc --noEmit`（或 `npm run build`），修正所有異動檔案中的問題（`npm run lint` 在本環境因既有、與本功能無關的 Next.js 16 升級移除 `next lint` 而全域性失效，改以 `tsc --noEmit`（全專案通過，僅剩與本功能無關的既有 `src/worker.ts`/bullmq 錯誤）與 Docker 內 `next build` 成功建置作為替代驗證證據，符合 plan.md Testing 段落允許的替代方案）
 - [ ] T024 依 `specs/001-brand-nutrition-search/quickstart.md` 手動執行情境 1–3 與 6 個 Edge Cases（含暫時移除 `TAVILY_API_KEY` 驗證 503 路徑），於 `npm run dev` 環境完整驗證
+  - **狀態（2026-10-06）**：仍未完成——本環境沒有 `.env`、`TAVILY_API_KEY`、`OPENAI_API_KEY`，無法啟動可登入且連接搜尋／AI 服務的驗收環境。T027 的 24 項離線規則測試已通過；情境 1–3 的畫面互動、多候選選擇、實際 HTTP 狀態與寫入結果仍須於可登入的正式環境驗證。
 - [ ] T025 [P] 於實機或模擬器上重複 quickstart.md 情境 1–3，確認 Web／Android 行為一致；本功能已將 Android／Flutter 端變更（T016–T018、T020、T022）納入本任務清單範圍，依憲章原則 IV（Web 與 Android 版本同步發佈）此驗證為必要項目，不得省略或視為選做
+  - **狀態（2026-10-06）**：仍未完成——本環境沒有 `adb` 或已連接的 Android 實機／模擬器；需要在具備裝置及可登入後端的環境執行。
 - [ ] T026 [P] 依 `specs/001-brand-nutrition-search/quickstart.md`「SC-002 驗證程序」章節列出的固定樣本清單（至少 20 筆台灣市售常見品牌包裝食品），逐一執行品牌搜尋並記錄命中（回傳 ≥1 筆候選）筆數與總筆數，確認命中率 ≥85%（SC-002）；未達標時記錄查無結果的品項，供後續調整搜尋查詢字串組成方式（依賴 T013）
+  - **狀態（2026-10-06）**：量測工具已實作並以 `--dry-run`／缺少金鑰路徑驗證，但尚未執行真實量測；本環境缺少 `TAVILY_API_KEY` 與 AI 金鑰，尚無實際命中率數字。工具可執行 20 筆固定樣本並輸出逐筆結果、未命中清單及 JSON／Markdown 報告；`--replace` 可依本節步驟 4 替換下架商品。
+- [X] T027 [P] 新增 `tests/brand-search/acceptance.test.ts`（`npm run test:brand-search`）：自動化覆蓋不需要外部服務的驗收規則——FR-001 兩欄必填／去空白／長度上限、FR-004 最多 5 筆候選、FR-007 空候選結果、FR-008 缺漏欄位維持 `null` 不得捏造、FR-011 搜尋服務的型別錯誤、共用搜尋配額 10 次／10 分鐘、FR-012 同廠牌＋相似品名的重複判定與既有規則的回歸（條碼仍優先、無關食物不受影響）；HTTP 狀態及 UI 行為仍須端到端驗收。為此將 `src/lib/ai.ts` 的候選正規化抽成可匯出的 `normalizeBrandSearchAnalysis`／`parseBrandSearchAnalysis`（純函式、行為不變）
+- [X] T028 [P] 新增 `scripts/brand-search-hit-rate.ts`（`npm run test:brand-search:hit-rate`）：SC-002 命中率的可重現量測工具，內建 quickstart.md 的 20 筆固定樣本、`--json`／`--report`／`--replace`／`--threshold`／`--dry-run` 選項，並以退出碼（0 達標、1 未達標、2 設定錯誤）讓人工或 CI 可把關；已以 `--dry-run` 與缺金鑰路徑驗證
 
 ---
 

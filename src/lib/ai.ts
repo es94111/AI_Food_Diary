@@ -363,7 +363,10 @@ function nullableNumberValue(value: unknown): number | null {
 // Tolerant of alternate key names the same way normalizeFoodAnalysis is, but
 // unlike it, missing nutrition fields stay `null` rather than defaulting to 0 —
 // FR-008 requires unknown values stay visibly unknown instead of being guessed.
-function normalizeBrandSearchAnalysis(parsed: unknown): BrandSearchAnalysis {
+// Exported for tests: the brand-search acceptance rules (unknown fields stay
+// null, alternate key names, never fabricate) are pure and verified without any
+// provider call, so they can be pinned without a live AI key.
+export function normalizeBrandSearchAnalysis(parsed: unknown): BrandSearchAnalysis {
   const source = typeof parsed === "object" && parsed ? (parsed as Record<string, unknown>) : {};
   const rawCandidates = pickValue(source, ["candidates", "items", "products", "候選"]);
   const candidates = (Array.isArray(rawCandidates) ? rawCandidates : []).map((rawCandidate) => {
@@ -577,7 +580,15 @@ export async function analyzeBrandSearchCandidates(
       { signal: options.signal }
     ));
 
-  const analysis = normalizeBrandSearchAnalysis(parseJsonResponse(completionText(response)));
+  return parseBrandSearchAnalysis(completionText(response));
+}
+
+// Single chokepoint from raw model text to the response the route returns.
+// Split out from analyzeBrandSearchCandidates so the parsing/normalisation —
+// including the "never more than 5 candidates" cap (FR-004) and "unknown stays
+// null" rule (FR-008) — is testable without a provider call.
+export function parseBrandSearchAnalysis(text: string): BrandSearchAnalysis {
+  const analysis = normalizeBrandSearchAnalysis(parseJsonResponse(text));
   return { candidates: analysis.candidates.slice(0, 5) };
 }
 
