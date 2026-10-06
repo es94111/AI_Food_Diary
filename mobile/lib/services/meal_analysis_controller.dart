@@ -35,6 +35,7 @@ class MealAnalysisController extends ChangeNotifier
   List<String> mealBundleImageIds = const [];
   List<String?> savedFoodIds = const [];
   String description = '';
+  DateTime? eatenAt;
 
   bool reviewRequested = false;
 
@@ -67,6 +68,7 @@ class MealAnalysisController extends ChangeNotifier
     List<String> mealBundleImageIds = const [],
     List<String?> savedFoodIds = const [],
     required String description,
+    required DateTime eatenAt,
     required Future<List<FoodAnalysisItem>> Function() run,
   }) async {
     _begin(
@@ -77,6 +79,7 @@ class MealAnalysisController extends ChangeNotifier
       mealBundleImageIds: mealBundleImageIds,
       savedFoodIds: savedFoodIds,
       description: description,
+      eatenAt: eatenAt,
       background: false,
     );
     try {
@@ -98,6 +101,7 @@ class MealAnalysisController extends ChangeNotifier
     List<String> mealBundleImageIds = const [],
     List<String?> savedFoodIds = const [],
     required String description,
+    required DateTime eatenAt,
     required Map<String, dynamic> body,
   }) async {
     _begin(
@@ -108,6 +112,7 @@ class MealAnalysisController extends ChangeNotifier
       mealBundleImageIds: mealBundleImageIds,
       savedFoodIds: savedFoodIds,
       description: description,
+      eatenAt: eatenAt,
       background: true,
     );
     try {
@@ -139,6 +144,7 @@ class MealAnalysisController extends ChangeNotifier
     List<String> mealBundleImageIds = const [],
     List<String?> savedFoodIds = const [],
     required String description,
+    required DateTime eatenAt,
     required bool background,
   }) {
     this.mealType = mealType;
@@ -148,6 +154,7 @@ class MealAnalysisController extends ChangeNotifier
     this.mealBundleImageIds = mealBundleImageIds;
     this.savedFoodIds = savedFoodIds;
     this.description = description;
+    this.eatenAt = eatenAt;
     status = MealAnalysisStatus.running;
     error = null;
     result = const [];
@@ -236,6 +243,9 @@ class MealAnalysisController extends ChangeNotifier
         (ctx['savedFoodIds'] as List?)?.map((e) => e?.toString()).toList() ??
         const [];
     description = (ctx['description'] as String?) ?? '';
+    final body = ctx['body'];
+    final bodyEatenAt = body is Map ? body['eatenAt']?.toString() : null;
+    eatenAt = DateTime.tryParse((ctx['eatenAt'] as String?) ?? bodyEatenAt ?? '');
   }
 
   @override
@@ -269,6 +279,7 @@ class MealAnalysisController extends ChangeNotifier
     mealBundleImageIds = const [];
     savedFoodIds = const [];
     description = '';
+    eatenAt = null;
     mealType = 'LUNCH';
     mode = 'manual';
     reviewRequested = false;
@@ -295,6 +306,7 @@ class MealAnalysisController extends ChangeNotifier
     mealBundleImageIds = const [];
     savedFoodIds = const [];
     description = '';
+    eatenAt = null;
     mealType = 'LUNCH';
     mode = 'manual';
     reviewRequested = false;

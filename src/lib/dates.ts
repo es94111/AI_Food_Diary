@@ -48,6 +48,55 @@ export function addDaysStr(dateStr: string, days: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/** Convert a `datetime-local` wall-clock value into a UTC instant in the given zone. */
+export function localDateTimeToUtc(value: string, spec: TzSpec): Date | null {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/);
+  if (!match || !isCalendarDateStr(match[1])) return null;
+  const [, dateStr, hourText, minuteText] = match;
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (hour > 23 || minute > 59) return null;
+
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const wallClockUtc = Date.UTC(year, month - 1, day, hour, minute);
+  if (spec.kind === "offset") return new Date(wallClockUtc - spec.minutes * 60000);
+
+  let instant = wallClockUtc;
+  for (let pass = 0; pass < 3; pass += 1) {
+    instant = wallClockUtc - ianaOffsetMs(spec.tz, new Date(instant));
+  }
+  const result = new Date(instant);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: spec.tz,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).formatToParts(result);
+  const actual = Object.fromEntries(parts.filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
+  if (`${actual.year}-${actual.month}-${actual.day}T${actual.hour}:${actual.minute}` !== value) return null;
+  return result;
+}
+
+/** Current hour and minute as seen in the given zone (`HH:mm`). */
+export function timeStrInTz(spec: TzSpec, now = new Date()): string {
+  if (spec.kind === "offset") {
+    const shifted = new Date(now.getTime() + spec.minutes * 60000);
+    return `${String(shifted.getUTCHours()).padStart(2, "0")}:${String(shifted.getUTCMinutes()).padStart(2, "0")}`;
+  }
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: spec.tz,
+    hourCycle: "h23",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).formatToParts(now);
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  return `${hour}:${minute}`;
+}
+
 /** UTC instant of 00:00:00 wall-clock on `dateStr` in the given zone. */
 export function dayStartUtc(dateStr: string, spec: TzSpec): Date {
   const utcMidnight = Date.parse(`${dateStr}T00:00:00Z`);

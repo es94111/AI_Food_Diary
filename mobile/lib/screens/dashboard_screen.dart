@@ -473,7 +473,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     final page = MaterialPageRoute<void>(
       builder: (_) => MealCapturePage(
         controller: _captureController,
-        onSaved: _loadMeals,
+        onSaved: (eatenAt) async {
+          setState(() {
+            _selectedDate = startOfLocalDay(eatenAt.toLocal());
+            _weekView = false;
+          });
+          await _loadMeals();
+        },
         initialAdvice: _nextMealAdvice,
         savedFoodsRevision: _savedFoodsRevision,
         launch: launch,

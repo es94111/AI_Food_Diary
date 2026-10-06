@@ -22,7 +22,7 @@ class MealCapturePage extends StatefulWidget {
     this.reviewExistingDraft = false,
   });
 
-  final Future<void> Function() onSaved;
+  final Future<void> Function(DateTime eatenAt) onSaved;
   final MealCaptureController? controller;
   final CaptureLaunch launch;
   final String initialAdvice;

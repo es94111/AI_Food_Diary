@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { NextMealAdvice } from "@/components/next-meal-advice";
 import { withImageWidth } from "@/lib/image-url";
 import { mealPhotoDataUrlsForSave } from "@/lib/meal-capture";
+import { localDateTimeToUtc, type TzSpec } from "@/lib/dates";
 
 type ManualItem = {
   id: string;
@@ -135,7 +136,19 @@ const CAPTURE_MODES: { id: CaptureMode; label: string }[] = [
 const MAX_IMAGES = 5;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
-export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { initialNextMealAdvice?: string; timeZone?: string }) {
+export function MealCaptureForm({
+  initialNextMealAdvice = "",
+  initialDate,
+  initialTime,
+  timeZone,
+  timeZoneSpec
+}: {
+  initialNextMealAdvice?: string;
+  initialDate: string;
+  initialTime: string;
+  timeZone?: string;
+  timeZoneSpec: TzSpec;
+}) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nutritionLabelInputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +175,9 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   const [attachPhotosToManualDraft, setAttachPhotosToManualDraft] = useState(false);
   const [confirmItems, setConfirmItems] = useState<ManualItem[]>([]);
   const [confirmMealType, setConfirmMealType] = useState("LUNCH");
+  const [confirmEatenAt, setConfirmEatenAt] = useState("");
+  const [confirmDate, setConfirmDate] = useState(initialDate);
+  const [eatenAtLocal, setEatenAtLocal] = useState(`${initialDate}T${initialTime}`);
   const [showConfirm, setShowConfirm] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [mealType, setMealType] = useState("LUNCH");
@@ -189,6 +205,10 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
   useEffect(() => {
     setNextMealAdvice(initialNextMealAdvice);
   }, [initialNextMealAdvice]);
+
+  useEffect(() => {
+    setEatenAtLocal(`${initialDate}T${initialTime}`);
+  }, [initialDate, initialTime]);
 
   // Validates a batch of picked/dropped files against the per-image size limit and
   // the overall count limit, returning only the data URLs that fit (and surfacing a
@@ -267,6 +287,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
     const formData = new FormData(event.currentTarget);
     const mealType = String(formData.get("mealType") ?? "LUNCH");
     setError("");
+    const eatenAt = localDateTimeToUtc(eatenAtLocal, timeZoneSpec);
+    if (!eatenAt) {
+      setError("請選擇有效的用餐日期與時間。");
+      return;
+    }
+    const eatenAtIso = eatenAt.toISOString();
 
     if (mode === "manual") {
       // Manual items (typed by hand, or picked from previously saved foods) already
@@ -278,6 +304,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         return;
       }
       setConfirmMealType(mealType);
+      setConfirmEatenAt(eatenAtIso);
+      setConfirmDate(eatenAtLocal.slice(0, 10));
       setConfirmItems(items);
       setShowConfirm(true);
       return;
@@ -309,7 +337,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, eatenAt: new Date().toISOString() })
+        body: JSON.stringify({ ...payload, eatenAt: eatenAtIso })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -317,6 +345,8 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         return;
       }
       setConfirmMealType(mealType);
+      setConfirmEatenAt(eatenAtIso);
+      setConfirmDate(eatenAtLocal.slice(0, 10));
       setConfirmItems(itemsFromAnalysis(data.analysis.foods));
       setShowConfirm(true);
     } catch (error) {
@@ -347,7 +377,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
           mealBundleImageIds: pickedBundleIds.length > 0 ? pickedBundleIds : undefined,
           description: mode === "describe" ? description.trim() || undefined : undefined,
           manualItems: items,
-          eatenAt: new Date().toISOString()
+          eatenAt: confirmEatenAt
         })
       });
       const data = await response.json().catch(() => ({}));
@@ -367,7 +397,12 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       setConfirmItems([]);
       setShowConfirm(false);
       await loadNextMealAdvice();
-      router.refresh();
+      const currentUrl = new URL(window.location.href);
+      if (currentUrl.searchParams.get("date") !== confirmDate || currentUrl.searchParams.get("view") === "week") {
+        router.push(`/dashboard?date=${encodeURIComponent(confirmDate)}`);
+      } else {
+        router.refresh();
+      }
     } finally {
       setLoading(false);
     }
@@ -387,7 +422,7 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
       const response = await fetch("/api/meals/reestimate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mealType: confirmMealType, manualItems: items, eatenAt: new Date().toISOString() })
+        body: JSON.stringify({ mealType: confirmMealType, manualItems: items, eatenAt: confirmEatenAt })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -714,6 +749,15 @@ export function MealCaptureForm({ initialNextMealAdvice = "", timeZone }: { init
         <option value="DINNER">晚餐</option>
         <option value="SNACK">點心</option>
       </select>
+      <label className="mt-3 block text-sm font-semibold text-stone-700" htmlFor="meal-eaten-at">用餐日期與時間</label>
+      <input
+        id="meal-eaten-at"
+        className="mt-1 w-full rounded-2xl border border-stone-200 px-4 py-3"
+        type="datetime-local"
+        value={eatenAtLocal}
+        onChange={(event) => setEatenAtLocal(event.target.value)}
+        required
+      />
       <div className="mt-4 flex gap-1 rounded-full bg-stone-100 p-1 text-sm font-semibold" role="tablist">
         {CAPTURE_MODES.map((m) => (
           <button

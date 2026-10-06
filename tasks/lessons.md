@@ -1,5 +1,11 @@
 # Lessons
 
+## 2026-10-06 — Do not apply Dart formatting after a check flags baseline churn
+
+- **Failure mode:** Running `dart format` across three modified legacy files introduced hundreds of unrelated line-wrap changes.
+- **Detection signal:** `git diff --stat` jumped from the intended small edits to 366 insertions/deletions; restoring the files to `HEAD` and reapplying only behavior changes removed the noise.
+- **Prevention rule:** If Dart format reports changes across existing files, do not write its output. Check baseline formatting first and keep only manually formatted changed hunks; inspect `git diff --stat` immediately after any formatter.
+
 ## 2026-10-05 — Major-version dependency bumps need their own PR (and a data-collection audit)
 
 - **Failure mode:** Dependabot opened `@sentry/nextjs` and `@sentry/profiling-node` 10.75 → 11.0 as two separate PRs. Each failed CI on its own (`enableLogs` removed, `nodeProfilingIntegration()` type mismatch) because the two packages must move together, and the migration guide also flips `dataCollection` defaults to *collect everything* — which for this app would start shipping meal photos and AI replies to Sentry. The two green "minor-patch group" PRs were safe; the two red ones were not.
