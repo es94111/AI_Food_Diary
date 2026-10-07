@@ -8,6 +8,13 @@ on:
       - "prisma.config.ts"
       - "package.json"
       - "package-lock.json"
+      - "src/app/api/me/data/export/**"
+      - "src/lib/admin-export.ts"
+      - "src/lib/export-images.ts"
+      - "src/lib/nouriledger-export.ts"
+      - "src/lib/user-data-export.ts"
+      - "tests/data-export/**"
+      - "tests/nouriledger/**"
       - ".github/workflows/prisma-migration-smoke.yml"
   push:
     branches: ["main"]
@@ -16,6 +23,13 @@ on:
       - "prisma.config.ts"
       - "package.json"
       - "package-lock.json"
+      - "src/app/api/me/data/export/**"
+      - "src/lib/admin-export.ts"
+      - "src/lib/export-images.ts"
+      - "src/lib/nouriledger-export.ts"
+      - "src/lib/user-data-export.ts"
+      - "tests/data-export/**"
+      - "tests/nouriledger/**"
       - ".github/workflows/prisma-migration-smoke.yml"
   workflow_dispatch:
 
@@ -24,27 +38,28 @@ permissions:
 
 jobs:
   migrate-from-empty:
-    name: Migrate empty PostgreSQL
+    name: Migrate and test disposable PostgreSQL
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     services:
       postgres:
         image: postgres:18-alpine
         env:
-          POSTGRES_DB: ai_food_diary
+          POSTGRES_DB: food_diary_test
           POSTGRES_USER: user
           POSTGRES_PASSWORD: password
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U user -d ai_food_diary"
+          --health-cmd "pg_isready -U user -d food_diary_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
 
     env:
-      DATABASE_URL: postgresql://user:password@localhost:5432/ai_food_diary
+      DATABASE_URL: postgresql://user:password@127.0.0.1:5432/food_diary_test
+      FOOD_TEST_DATABASE_URL: postgresql://user:password@127.0.0.1:5432/food_diary_test
 
     steps:
       - name: Checkout repository
@@ -53,14 +68,20 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
 
       - name: Apply all committed migrations to empty PostgreSQL
         run: npx prisma migrate deploy
 
       - name: Verify migration status
         run: npx prisma migrate status
+
+      - name: Run personal data export integration tests
+        run: npm run test:data-export
