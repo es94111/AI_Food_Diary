@@ -7,11 +7,7 @@ test("ESLint parses TypeScript and TSX with the configured Next rules", async ()
   const config = await eslint.calculateConfigForFile("src/lint-coverage.ts");
 
   assert.equal(config.languageOptions.parser.meta.name, "eslint-config-next/parser");
-  assert.equal(
-    config.rules["@typescript-eslint/no-explicit-any"],
-    undefined,
-    "type-aware rules are unavailable until typescript-eslint supports TypeScript 7",
-  );
+  assert.ok(config.rules["@next/next/no-img-element"]);
 
   const [typescriptResult] = await eslint.lintText(
     "type Calories = number; export const calories: Calories = 120;",
