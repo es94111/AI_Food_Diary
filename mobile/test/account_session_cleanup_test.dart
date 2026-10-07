@@ -41,6 +41,35 @@ void main() {
     ]);
   });
 
+  test('logout warns and navigates after mandatory cleanup fails', () async {
+    final calls = <String>[];
+
+    final succeeded = await AccountSessionCleanup.runLogoutAndNavigate(
+      cleanup: () async {
+        calls.add('cleanup');
+        throw StateError('local cleanup failed');
+      },
+      showFailureWarning: () async => calls.add('warning'),
+      navigateToLogin: () => calls.add('login'),
+    );
+
+    expect(succeeded, isFalse);
+    expect(calls, ['cleanup', 'warning', 'login']);
+  });
+
+  test('logout still navigates when its warning cannot be shown', () async {
+    final calls = <String>[];
+
+    final succeeded = await AccountSessionCleanup.runLogoutAndNavigate(
+      cleanup: () async => throw StateError('local cleanup failed'),
+      showFailureWarning: () async => throw StateError('screen disposed'),
+      navigateToLogin: () => calls.add('login'),
+    );
+
+    expect(succeeded, isFalse);
+    expect(calls, ['login']);
+  });
+
   test(
     'all mandatory local cleanup steps are attempted before reporting failure',
     () async {

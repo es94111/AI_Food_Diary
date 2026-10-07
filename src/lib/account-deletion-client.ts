@@ -5,26 +5,28 @@ import {
   type PwaStorage,
 } from "@/lib/pwa-storage";
 
+export type BrowserCleanupStatus = "cleared" | "unavailable" | "failed";
+
 export type AccountDeletionBrowserCleanup = {
-  localStorageCleared: boolean;
-  cachesCleared: boolean;
+  localStorage: BrowserCleanupStatus;
+  caches: BrowserCleanupStatus;
 };
 
 export async function clearDeletedAccountPwaState(
   storage?: PwaStorage,
   cacheStorage?: PwaCacheStorage,
 ): Promise<AccountDeletionBrowserCleanup> {
-  let localStorageCleared = false;
-  let cachesCleared = false;
+  let localStorageStatus: BrowserCleanupStatus = "unavailable";
+  let cacheStatus: BrowserCleanupStatus = "unavailable";
 
   try {
     const local = storage ?? (typeof window !== "undefined" ? window.localStorage : undefined);
     if (local) {
       clearPwaLocalStorage(local);
-      localStorageCleared = true;
+      localStorageStatus = "cleared";
     }
   } catch {
-    // Continue to cache cleanup even when browser storage is unavailable.
+    localStorageStatus = "failed";
   }
 
   try {
@@ -32,11 +34,11 @@ export async function clearDeletedAccountPwaState(
       (typeof window !== "undefined" && "caches" in window ? window.caches : undefined);
     if (cache) {
       await clearPwaCaches(cache);
-      cachesCleared = true;
+      cacheStatus = "cleared";
     }
   } catch {
-    // The account is already deleted; one local storage failure must not interrupt logout.
+    cacheStatus = "failed";
   }
 
-  return { localStorageCleared, cachesCleared };
+  return { localStorage: localStorageStatus, caches: cacheStatus };
 }

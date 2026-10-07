@@ -18,6 +18,12 @@
 - **Detection signal:** Review trigger predicates for all mutable identity columns, test connection-string override parameters (not only URL host/path), and verify the integration suite is wired to an isolated `*_test` PostgreSQL service. Check every client-side persistence surface before declaring erasure complete.
 - **Prevention rule:** For deletion features, include database-trigger adversarial tests, a strict reusable test-database URL guard, CI execution, and explicit cleanup of app-owned local storage/cache helpers. When related PRs provide those helpers or export routes, coordinate merge order and re-run the dependent PR checks.
 
+## 2026-10-07 — Test client warning models without server-rendering client components
+
+- **Failure mode:** A panel regression test imported `react-dom/server` in the Node test runner, which launches with `--conditions=react-server`; React explicitly rejects DOM server rendering under that condition.
+- **Detection signal:** The test process fails before assertions with `react-dom/server is not supported in React Server Components`.
+- **Prevention rule:** Keep UI state decisions in a pure view-model helper used by the client component, and test that helper directly under the server-conditioned runner instead of loading the DOM renderer.
+
 ## 2026-10-06 — New AI feature: decrypt at the response boundary, and never spread a sibling mapper
 
 - **Failure mode:** Two defects in the same change. (1) The on-demand `generate=1` route returned the raw Prisma row from `generateAndStoreWeeklySummary`. Because the write helper moves AI text into `enc*` columns and leaves the plaintext columns `null`, clients received literal nulls — the web card rendered `null\n\nnull` and the app card looked correct only after a reload (which took the decrypted peek path). (2) `toExportWeeklySummary` spread `toExportDailySummary`, injecting a `summaryDate: ""` field the weekly table has no column for into every exported row.

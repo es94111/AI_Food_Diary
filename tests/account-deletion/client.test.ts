@@ -43,7 +43,7 @@ function cacheStorage(names: string[], deleted: string[]): PwaCacheStorage {
 }
 
 function bothCleared(): AccountDeletionBrowserCleanup {
-  return { localStorageCleared: true, cachesCleared: true };
+  return { localStorage: "cleared", caches: "cleared" };
 }
 
 test("successful account deletion clears PWA drafts, app state, and only app-owned caches", async () => {
@@ -80,8 +80,15 @@ test("PWA cache cleanup still runs when local storage cleanup throws", async () 
     cacheStorage(["ai-food-diary-static-v1"], deletedCaches),
   );
 
-  assert.deepEqual(result, { localStorageCleared: false, cachesCleared: true });
+  assert.deepEqual(result, { localStorage: "failed", caches: "cleared" });
   assert.deepEqual(deletedCaches, ["ai-food-diary-static-v1"]);
+});
+
+test("unsupported browser storage is reported as unavailable, not as a failure", async () => {
+  assert.deepEqual(await clearDeletedAccountPwaState(), {
+    localStorage: "unavailable",
+    caches: "unavailable",
+  });
 });
 
 test("local storage cleanup still runs when PWA cache cleanup throws", async () => {
@@ -98,6 +105,6 @@ test("local storage cleanup still runs when PWA cache cleanup throws", async () 
 
   const result = await clearDeletedAccountPwaState(storage, caches);
 
-  assert.deepEqual(result, { localStorageCleared: true, cachesCleared: false });
+  assert.deepEqual(result, { localStorage: "cleared", caches: "failed" });
   assert.equal(storage.getItem("ai-food-diary:meal-draft:user-a"), null);
 });

@@ -1,6 +1,25 @@
 typedef AccountCleanupTask = Future<void> Function();
 
 class AccountSessionCleanup {
+  static Future<bool> runLogoutAndNavigate({
+    required AccountCleanupTask cleanup,
+    required AccountCleanupTask showFailureWarning,
+    required void Function() navigateToLogin,
+  }) async {
+    var cleanupSucceeded = true;
+    try {
+      await cleanup();
+    } catch (_) {
+      cleanupSucceeded = false;
+      try {
+        await showFailureWarning();
+      } catch (_) {}
+    } finally {
+      navigateToLogin();
+    }
+    return cleanupSucceeded;
+  }
+
   static Future<void> run({
     required AccountCleanupTask cancelAnalysis,
     required void Function() deactivateHealthSync,

@@ -401,9 +401,30 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _logout() async {
-    await _clearAccountSession(revokeOnServer: true);
-    if (!mounted) return;
-    _navigateToLogin();
+    await AccountSessionCleanup.runLogoutAndNavigate(
+      cleanup: () => _clearAccountSession(revokeOnServer: true),
+      showFailureWarning: () async {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('登出清理未完成'),
+            content: const Text(
+              '已嘗試清除登入資訊與快取，但部分本機清理失敗。將返回登入頁；若重新開啟後仍顯示舊帳號，請在 Android 設定的應用程式儲存空間中清除 AI Food Diary 資料。',
+            ),
+            actions: [
+              FilledButton(
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('前往登入頁'),
+              ),
+            ],
+          ),
+        );
+      },
+      navigateToLogin: () {
+        if (mounted) _navigateToLogin();
+      },
+    );
   }
 
   Future<bool> _confirmAccountDeletion() async {
