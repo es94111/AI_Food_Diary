@@ -17,10 +17,18 @@ import java.io.File
 // permission screen. Plain FlutterActivity logs "Permission launcher not found".
 class MainActivity : FlutterFragmentActivity() {
     private val updateChannel = "aifood.shao.one/update"
+    private val reminderChannel = "aifood.shao.one/reminders"
     private var widgetChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, reminderChannel)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getLocalTimeZone" -> result.success(java.util.TimeZone.getDefault().id)
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, updateChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {

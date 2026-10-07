@@ -32,8 +32,10 @@
     <uses-permission android:name="android.permission.CAMERA"/>
     <!-- Required to install the downloaded APK for in-app one-tap update. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
-    <!-- Background meal analysis: system notification on completion (Android 13+). -->
+    <!-- Background analysis and local reminders: system notifications (Android 13+). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Lets flutter_local_notifications restore daily reminders after reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
         android:label="AI Food Diary"
@@ -159,6 +161,20 @@
         <receiver
             android:name=".WaterQuickAddReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
 
         <!-- flutter_downloader: exposes the downloaded APK file to the system
              package installer so the background-downloaded update can be

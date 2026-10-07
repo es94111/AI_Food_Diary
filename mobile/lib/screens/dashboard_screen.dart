@@ -12,6 +12,7 @@ import '../services/health_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
+import '../services/local_reminder_service.dart';
 import '../services/update_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/ai_activity_settings_entry.dart';
@@ -21,6 +22,7 @@ import '../widgets/daily_summary_popup.dart';
 import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
+import '../widgets/local_reminders_card.dart';
 import '../widgets/water_card.dart';
 import '../widgets/profile_form.dart';
 import '../widgets/update_card.dart';
@@ -100,6 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _dashboardReady) {
+      unawaited(LocalReminderService.instance.reconcile().catchError((_) {}));
       _queueRecentHealthTotals();
       unawaited(_maybeShowYesterdaySummary());
     }
@@ -898,6 +901,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         _accountCard(),
         const SizedBox(height: 12),
         _bodyDataCard(metabolism),
+        const SizedBox(height: 12),
+        const LocalRemindersCard(),
         const SizedBox(height: 12),
         const AiSettingsCard(),
         const SizedBox(height: 12),
