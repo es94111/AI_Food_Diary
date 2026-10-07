@@ -8,6 +8,13 @@ on:
       - "prisma.config.ts"
       - "package.json"
       - "package-lock.json"
+      - "src/app/api/me/data/export/**"
+      - "src/lib/admin-export.ts"
+      - "src/lib/export-images.ts"
+      - "src/lib/nouriledger-export.ts"
+      - "src/lib/user-data-export.ts"
+      - "tests/data-export/**"
+      - "tests/nouriledger/**"
       - ".github/workflows/prisma-migration-smoke.yml"
   push:
     branches: ["main"]
@@ -16,6 +23,13 @@ on:
       - "prisma.config.ts"
       - "package.json"
       - "package-lock.json"
+      - "src/app/api/me/data/export/**"
+      - "src/lib/admin-export.ts"
+      - "src/lib/export-images.ts"
+      - "src/lib/nouriledger-export.ts"
+      - "src/lib/user-data-export.ts"
+      - "tests/data-export/**"
+      - "tests/nouriledger/**"
       - ".github/workflows/prisma-migration-smoke.yml"
   workflow_dispatch:
 
