@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "prisma generate && tsc --noEmit && next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
@@ -34,6 +34,7 @@
     "test:recording-streak": "node --conditions=react-server --import tsx --test tests/recording-streak/*.test.ts",
     "test:brand-search": "node --conditions=react-server --import tsx --test tests/brand-search/*.test.ts",
     "test:brand-search:hit-rate": "tsx --conditions=react-server scripts/brand-search-hit-rate.ts",
+    "test:lint-config": "node --test tests/lint/eslint-config.test.mjs",
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {

@@ -80,6 +80,7 @@ export function AiActivityDetail({ eventId }: { eventId: string }) {
   }, [eventId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Loading state resets while fetching the selected event from the API.
     void load();
   }, [load]);
 

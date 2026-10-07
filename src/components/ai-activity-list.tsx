@@ -107,6 +107,7 @@ export function AiActivityList({ isAdmin }: { isAdmin: boolean }) {
   }, [filters]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Each filter change reloads the external activity feed and resets loading state.
     void load();
   }, [load]);
 

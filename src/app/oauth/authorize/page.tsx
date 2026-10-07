@@ -37,68 +37,85 @@ export default async function OAuthAuthorizePage({
   const user = await getCurrentUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(returnPath)}`);
 
+  let result:
+    | {
+        ok: true;
+        authorization: Awaited<ReturnType<typeof validateAuthorizationRequest>>;
+        consentToken: string;
+      }
+    | { ok: false; message: string };
+
   try {
     const config = getMcpRuntimeConfig();
     const authorization = await validateAuthorizationRequest(rawParams, config);
     const consentToken = await createConsentToken(user.id, authorization, config);
-    return (
-      <main className="flex min-h-dvh items-center justify-center px-6 py-12">
-        <section className="glass iridescent w-full max-w-xl rounded-[2rem] p-8">
-          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
-            ChatGPT MCP 授權
-          </p>
-          <h1 className="mt-2 text-3xl font-black">連結 AI Food Diary</h1>
-          <p className="mt-3 text-stone-600">
-            {authorization.clientName} 將代表 <strong>{user.email}</strong> 使用下列最小權限。
-            MCP 永遠不能修改、刪除、覆寫、還原資料或變更權限。
-          </p>
-          <ul className="mt-6 space-y-3 rounded-2xl bg-white/70 p-5 text-sm text-stone-800">
-            {authorization.scopes.map((scope) => (
-              <li key={scope} className="flex gap-3">
-                <span aria-hidden="true" className="text-emerald-700">✓</span>
-                <span>{SCOPE_LABELS[scope] ?? scope}</span>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-5 text-xs leading-5 text-stone-500">
-            每次 AI 操作都會寫入不可變更的活動紀錄。由 AI 新增的資料只能由你在 Web 或 App
-            中確認後還原，且後續有人工變更時會拒絕還原。
-          </p>
-          <form action="/oauth/authorize/decision" method="post" className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-            <input type="hidden" name="consent_token" value={consentToken} />
-            <button
-              type="submit"
-              name="decision"
-              value="deny"
-              className="min-h-12 rounded-xl border border-stone-300 px-5 font-semibold text-stone-700"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              name="decision"
-              value="approve"
-              className="min-h-12 rounded-xl bg-amber-600 px-5 font-bold text-white shadow-sm hover:bg-amber-700"
-            >
-              允許連結
-            </button>
-          </form>
-        </section>
-      </main>
-    );
+    result = { ok: true, authorization, consentToken };
   } catch (error) {
-    const message =
-      error instanceof OAuthRequestError
-        ? error.message
-        : "授權服務目前無法完成請求。";
+    result = {
+      ok: false,
+      message:
+        error instanceof OAuthRequestError
+          ? error.message
+          : "授權服務目前無法完成請求。",
+    };
+  }
+
+  if (!result.ok) {
     return (
       <main className="flex min-h-dvh items-center justify-center px-6 py-12">
         <section className="glass w-full max-w-lg rounded-[2rem] p-8">
           <h1 className="text-2xl font-black">無法授權連結</h1>
-          <p className="mt-3 text-stone-600">{message}</p>
+          <p className="mt-3 text-stone-600">{result.message}</p>
         </section>
       </main>
     );
   }
+
+  const { authorization, consentToken } = result;
+  return (
+    <main className="flex min-h-dvh items-center justify-center px-6 py-12">
+      <section className="glass iridescent w-full max-w-xl rounded-[2rem] p-8">
+        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-amber-700">
+          ChatGPT MCP 授權
+        </p>
+        <h1 className="mt-2 text-3xl font-black">連結 AI Food Diary</h1>
+        <p className="mt-3 text-stone-600">
+          {authorization.clientName} 將代表 <strong>{user.email}</strong> 使用下列最小權限。
+          MCP 永遠不能修改、刪除、覆寫、還原資料或變更權限。
+        </p>
+        <ul className="mt-6 space-y-3 rounded-2xl bg-white/70 p-5 text-sm text-stone-800">
+          {authorization.scopes.map((scope) => (
+            <li key={scope} className="flex gap-3">
+              <span aria-hidden="true" className="text-emerald-700">✓</span>
+              <span>{SCOPE_LABELS[scope] ?? scope}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-5 text-xs leading-5 text-stone-500">
+          每次 AI 操作都會寫入不可變更的活動紀錄。由 AI 新增的資料只能由你在 Web 或 App
+          中確認後還原，且後續有人工變更時會拒絕還原。
+        </p>
+        <form action="/oauth/authorize/decision" method="post" className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <input type="hidden" name="consent_token" value={consentToken} />
+          <button
+            type="submit"
+            name="decision"
+            value="deny"
+            className="min-h-12 rounded-xl border border-stone-300 px-5 font-semibold text-stone-700"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            name="decision"
+            value="approve"
+            className="min-h-12 rounded-xl bg-amber-600 px-5 font-bold text-white shadow-sm hover:bg-amber-700"
+          >
+            允許連結
+          </button>
+        </form>
+      </section>
+    </main>
+  );
 }
 

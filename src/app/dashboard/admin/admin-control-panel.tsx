@@ -12,6 +12,9 @@ type AdminUser = {
   updatedAt: string;
 };
 
+type AdminSettingsResponse = { registrationOpen?: boolean };
+type AdminUsersResponse = { users?: AdminUser[] };
+
 function errorText(body: unknown, fallback: string) {
   if (body && typeof body === "object" && "error" in body && typeof (body as { error?: unknown }).error === "string") {
     return (body as { error: string }).error;
@@ -28,8 +31,6 @@ export function AdminControlPanel({ currentUserId }: { currentUserId: string }) 
   const [message, setMessage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setMessage(null);
     try {
       const [settingsRes, usersRes] = await Promise.all([
         fetch("/api/admin/settings", { cache: "no-store" }),
@@ -39,8 +40,9 @@ export function AdminControlPanel({ currentUserId }: { currentUserId: string }) 
       const usersBody = await usersRes.json().catch(() => null);
       if (!settingsRes.ok) throw new Error(errorText(settingsBody, `讀取註冊設定失敗（HTTP ${settingsRes.status}）`));
       if (!usersRes.ok) throw new Error(errorText(usersBody, `讀取使用者清單失敗（HTTP ${usersRes.status}）`));
-      setRegistrationOpen(Boolean((settingsBody as { registrationOpen?: boolean }).registrationOpen));
-      setUsers(Array.isArray((usersBody as { users?: AdminUser[] }).users) ? (usersBody as { users: AdminUser[] }).users : []);
+      setRegistrationOpen(Boolean((settingsBody as AdminSettingsResponse).registrationOpen));
+      const userList = (usersBody as AdminUsersResponse).users;
+      setUsers(Array.isArray(userList) ? userList as AdminUser[] : []);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "讀取管理資料失敗。");
     } finally {
@@ -49,6 +51,7 @@ export function AdminControlPanel({ currentUserId }: { currentUserId: string }) 
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- The initial API request populates the admin panel from external data.
     void load();
   }, [load]);
 
@@ -125,7 +128,11 @@ export function AdminControlPanel({ currentUserId }: { currentUserId: string }) 
           </div>
           <button
             type="button"
-            onClick={() => void load()}
+            onClick={() => {
+              setLoading(true);
+              setMessage(null);
+              void load();
+            }}
             disabled={loading}
             className="rounded-full border border-stone-300 px-4 py-2 text-sm font-bold text-stone-700 disabled:opacity-40"
           >

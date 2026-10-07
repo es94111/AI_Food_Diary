@@ -164,6 +164,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
   }, [archivedLoaded, loadArchived, loadFoods]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Fetch archived foods only when the user opens that tab.
     if (activeTab === "archived" && !archivedLoaded) void loadArchived();
   }, [activeTab, archivedLoaded, loadArchived]);
 
@@ -191,6 +192,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
   }, [activeTab, duplicateIds, search, sortMode, sourceFoods]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Reset pagination when the visible food query changes.
     setRenderLimit(30);
     setSelectedIds(new Set());
   }, [activeTab, search, sortMode]);
@@ -270,7 +272,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
     }
   }
 
-  async function useConflict(match: ConflictMatch) {
+  async function applyConflict(match: ConflictMatch) {
     if (match.archived) return;
     setFoods((current) => [match.food, ...current.filter((food) => food.id !== match.food.id)]);
     reset();
@@ -443,7 +445,10 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
             {(() => {
               const existing = editingId ? foods.find((f) => f.id === editingId) : undefined;
               const src = draftImage ?? (!removeImage ? existing?.imageUrl ?? (existing?.hasImage ? `/api/saved-foods/${editingId}/image` : null) : null);
-              return src ? <img alt="食物照片" className="h-16 w-16 rounded-lg object-cover" src={src} /> : <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-stone-100 text-xs text-stone-400">無照片</div>;
+              return src ? (
+                // eslint-disable-next-line @next/next/no-img-element -- Preview sources can be data URLs or authenticated API routes.
+                <img alt="食物照片" className="h-16 w-16 rounded-lg object-cover" src={src} />
+              ) : <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-stone-100 text-xs text-stone-400">無照片</div>;
             })()}
             <label className="cursor-pointer rounded-full bg-stone-100 px-3 py-1.5 text-sm font-semibold text-stone-700">上傳食物照片<input accept="image/*" className="hidden" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setDraftImage(await fileToDataUrl(file)); setRemoveImage(false); event.target.value = ""; }} type="file" /></label>
             {draftImage || (editingId && !removeImage && foods.find((f) => f.id === editingId)?.hasImage) ? <button className="text-sm font-semibold text-red-600" onClick={() => { setDraftImage(null); setRemoveImage(true); }} type="button">移除</button> : null}
@@ -462,7 +467,7 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
             <div className="flex gap-2">
               {match.archived
                 ? <button className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800" disabled={saving} onClick={() => restoreConflict(match)} type="button">還原</button>
-                : <><button className="rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold" disabled={saving} onClick={() => useConflict(match)} type="button">使用</button><button className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900" disabled={saving} onClick={() => updateConflict(match)} type="button">更新</button></>}
+                : <><button className="rounded-full bg-stone-100 px-3 py-1 text-sm font-semibold" disabled={saving} onClick={() => applyConflict(match)} type="button">使用</button><button className="rounded-full bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-900" disabled={saving} onClick={() => updateConflict(match)} type="button">更新</button></>}
             </div>
           </div>)}
         </div>
@@ -487,7 +492,10 @@ export function SavedFoodsManager({ initialFoods }: { initialFoods: SavedFood[] 
           <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between" key={food.id}>
             <div className="flex items-center gap-3">
               {activeTab !== "archived" ? <input aria-label={`選取 ${food.name}`} checked={selectedIds.has(food.id)} className="h-4 w-4 accent-amber-700" onChange={(event) => setSelectedIds((current) => { const next = new Set(current); if (event.target.checked) next.add(food.id); else next.delete(food.id); return next; })} type="checkbox" /> : null}
-              {(food.imageUrl ?? (food.hasImage ? `/api/saved-foods/${food.id}/image?w=256` : null)) ? <img alt={food.name} className="h-14 w-14 flex-none rounded-xl object-cover" decoding="async" loading="lazy" src={food.imageUrl ? withImageWidth(food.imageUrl, 256) : `/api/saved-foods/${food.id}/image?w=256`} /> : null}
+              {(food.imageUrl ?? (food.hasImage ? `/api/saved-foods/${food.id}/image?w=256` : null)) ? (
+                // eslint-disable-next-line @next/next/no-img-element -- Saved-food image URLs may require same-origin authentication.
+                <img alt={food.name} className="h-14 w-14 flex-none rounded-xl object-cover" decoding="async" loading="lazy" src={food.imageUrl ? withImageWidth(food.imageUrl, 256) : `/api/saved-foods/${food.id}/image?w=256`} />
+              ) : null}
               <div>
                 <p className="font-bold text-stone-900">{food.isFavorite ? "★ " : ""}{food.brand ? `${food.brand} ` : ""}{food.name} <span className="font-normal text-stone-500">· {food.estimatedAmount}</span></p>
                 <p className="mt-1 text-sm text-stone-500">{food.calories} kcal · 蛋白質 {food.protein}g · 脂肪 {food.fat}g · 碳水 {food.carbs}g{food.barcode ? ` · 條碼 ${food.barcode}` : ""}</p>
