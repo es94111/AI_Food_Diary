@@ -34,6 +34,7 @@ class UserProfile {
   final String goal;
   final int calorieTarget;
   final int waterGoalMl;
+  final String? timezone;
 
   UserProfile({
     this.gender,
@@ -44,6 +45,7 @@ class UserProfile {
     this.goal = 'MAINTAIN',
     this.calorieTarget = 2000,
     this.waterGoalMl = 2000,
+    this.timezone,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> j) => UserProfile(
@@ -57,6 +59,25 @@ class UserProfile {
         ? 2000
         : _toInt(j['calorieTarget']),
     waterGoalMl: j['waterGoalMl'] == null ? 2000 : _toInt(j['waterGoalMl']),
+    timezone: j['timezone'] as String?,
+  );
+}
+
+class RecordingStreak {
+  final int currentStreak;
+  final int longestStreak;
+  final String? lastRecordedDate;
+
+  const RecordingStreak({
+    required this.currentStreak,
+    required this.longestStreak,
+    required this.lastRecordedDate,
+  });
+
+  factory RecordingStreak.fromJson(Map<String, dynamic> j) => RecordingStreak(
+    currentStreak: _toInt(j['currentStreak']),
+    longestStreak: _toInt(j['longestStreak']),
+    lastRecordedDate: j['lastRecordedDate'] as String?,
   );
 }
 

@@ -11,6 +11,7 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.TimeZone
 
 // FlutterFragmentActivity (a ComponentActivity) is required so the `health`
 // plugin can register its ActivityResultLauncher and launch the Health Connect
@@ -21,6 +22,13 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "aifood.shao.one/timezone")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getTimeZoneId" -> result.success(TimeZone.getDefault().id)
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, updateChannel)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
