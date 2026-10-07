@@ -1,4 +1,3 @@
-import 'package:ai_food_mobile/services/daily_goal_summary.dart';
 import 'package:ai_food_mobile/services/local_reminder_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,7 +49,6 @@ void main() {
       final notifications = _FakeReminderNotifications()..enabled = true;
       final service = LocalReminderService(
         notifications: notifications,
-        dailyGoalSummaryScheduler: _FakeDailyGoalSummaryScheduler(),
         localTimeZoneId: () async => 'Asia/Taipei',
         supported: true,
       );
@@ -89,7 +87,6 @@ void main() {
     final notifications = _FakeReminderNotifications()..enabled = true;
     final service = LocalReminderService(
       notifications: notifications,
-      dailyGoalSummaryScheduler: _FakeDailyGoalSummaryScheduler(),
       localTimeZoneId: () async => 'Asia/Taipei',
       supported: true,
     );
@@ -115,114 +112,67 @@ void main() {
     expect(notifications.scheduled.keys, {ReminderKind.mealLog.id});
   });
 
-  test('daily goal task updates without replacing its daily window', () async {
-    final notifications = _FakeReminderNotifications()..enabled = true;
-    final scheduler = _FakeDailyGoalSummaryScheduler();
-    final service = LocalReminderService(
-      notifications: notifications,
-      dailyGoalSummaryScheduler: scheduler,
-      localTimeZoneId: () async => 'Asia/Taipei',
-      sessionCookie: () async => 'food_diary_session=test',
-      cachedGoalProgress: (day) async => DailyGoalProgress(
-        date:
-            '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
-        mealCount: 0,
-        totalCalories: 0,
-        calorieTarget: 2000,
-        waterTotalMl: 0,
-        waterGoalMl: 2000,
-      ),
-      supported: true,
-    );
-    final settings = const ReminderSettings().withEnabled(
-      ReminderKind.dailyReview,
-      true,
-    );
+  test(
+    'daily review remains generic when sign-out cancellation fails',
+    () async {
+      final notifications = _FakeReminderNotifications()..enabled = true;
+      final service = LocalReminderService(
+        notifications: notifications,
+        localTimeZoneId: () async => 'Asia/Taipei',
+        supported: true,
+      );
+      await service.saveSettings(
+        const ReminderSettings().withEnabled(ReminderKind.dailyReview, true),
+      );
 
-    await service.saveSettings(settings);
-    await service.reconcile();
+      final reminder = notifications.scheduled[ReminderKind.dailyReview.id]!;
+      expect(reminder.title, '每日回顧小提醒');
+      expect(reminder.body, contains('回顧今天'));
+      expect(reminder.body, isNot(contains('kcal')));
+      expect(reminder.body, isNot(contains('ml')));
 
-    expect(scheduler.scheduleCalls, 2);
-    expect(scheduler.replaceHistory, [true, false]);
-    expect(scheduler.initialDelay, greaterThan(Duration.zero));
-    expect(scheduler.initialDelay, lessThanOrEqualTo(const Duration(days: 1)));
-    expect(notifications.scheduled, isEmpty);
+      notifications.failCancel = true;
+      await expectLater(
+        service.cancelRemindersOnSignOut(),
+        throwsA(isA<StateError>()),
+      );
+      expect(
+        notifications.scheduled[ReminderKind.dailyReview.id]!.body,
+        reminder.body,
+      );
+      expect(notifications.scheduled.values, hasLength(1));
+    },
+  );
 
-    await service.saveSettings(
-      settings.withEnabled(ReminderKind.dailyReview, false),
-    );
-    expect(scheduler.cancelCalls, 1);
-  });
+  test(
+    'denied notification permission cancels schedules until permission returns',
+    () async {
+      final notifications = _FakeReminderNotifications();
+      final service = LocalReminderService(
+        notifications: notifications,
+        localTimeZoneId: () async => 'Asia/Taipei',
+        supported: true,
+      );
+      final settings = const ReminderSettings().withEnabled(
+        ReminderKind.dailyReview,
+        true,
+      );
 
-  test('denied notification permission cancels schedules until permission returns', () async {
-    final notifications = _FakeReminderNotifications();
-    final scheduler = _FakeDailyGoalSummaryScheduler();
-    final service = LocalReminderService(
-      notifications: notifications,
-      dailyGoalSummaryScheduler: scheduler,
-      localTimeZoneId: () async => 'Asia/Taipei',
-      sessionCookie: () async => 'food_diary_session=test',
-      cachedGoalProgress: (day) async => DailyGoalProgress(
-        date:
-            '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}',
-        mealCount: 1,
-        totalCalories: 1700,
-        calorieTarget: 2000,
-        waterTotalMl: 1200,
-        waterGoalMl: 2000,
-      ),
-      supported: true,
-    );
-    final settings = const ReminderSettings().withEnabled(
-      ReminderKind.dailyReview,
-      true,
-    );
+      await service.saveSettings(settings);
+      expect(await service.notificationPermissionGranted(), isFalse);
+      expect(notifications.scheduled, isEmpty);
+      expect(notifications.cancelled, contains(ReminderKind.dailyReview.id));
 
-    await service.saveSettings(settings);
-    expect(await service.notificationPermissionGranted(), isFalse);
-    expect(notifications.scheduled, isEmpty);
-    expect(notifications.cancelled, contains(ReminderKind.dailyReview.id));
-    expect(scheduler.cancelCalls, 1);
-
-    notifications.enabled = true;
-    await service.reconcile();
-    expect(notifications.scheduled, isEmpty);
-    expect(scheduler.scheduleCalls, 1);
-    expect(scheduler.inputData['cookie'], 'food_diary_session=test');
-    expect(scheduler.inputData['cachedProgress'], isA<String>());
-    expect(scheduler.replaceExisting, isTrue);
-  });
-}
-
-class _FakeDailyGoalSummaryScheduler implements DailyGoalSummaryScheduler {
-  int scheduleCalls = 0;
-  int cancelCalls = 0;
-  bool replaceExisting = false;
-  Duration initialDelay = Duration.zero;
-  Map<String, dynamic> inputData = {};
-  final List<bool> replaceHistory = [];
-
-  @override
-  Future<void> schedule({
-    required Duration initialDelay,
-    required Map<String, dynamic> inputData,
-    required bool replaceExisting,
-  }) async {
-    scheduleCalls++;
-    this.initialDelay = initialDelay;
-    this.inputData = inputData;
-    this.replaceExisting = replaceExisting;
-    replaceHistory.add(replaceExisting);
-  }
-
-  @override
-  Future<void> cancel() async {
-    cancelCalls++;
-  }
+      notifications.enabled = true;
+      await service.reconcile();
+      expect(notifications.scheduled.keys, {ReminderKind.dailyReview.id});
+    },
+  );
 }
 
 class _FakeReminderNotifications implements ReminderNotificationClient {
   bool enabled = false;
+  bool failCancel = false;
   int initializeCalls = 0;
   final Map<int, ReminderOccurrence> scheduled = {};
   final List<int> scheduleCalls = [];
@@ -251,6 +201,7 @@ class _FakeReminderNotifications implements ReminderNotificationClient {
 
   @override
   Future<void> cancel(int id) async {
+    if (failCancel) throw StateError('cancel failed');
     scheduled.remove(id);
     cancelled.add(id);
   }

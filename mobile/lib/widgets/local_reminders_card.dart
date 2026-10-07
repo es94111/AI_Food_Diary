@@ -146,7 +146,7 @@ class _LocalRemindersCardState extends State<LocalRemindersCard>
             ),
             const SizedBox(height: 4),
             const Text(
-              '提醒只在這部裝置排程，預設關閉。每日回顧會讀取當日資料；離線時會標示上次同步資料，或提示無法更新。系統省電設定可能讓通知稍有延遲。',
+              '提醒只在這部裝置排程，預設關閉。每日回顧提醒是通用文字，不會讀取或傳送你的餐點、飲水或目標資料。系統省電設定可能讓通知稍有延遲。',
               style: TextStyle(fontSize: 13),
             ),
             if (_loading) ...[
@@ -182,7 +182,7 @@ class _LocalRemindersCardState extends State<LocalRemindersCard>
     final title = switch (kind) {
       ReminderKind.mealLog => '提醒我記錄餐點',
       ReminderKind.water => '喝水提醒',
-      ReminderKind.dailyReview => '每日目標回顧',
+      ReminderKind.dailyReview => '每日回顧提醒',
     };
     final icon = switch (kind) {
       ReminderKind.mealLog => Icons.restaurant_outlined,

@@ -341,8 +341,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     // Never carry an in-flight draft or the prior account's goal task across sessions.
     await _analysis.cancel();
     try {
-      await LocalReminderService.instance.cancelDailyGoalSummary();
-    } catch (_) {}
+      await LocalReminderService.instance.cancelRemindersOnSignOut();
+    } catch (_) {
+      // Reminders are generic device-local copy, so a failed cancel is safe.
+    }
     HealthAutoSync.instance.deactivate();
     await GoogleAuth.signOut();
     await AuthService.logout();
