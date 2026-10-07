@@ -8,6 +8,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:dio/dio.dart';
 
 import 'api_client.dart';
+import 'daily_goal_summary_worker.dart';
 
 /// Runs the meal AI analysis in a WorkManager background isolate so it keeps
 /// going when the app is minimised or killed, and posts a system notification
@@ -239,6 +240,9 @@ class BackgroundAnalysis {
 @pragma('vm:entry-point')
 void analysisCallbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    if (task == dailyGoalSummaryTaskName) {
+      return DailyGoalSummaryWorker.execute(inputData);
+    }
     if (task != BackgroundAnalysis.taskName || inputData == null) {
       return true;
     }

@@ -8,10 +8,18 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:workmanager/workmanager.dart';
+
+import '../utils/metabolism.dart';
+import 'api_client.dart';
+import 'auth_service.dart';
+import 'daily_goal_summary.dart';
+import 'daily_goal_summary_worker.dart';
 
 const _reminderPreferencesKey = 'local_reminder_settings_v1';
-const _reminderChannelId = 'daily_reminders';
-const _reminderChannelName = '日常提醒';
+const _dailyGoalSummaryScheduleKey = 'daily_goal_summary_schedule_v1';
+const _reminderChannelId = dailyGoalSummaryChannelId;
+const _reminderChannelName = dailyGoalSummaryChannelName;
 const _reminderChannelDescription = '記錄、喝水與每日回顧提醒';
 const _reminderTimeZoneChannel = MethodChannel('aifood.shao.one/reminders');
 
@@ -29,24 +37,19 @@ enum ReminderKind {
     body: '如果想喝水，可以記下今天的飲水量。',
     defaultMinutes: 15 * 60,
   ),
-  dailyReview(
-    id: 2612,
-    title: '今日回顧',
-    body: '想看看今天的飲食與喝水紀錄嗎？也可以明天再回顧。',
-    defaultMinutes: 21 * 60,
-  );
+  dailyReview(id: dailyGoalSummaryNotificationId, defaultMinutes: 21 * 60);
 
   const ReminderKind({
     required this.id,
-    required this.title,
-    required this.body,
+    this.title,
+    this.body,
     required this.defaultMinutes,
   });
 
   /// These IDs are separate from background-analysis notification IDs 1900/1901.
   final int id;
-  final String title;
-  final String body;
+  final String? title;
+  final String? body;
   final int defaultMinutes;
 }
 
@@ -155,8 +158,8 @@ class ReminderOccurrence {
   final tz.TZDateTime scheduledAt;
 
   int get id => kind.id;
-  String get title => kind.title;
-  String get body => kind.body;
+  String? get title => kind.title;
+  String? get body => kind.body;
 }
 
 /// Pure planner for one repeating local-time reminder.
@@ -212,19 +215,38 @@ abstract interface class ReminderNotificationClient {
   Future<void> cancel(int id);
 }
 
+abstract interface class DailyGoalSummaryScheduler {
+  Future<void> schedule({
+    required Duration initialDelay,
+    required Map<String, dynamic> inputData,
+    required bool replaceExisting,
+  });
+  Future<void> cancel();
+}
+
 class LocalReminderService implements ReminderSettingsController {
   LocalReminderService({
     ReminderNotificationClient? notifications,
+    DailyGoalSummaryScheduler? dailyGoalSummaryScheduler,
     Future<String> Function()? localTimeZoneId,
+    Future<String?> Function()? sessionCookie,
+    Future<DailyGoalProgress?> Function(DateTime day)? cachedGoalProgress,
     bool? supported,
   }) : _notifications = notifications ?? _FlutterReminderNotificationClient(),
+       _dailyGoalSummaryScheduler =
+           dailyGoalSummaryScheduler ?? _WorkManagerDailyGoalSummaryScheduler(),
        _localTimeZoneId = localTimeZoneId ?? _readLocalTimeZoneId,
+       _sessionCookie = sessionCookie ?? _readSessionCookie,
+       _cachedGoalProgress = cachedGoalProgress ?? _readCachedGoalProgress,
        _supported = supported ?? (!kIsWeb && Platform.isAndroid);
 
   static final instance = LocalReminderService();
 
   final ReminderNotificationClient _notifications;
+  final DailyGoalSummaryScheduler _dailyGoalSummaryScheduler;
   final Future<String> Function() _localTimeZoneId;
+  final Future<String?> Function() _sessionCookie;
+  final Future<DailyGoalProgress?> Function(DateTime day) _cachedGoalProgress;
   final bool _supported;
   Future<void>? _initializing;
   bool _initialized = false;
@@ -297,6 +319,15 @@ class LocalReminderService implements ReminderSettingsController {
     });
   }
 
+  /// Cancels only the data-backed daily task when the account is signed out.
+  Future<void> cancelDailyGoalSummary() async {
+    if (!supported) return;
+    await _serialize(() async {
+      await _cancelDailyGoalTask();
+      await _notifications.cancel(ReminderKind.dailyReview.id);
+    });
+  }
+
   Future<void> _reconcileSettings(ReminderSettings settings) async {
     final permissionGranted =
         await _notifications.areNotificationsEnabled() == true;
@@ -304,12 +335,13 @@ class LocalReminderService implements ReminderSettingsController {
       for (final kind in ReminderKind.values) {
         await _notifications.cancel(kind.id);
       }
+      await _cancelDailyGoalTask();
       return;
     }
 
     final location = await _loadLocalLocation();
     final now = DateTime.now();
-    for (final kind in ReminderKind.values) {
+    for (final kind in [ReminderKind.mealLog, ReminderKind.water]) {
       if (!settings.enabledFor(kind)) {
         await _notifications.cancel(kind.id);
         continue;
@@ -323,6 +355,99 @@ class LocalReminderService implements ReminderSettingsController {
         ),
       );
     }
+
+    if (settings.dailyReviewEnabled) {
+      await _scheduleDailyGoalSummary(settings, now, location);
+    } else {
+      await _cancelDailyGoalTask();
+      await _notifications.cancel(ReminderKind.dailyReview.id);
+    }
+  }
+
+  Future<void> _scheduleDailyGoalSummary(
+    ReminderSettings settings,
+    DateTime now,
+    tz.Location location,
+  ) async {
+    final cookie = await _sessionCookie();
+    if (cookie == null || cookie.isEmpty) {
+      await _cancelDailyGoalTask();
+      await _notifications.cancel(ReminderKind.dailyReview.id);
+      return;
+    }
+
+    final occurrence = ReminderSchedulePlanner.nextDailyOccurrence(
+      kind: ReminderKind.dailyReview,
+      minutesAfterMidnight: settings.dailyReviewMinutes,
+      now: now,
+      location: location,
+    );
+    DailyGoalProgress? cachedProgress;
+    try {
+      cachedProgress = await _cachedGoalProgress(now);
+    } catch (_) {
+      cachedProgress = null;
+    }
+    final localNow = tz.TZDateTime.now(location);
+    final scheduleKey =
+        '${settings.dailyReviewMinutes}:${location.name}:${localNow.timeZoneOffset.inMinutes}';
+    final prefs = await SharedPreferences.getInstance();
+    final replaceExisting =
+        prefs.getString(_dailyGoalSummaryScheduleKey) != scheduleKey;
+    await _dailyGoalSummaryScheduler.schedule(
+      initialDelay: occurrence.scheduledAt.difference(localNow),
+      inputData: {
+        'baseUrl': ApiClient.baseUrl,
+        'cookie': cookie,
+        'cachedProgress': cachedProgress == null
+            ? ''
+            : jsonEncode(cachedProgress.toJson()),
+      },
+      replaceExisting: replaceExisting,
+    );
+    await prefs.setString(_dailyGoalSummaryScheduleKey, scheduleKey);
+  }
+
+  Future<void> _cancelDailyGoalTask() async {
+    await _dailyGoalSummaryScheduler.cancel();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_dailyGoalSummaryScheduleKey);
+  }
+
+  static Future<String?> _readSessionCookie() async {
+    await ApiClient.instance.hasSession();
+    return ApiClient.instance.sessionCookie;
+  }
+
+  static Future<DailyGoalProgress?> _readCachedGoalProgress(
+    DateTime day,
+  ) async {
+    final user = await AuthService.cachedMe();
+    if (user == null) return null;
+    final query = {
+      'date': isoDate(day),
+      'tzOffset': '${localTzOffsetMinutes()}',
+    };
+    final meals = await ApiClient.instance.cached('/api/meals', query: query);
+    final water = await ApiClient.instance.cached('/api/water', query: query);
+    if (meals is! Map<String, dynamic> || water is! Map<String, dynamic>) {
+      return null;
+    }
+    final calorieTarget = metabolismFor(user.profile).target;
+    final waterGoalMl = user.profile?.waterGoalMl ?? 2000;
+    return DailyGoalProgress.fromApiResponses(
+      date: isoDate(day),
+      userResponse: {
+        'user': {
+          'profile': {
+            'calorieTarget': calorieTarget,
+            'waterGoalMl': waterGoalMl,
+          },
+        },
+      },
+      mealsResponse: meals,
+      waterResponse: water,
+    );
   }
 
   Future<tz.Location> _loadLocalLocation() async {
@@ -446,4 +571,28 @@ class _FlutterReminderNotificationClient implements ReminderNotificationClient {
 
   @override
   Future<void> cancel(int id) => _plugin.cancel(id: id);
+}
+
+class _WorkManagerDailyGoalSummaryScheduler
+    implements DailyGoalSummaryScheduler {
+  @override
+  Future<void> schedule({
+    required Duration initialDelay,
+    required Map<String, dynamic> inputData,
+    required bool replaceExisting,
+  }) => Workmanager().registerPeriodicTask(
+    dailyGoalSummaryTaskName,
+    dailyGoalSummaryTaskName,
+    frequency: const Duration(days: 1),
+    flexInterval: const Duration(minutes: 15),
+    initialDelay: initialDelay,
+    inputData: inputData,
+    existingWorkPolicy: replaceExisting
+        ? ExistingPeriodicWorkPolicy.replace
+        : ExistingPeriodicWorkPolicy.update,
+  );
+
+  @override
+  Future<void> cancel() =>
+      Workmanager().cancelByUniqueName(dailyGoalSummaryTaskName);
 }

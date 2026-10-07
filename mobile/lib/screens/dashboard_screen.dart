@@ -327,6 +327,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       meals.sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
       setState(() => _meals = meals);
       if (!weekView && isoDate(selectedDate) == isoDate(DateTime.now())) {
+        unawaited(LocalReminderService.instance.reconcile().catchError((_) {}));
         await _publishCalorieWidget(meals);
       }
     } catch (e) {
@@ -337,8 +338,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _logout() async {
-    // Never carry an in-flight or completed draft across account sessions.
+    // Never carry an in-flight draft or the prior account's goal task across sessions.
     await _analysis.cancel();
+    try {
+      await LocalReminderService.instance.cancelDailyGoalSummary();
+    } catch (_) {}
     HealthAutoSync.instance.deactivate();
     await GoogleAuth.signOut();
     await AuthService.logout();
@@ -744,6 +748,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               onGoalChanged: _refreshUserAndMeals,
               onChanged: (totalMl) {
                 _waterTotalMl = totalMl;
+                unawaited(LocalReminderService.instance.reconcile().catchError((_) {}));
                 return _publishCalorieWidget();
               },
             ),
