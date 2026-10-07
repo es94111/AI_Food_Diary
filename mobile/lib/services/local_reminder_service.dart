@@ -3,17 +3,17 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'device_timezone_service.dart';
+
 const _reminderPreferencesKey = 'local_reminder_settings_v1';
 const _reminderChannelId = 'daily_reminders';
 const _reminderChannelName = '日常提醒';
 const _reminderChannelDescription = '記錄、喝水與每日回顧提醒';
-const _reminderTimeZoneChannel = MethodChannel('aifood.shao.one/reminders');
 
 /// A local reminder the user can independently enable and time.
 enum ReminderKind {
@@ -376,9 +376,7 @@ class LocalReminderService implements ReminderSettingsController {
   }
 
   static Future<String> _readLocalTimeZoneId() async {
-    final id = await _reminderTimeZoneChannel.invokeMethod<String>(
-      'getLocalTimeZone',
-    );
+    final id = await DeviceTimezoneService.localTimeZoneId();
     if (id == null || id.isEmpty) {
       throw StateError('The device did not provide a local timezone.');
     }

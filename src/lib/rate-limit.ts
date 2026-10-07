@@ -169,6 +169,14 @@ export function enforceHealthHistoryRateLimit(userId: string): Promise<NextRespo
   });
 }
 
+export function enforceUserDataExportRateLimit(userId: string): Promise<NextResponse | null> {
+  return enforceRateLimit(`user:data-export:${userId}`, {
+    limit: 3,
+    windowSec: 600,
+    message: "資料匯出請求過於頻繁，請稍後再試。"
+  });
+}
+
 // The admin data export/import endpoints decrypt or rewrite the whole database,
 // so their budgets are far tighter than user endpoints — an accidental script
 // loop must not churn full-database reads/writes.

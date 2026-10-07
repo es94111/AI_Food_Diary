@@ -71,6 +71,18 @@ export default async function SettingsPage() {
         />
         <NouriLedgerMigrationCard />
         <div className="glass glass-lift rounded-[2rem] p-6">
+          <h2 className="text-xl font-black">下載我的資料</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            匯出自己的資料與可讀取的照片，不會包含 AI 金鑰或登入憑證。
+          </p>
+          <a
+            href="/api/me/data/export"
+            className="mt-4 inline-block rounded-full bg-amber-700 px-5 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-80"
+          >
+            下載 JSON
+          </a>
+        </div>
+        <div className="glass glass-lift rounded-[2rem] p-6">
           <h2 className="text-xl font-black">版本資訊</h2>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <Metric

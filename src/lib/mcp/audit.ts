@@ -18,7 +18,12 @@ export type AiAuditAction =
   | "USER_RESTORE_FAILED";
 
 export type AiAuditStatus = "started" | "succeeded" | "failed";
-export type AiResourceType = "MEAL" | "SAVED_FOOD" | "WATER_LOG";
+export type AiResourceType =
+  | "MEAL"
+  | "SAVED_FOOD"
+  | "WATER_LOG"
+  | "HEALTH_METRIC"
+  | "WEEKLY_SUMMARY";
 
 type AuditWriter = Pick<Prisma.TransactionClient, "aiAuditEvent">;
 

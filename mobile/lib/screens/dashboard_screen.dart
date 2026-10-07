@@ -13,6 +13,8 @@ import '../services/home_widget_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
 import '../services/local_reminder_service.dart';
+import '../services/device_timezone_service.dart';
+import '../services/recording_streak_service.dart';
 import '../services/update_service.dart';
 import '../utils/metabolism.dart';
 import '../widgets/ai_activity_settings_entry.dart';
@@ -25,6 +27,7 @@ import '../widgets/meal_list.dart';
 import '../widgets/local_reminders_card.dart';
 import '../widgets/water_card.dart';
 import '../widgets/profile_form.dart';
+import '../widgets/recording_streak_card.dart';
 import '../widgets/update_card.dart';
 import 'login_screen.dart';
 import 'meal_capture_screen.dart';
@@ -45,6 +48,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _weekView = false;
   DateTime _selectedDate = startOfLocalDay(DateTime.now());
   List<Meal> _meals = [];
+  RecordingStreak? _recordingStreak;
+  bool _recordingStreakLoading = true;
+  String? _timeZoneId;
+  String? _timezoneReportRequested;
+  int _streakLoadGeneration = 0;
   double? _syncedWeight;
   double? _syncedHeight;
   // Today's measured total energy expenditure (Health Connect
@@ -104,6 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (state == AppLifecycleState.resumed && _dashboardReady) {
       unawaited(LocalReminderService.instance.reconcile().catchError((_) {}));
       _queueRecentHealthTotals();
+      unawaited(_loadRecordingStreak());
       unawaited(_maybeShowYesterdaySummary());
     }
   }
@@ -133,6 +142,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       // have nothing to show.
       if (_user == null && _meals.isEmpty) {
         setState(() => _error = e.toString());
+      } else if (_user != null) {
+        unawaited(_loadRecordingStreak());
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -317,6 +328,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Future<void> _loadMeals() async {
     final generation = ++_mealLoadGeneration;
+    if (_user != null) unawaited(_loadRecordingStreak());
     final weekView = _weekView;
     final selectedDate = _selectedDate;
     try {
@@ -327,7 +339,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       meals.sort((a, b) => b.eatenAt.compareTo(a.eatenAt));
       setState(() => _meals = meals);
       if (!weekView && isoDate(selectedDate) == isoDate(DateTime.now())) {
-        unawaited(LocalReminderService.instance.reconcile().catchError((_) {}));
         await _publishCalorieWidget(meals);
       }
     } catch (e) {
@@ -337,8 +348,34 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  Future<void> _loadRecordingStreak() async {
+    if (_user == null) return;
+    final generation = ++_streakLoadGeneration;
+    final timezone = await DeviceTimezoneService.localTimeZoneId();
+    if (!mounted || generation != _streakLoadGeneration) return;
+    if (timezone != null) {
+      _timeZoneId = timezone;
+      if (timezone != _user?.profile?.timezone && _timezoneReportRequested != timezone) {
+        _timezoneReportRequested = timezone;
+        unawaited(DeviceTimezoneService.report(timezone));
+      }
+    }
+    try {
+      final streak = await RecordingStreakService.fetch(timeZone: _timeZoneId);
+      if (!mounted || generation != _streakLoadGeneration) return;
+      setState(() {
+        _recordingStreak = streak;
+        _recordingStreakLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _streakLoadGeneration) return;
+      setState(() => _recordingStreakLoading = false);
+      // Streak data is supplemental and should not interrupt meal logging.
+    }
+  }
+
   Future<void> _logout() async {
-    // Never carry an in-flight draft or the prior account's goal task across sessions.
+    // Never carry an in-flight or completed draft across account sessions.
     await _analysis.cancel();
     try {
       await LocalReminderService.instance.cancelRemindersOnSignOut();
@@ -730,6 +767,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           _dateSwitcher(),
           const SizedBox(height: 12),
           RepaintBoundary(child: _calorieCard(totals, target)),
+          const SizedBox(height: 12),
+          RecordingStreakCard(
+            streak: _recordingStreak,
+            isLoading: _recordingStreakLoading,
+          ),
           if (!_weekView && _isToday && _todayTotalCalories != null) ...[
             const SizedBox(height: 12),
             _netCalorieCard(totals.calories.round(), _todayTotalCalories!),
@@ -750,7 +792,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               onGoalChanged: _refreshUserAndMeals,
               onChanged: (totalMl) {
                 _waterTotalMl = totalMl;
-                unawaited(LocalReminderService.instance.reconcile().catchError((_) {}));
+                unawaited(_loadRecordingStreak());
                 return _publishCalorieWidget();
               },
             ),

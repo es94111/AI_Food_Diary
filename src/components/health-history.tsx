@@ -72,6 +72,7 @@ function HistoryModal({ request, tz, onClose }: { request: HistoryRequest; tz: s
 
   useEffect(() => {
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- The modal resets while fetching the newly requested metrics.
     setLoading(true);
     setError("");
     const types = request.metrics.map((m) => m.type).join(",");

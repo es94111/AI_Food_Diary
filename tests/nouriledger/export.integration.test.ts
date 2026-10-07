@@ -23,22 +23,30 @@ async function setup() {
   const { encryptJson } = await import("../../src/lib/encryption");
   const exporter = await import("../../src/lib/admin-export");
   const packager = await import("../../src/lib/nouriledger-export");
+  const personalExporter = await import("../../src/lib/user-data-export");
   const suffix = randomBytes(4).toString("hex");
-  const photos = new Map<string, { body: Buffer; contentType: string }>([
-    ["meals/alice/lunch.jpg", { body: jpeg(1), contentType: "image/jpeg" }],
-    ["foods/alice/chicken.png", { body: jpeg(2), contentType: "image/png" }],
-    ["meals/alice/huge.jpg", { body: Buffer.alloc(packager.MAX_IMAGE_BYTES + 1, 3), contentType: "image/jpeg" }]
-  ]);
   const dataUrlBytes = Buffer.from("legacy-inline-photo");
   const dataUrl = `data:image/png;base64,${dataUrlBytes.toString("base64")}`;
-  const reader = async (key: string) => {
-    if (key === "meals/alice/broken.jpg") throw new Error("S3 exploded");
-    return photos.get(key) ?? null;
-  };
 
   const alice = await prisma.user.create({ data: { email: `alice-${suffix}@export.test`, passwordHash: "x", name: "Alice", googleId: `google-alice-${suffix}`, isAdmin: true, tokenVersion: 5 } });
   const bob = await prisma.user.create({ data: { email: `bob-${suffix}@export.test`, passwordHash: "x", name: "Bob", googleId: `google-bob-${suffix}` } });
-  const aliceKeys = ["meals/alice/lunch.jpg", "meals/alice/missing.jpg", "foods/alice/chicken.png", "meals/alice/huge.jpg", "meals/alice/broken.jpg", dataUrl];
+  const mealPhoto = `meals/${alice.id}/lunch.jpg`;
+  const chickenPhoto = `meals/${alice.id}/chicken.png`;
+  const hugePhoto = `meals/${alice.id}/huge.jpg`;
+  const brokenPhoto = `meals/${alice.id}/broken.jpg`;
+  const missingPhoto = `meals/${alice.id}/missing.jpg`;
+  const foreignPhoto = "meals/other-user/private.jpg";
+  const photos = new Map<string, { body: Buffer; contentType: string }>([
+    [mealPhoto, { body: jpeg(1), contentType: "image/jpeg" }],
+    [chickenPhoto, { body: jpeg(2), contentType: "image/png" }],
+    [hugePhoto, { body: Buffer.alloc(packager.MAX_IMAGE_BYTES + 1, 3), contentType: "image/jpeg" }],
+    [foreignPhoto, { body: jpeg(9), contentType: "image/jpeg" }]
+  ]);
+  const reader = async (key: string) => {
+    if (key === brokenPhoto) throw new Error("S3 exploded");
+    return photos.get(key) ?? null;
+  };
+  const aliceKeys = [mealPhoto, missingPhoto, chickenPhoto, hugePhoto, brokenPhoto, foreignPhoto, dataUrl];
   await prisma.userProfile.create({ data: { userId: alice.id, goal: "MAINTAIN", calorieTarget: 2100, waterGoalMl: 2500, timezone: "Asia/Taipei", aiProvider: "openai", encryptedAiApiKey: encryptJson("sk-alice-secret"), encryptedAllergies: encryptJson(["花生"]) } });
   await prisma.userProfile.create({ data: { userId: bob.id, calorieTarget: 1800, encryptedAiApiKey: encryptJson("sk-bob-secret") } });
   const aliceMeal = await prisma.meal.create({
@@ -48,12 +56,12 @@ async function setup() {
     }
   });
   const bobMeal = await prisma.meal.create({ data: { userId: bob.id, mealType: "DINNER", totalCalories: 900, items: { create: [{ name: "Bob 的秘密晚餐", calories: 900 }] } } });
-  const aliceFood = await prisma.savedFood.create({ data: { userId: alice.id, name: "雞胸肉", calories: 165, protein: 31, fat: 3.6, carbs: 0, imageStorageKey: "foods/alice/chicken.png" } });
+  const aliceFood = await prisma.savedFood.create({ data: { userId: alice.id, name: "雞胸肉", calories: 165, protein: 31, fat: 3.6, carbs: 0, imageStorageKey: chickenPhoto } });
   await prisma.mealBundle.create({
     data: {
       userId: alice.id,
       encName: encryptJson("雞胸便當組合"),
-      imageStorageKey: "foods/alice/chicken.png",
+      imageStorageKey: chickenPhoto,
       items: { create: [{ savedFoodId: aliceFood.id, encName: encryptJson("雞胸肉"), encEstimatedAmount: encryptJson("100g"), calories: 165, protein: 31, fat: 3.6, carbs: 0 }] }
     }
   });
@@ -65,7 +73,7 @@ async function setup() {
   await prisma.healthMetric.create({ data: { userId: alice.id, source: "HEALTH_CONNECT", type: "WEIGHT", value: 61.5, unit: "kg", measuredAt: new Date("2026-10-02T00:00:00Z") } });
   await prisma.healthMetric.create({ data: { userId: bob.id, source: "HEALTH_CONNECT", type: "WEIGHT", value: 99, unit: "kg", measuredAt: new Date("2026-10-02T00:00:00Z") } });
   await prisma.appConfig.upsert({ where: { id: "singleton" }, update: {}, create: { id: "singleton", registrationOpen: true } });
-  return { prisma, suffix, alice, bob, aliceMeal, bobMeal, aliceKeys, photos, dataUrlBytes, reader, exporter, packager };
+  return { prisma, suffix, alice, bob, aliceMeal, bobMeal, aliceKeys, photos, dataUrlBytes, reader, exporter, packager, personalExporter };
 }
 
 let ctx!: Awaited<ReturnType<typeof setup>>;
@@ -118,6 +126,50 @@ test("a scoped export contains only that account and none of its secrets", { ski
   assert.equal(envelope.counts.users, 1);
 });
 
+test("the self-service JSON is exact, owner-scoped, photo-complete when safe, and importer-compatible", { skip }, async () => {
+  const { alice, bob, reader, personalExporter, exporter, aliceKeys, photos, dataUrlBytes } = ctx;
+  const result = await personalExporter.buildUserDataExport(alice.id, reader);
+  const text = result.json;
+  const raw = JSON.parse(text) as Record<string, unknown>;
+  const envelope = exporter.exportEnvelopeSchema.parse(raw);
+  const foreignPhoto = aliceKeys[5];
+  const mealPhoto = aliceKeys[0];
+  const chickenPhoto = aliceKeys[2];
+  const mealDataUrl = `data:image/jpeg;base64,${photos.get(mealPhoto)!.body.toString("base64")}`;
+  const chickenDataUrl = `data:image/png;base64,${photos.get(chickenPhoto)!.body.toString("base64")}`;
+  const legacyDataUrl = `data:image/png;base64,${dataUrlBytes.toString("base64")}`;
+
+  assert.deepEqual(Object.keys(raw).sort(), ["format", "version", "exportedAt", "keyId", "counts", "decryptionAnomalies", "data"].sort());
+  assert.deepEqual(Object.keys(envelope.data).sort(), [
+    "users", "userProfiles", "meals", "mealItems", "waterLogs", "savedFoods", "mealBundles",
+    "mealBundleItems", "dailySummaries", "weeklySummaries", "dailyRecommendations", "healthMetrics", "appConfig"
+  ].sort());
+  assert.deepEqual(envelope.data.users.map((user) => user.id), [alice.id]);
+  assert.ok(envelope.data.meals.every((meal) => meal.userId === alice.id));
+  assert.ok(envelope.data.mealItems.every((item) => envelope.data.meals.some((meal) => meal.id === item.mealId)));
+  for (const rows of [envelope.data.userProfiles, envelope.data.waterLogs, envelope.data.savedFoods, envelope.data.mealBundles, envelope.data.dailySummaries, envelope.data.weeklySummaries, envelope.data.dailyRecommendations, envelope.data.healthMetrics]) {
+    assert.ok(rows.every((row) => row.userId === alice.id));
+  }
+  assert.equal(envelope.data.appConfig.length, 0);
+  assert.equal(envelope.data.meals[0].imageStorageKey, mealDataUrl);
+  assert.deepEqual(envelope.data.meals[0].imageStorageKeys, [mealDataUrl, chickenDataUrl, legacyDataUrl]);
+  assert.equal(envelope.data.savedFoods[0].imageStorageKey, chickenDataUrl);
+  assert.equal(envelope.data.mealBundles[0].imageStorageKey, chickenDataUrl);
+  assert.equal(envelope.data.userProfiles[0].aiApiKey, null);
+  assert.equal(envelope.data.users[0].googleId, null);
+  assert.equal(envelope.data.users[0].isAdmin, false);
+  assert.equal(envelope.data.users[0].tokenVersion, 0);
+  for (const secret of [bob.id, foreignPhoto, `google-alice-${ctx.suffix}`, `google-bob-${ctx.suffix}`, "sk-alice-secret", "sk-bob-secret", "passwordHash"]) {
+    assert.ok(!text.includes(secret), `export contains ${secret}`);
+  }
+  assert.ok(!text.includes(photos.get(foreignPhoto)!.body.toString("base64")), "another account's photo bytes are not included");
+  assert.equal(result.bytes, Buffer.byteLength(text));
+  assert.ok(result.bytes <= exporter.MAX_IMPORT_BYTES, "the download fits the existing import size limit");
+  assert.match(result.warnings[0], /^1 張照片不屬於此帳號/u);
+  assert.match(result.warnings[1], /^2 張照片在舊站已無法讀取/u);
+  assert.match(result.warnings[2], /^1 張照片超過 20 MB/u);
+});
+
 test("the administrator export is unchanged: every account, secrets included, global settings present", { skip }, async () => {
   const { alice, bob, suffix, exporter } = ctx;
   const envelope = await exporter.buildExportEnvelope();
@@ -137,23 +189,28 @@ test("the administrator export is unchanged: every account, secrets included, gl
 });
 
 test("the package carries decrypted photos, drops unreadable ones from the JSON and reports them", { skip }, async () => {
-  const { alice, reader, packager, photos, dataUrlBytes } = ctx;
+  const { alice, reader, packager, photos, dataUrlBytes, aliceKeys } = ctx;
   const result = await packager.buildNouriLedgerPackage(alice.id, reader);
   const envelope = JSON.parse(await (result.form.get("file") as File).text()) as Awaited<ReturnType<typeof ctx.exporter.buildExportEnvelope>>;
   const manifest = JSON.parse(String(result.form.get("attachmentsManifest"))) as Array<{ objectKey: string; fileField: string; filename: string; mimeType: string; sha256: string }>;
+  const mealPhoto = aliceKeys[0];
+  const chickenPhoto = aliceKeys[2];
+  const foreignPhoto = aliceKeys[5];
   const legacyKey = `legacy-data-url:${sha(dataUrlBytes)}`;
 
-  assert.deepEqual(manifest.map((entry) => entry.objectKey).sort(), ["foods/alice/chicken.png", legacyKey, "meals/alice/lunch.jpg"].sort());
+  assert.deepEqual(manifest.map((entry) => entry.objectKey).sort(), [chickenPhoto, legacyKey, mealPhoto].sort());
   assert.equal(result.imageCount, 3);
-  assert.deepEqual(envelope.data.meals[0].imageStorageKeys, ["meals/alice/lunch.jpg", "foods/alice/chicken.png", legacyKey], "missing, failing and oversized photos are removed; order is kept");
-  assert.equal(envelope.data.meals[0].imageStorageKey, "meals/alice/lunch.jpg", "the mirror of the first key holds");
-  assert.equal(envelope.data.savedFoods[0].imageStorageKey, "foods/alice/chicken.png", "a photo shared by a meal and a saved food is shipped once");
-  assert.equal(envelope.data.mealBundles[0].imageStorageKey, "foods/alice/chicken.png", "a bundle shares and retains its photo attachment");
+  assert.deepEqual(envelope.data.meals[0].imageStorageKeys, [mealPhoto, chickenPhoto, legacyKey], "missing, failing, foreign and oversized photos are removed; order is kept");
+  assert.equal(envelope.data.meals[0].imageStorageKey, mealPhoto, "the mirror of the first key holds");
+  assert.equal(envelope.data.savedFoods[0].imageStorageKey, chickenPhoto, "a photo shared by a meal and a saved food is shipped once");
+  assert.equal(envelope.data.mealBundles[0].imageStorageKey, chickenPhoto, "a bundle shares and retains its photo attachment");
   assert.equal(envelope.data.mealBundleItems[0].name, "雞胸肉");
   assert.ok(!JSON.stringify(envelope).includes("data:image"), "the inline data URL is not repeated as a key");
-  assert.equal(result.warnings.length, 2);
-  assert.match(result.warnings[0], /^2 張照片在舊站已無法讀取/u, "the missing object and the failing read");
-  assert.match(result.warnings[1], /^1 張照片超過 20 MB/u);
+  assert.equal(result.warnings.length, 3);
+  assert.match(result.warnings[0], /^1 張照片不屬於此帳號/u);
+  assert.match(result.warnings[1], /^2 張照片在舊站已無法讀取/u, "the missing object and the failing read");
+  assert.match(result.warnings[2], /^1 張照片超過 20 MB/u);
+  assert.ok(!manifest.some((entry) => entry.objectKey === foreignPhoto), "a foreign image key is never packaged");
 
   for (const entry of manifest) {
     const part = result.form.get(entry.fileField) as File;
@@ -162,7 +219,7 @@ test("the package carries decrypted photos, drops unreadable ones from the JSON 
     assert.equal(sha(bytes), entry.sha256);
     assert.deepEqual(bytes, entry.objectKey === legacyKey ? dataUrlBytes : photos.get(entry.objectKey)!.body);
   }
-  assert.match(manifest.find((entry) => entry.objectKey === "foods/alice/chicken.png")!.filename, /\.png$/u);
+  assert.match(manifest.find((entry) => entry.objectKey === chickenPhoto)!.filename, /\.png$/u);
 });
 
 test("the package satisfies the importer's contract (one owner, referential integrity, no dangling photo key)", { skip }, async () => {
@@ -201,7 +258,7 @@ test("an account without photos still exports cleanly, and an oversized total is
 
   const crowded = await prisma.user.create({ data: { email: `crowded-${suffix}@export.test`, passwordHash: "x" } });
   try {
-    const keys = Array.from({ length: 14 }, (_, index) => `meals/crowded/${index}.jpg`);
+    const keys = Array.from({ length: 14 }, (_, index) => `meals/${crowded.id}/${index}.jpg`);
     await prisma.meal.create({ data: { userId: crowded.id, mealType: "SNACK", imageStorageKey: keys[0], imageStorageKeys: keys, totalCalories: 1 } });
     const big = Buffer.alloc(packager.MAX_IMAGE_BYTES - 1024, 5);
     await assert.rejects(() => packager.buildNouriLedgerPackage(crowded.id, async () => ({ body: big, contentType: "image/jpeg" })), (error: unknown) => error instanceof packager.ExportTooLargeError);
@@ -214,7 +271,7 @@ test("photos are fetched a few at a time and still land in their original order"
   const { prisma, packager, suffix } = ctx;
   const user = await prisma.user.create({ data: { email: `parallel-${suffix}@export.test`, passwordHash: "x" } });
   try {
-    const keys = Array.from({ length: 10 }, (_, index) => `meals/parallel/${index}.jpg`);
+    const keys = Array.from({ length: 10 }, (_, index) => `meals/${user.id}/${index}.jpg`);
     await prisma.meal.create({ data: { userId: user.id, mealType: "SNACK", imageStorageKey: keys[0], imageStorageKeys: keys, totalCalories: 1 } });
     let active = 0;
     let peak = 0;
@@ -243,7 +300,7 @@ test("the summary shown on the confirmation page counts only the account's own r
   assert.deepEqual(summary, {
     sourceUserId: alice.id,
     account: { email: `alice-${suffix}@export.test`, name: "Alice" },
-    counts: { meals: 1, meal_items: 2, saved_foods: 1, meal_bundles: 1, meal_bundle_items: 1, water_logs: 1, health_metrics: 1, daily_summaries: 1, images: new Set([...aliceKeys, "foods/alice/chicken.png"]).size }
+    counts: { meals: 1, meal_items: 2, saved_foods: 1, meal_bundles: 1, meal_bundle_items: 1, water_logs: 1, health_metrics: 1, daily_summaries: 1, images: new Set(aliceKeys).size }
   });
   assert.equal(await packager.summarizeUser("does-not-exist"), null);
   assert.equal((await packager.summarizeUser(bob.id))?.counts.meals, 1);

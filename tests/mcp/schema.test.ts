@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { createMealInputSchema, createSavedFoodInputSchema, createWaterLogInputSchema, restoreAiActivitySchema } from "../../src/lib/mcp/schemas";
+import {
+  createMealInputSchema,
+  createSavedFoodInputSchema,
+  createWaterLogInputSchema,
+  getHealthDataInputSchema,
+  getWeeklySummaryInputSchema,
+  restoreAiActivitySchema,
+} from "../../src/lib/mcp/schemas";
 
 test("create schemas reject undeclared fields and user identity claims", () => {
   const meal = createMealInputSchema.safeParse({
@@ -61,6 +68,41 @@ test("meal create image URLs must be https, well-formed, and bounded in count", 
       .success,
     false,
   );
+});
+
+test("health and weekly summary read schemas enforce bounded, identity-free inputs", () => {
+  const health = getHealthDataInputSchema.safeParse({ types: ["WEIGHT", "SLEEP"] });
+  assert.equal(health.success, true);
+  if (health.success) assert.equal(health.data.limit, 30);
+  assert.equal(getHealthDataInputSchema.safeParse({ types: [] }).success, false);
+  assert.equal(
+    getHealthDataInputSchema.safeParse({ types: ["WEIGHT", "WEIGHT"] }).success,
+    false,
+  );
+  assert.equal(
+    getHealthDataInputSchema.safeParse({ types: ["WEIGHT", "STEPS", "SLEEP", "EXERCISE", "SLEEP_DEEP", "ACTIVE_CALORIES"] }).success,
+    false,
+  );
+  assert.equal(
+    getHealthDataInputSchema.safeParse({ types: ["HEART_RATE"] }).success,
+    false,
+  );
+  assert.equal(
+    getHealthDataInputSchema.safeParse({ types: ["WEIGHT"], limit: 6 }).success,
+    false,
+  );
+  assert.equal(
+    getHealthDataInputSchema.safeParse({ types: ["WEIGHT"], limit: 121 }).success,
+    false,
+  );
+  assert.equal(
+    getHealthDataInputSchema.safeParse({ types: ["WEIGHT"], userId: "attacker" }).success,
+    false,
+  );
+
+  assert.equal(getWeeklySummaryInputSchema.safeParse({ date: "2026-09-28" }).success, true);
+  assert.equal(getWeeklySummaryInputSchema.safeParse({ date: "2026-02-30" }).success, false);
+  assert.equal(getWeeklySummaryInputSchema.safeParse({ userId: "attacker" }).success, false);
 });
 
 test("restore API requires an explicit human confirmation field", () => {

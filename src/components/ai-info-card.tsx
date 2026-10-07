@@ -44,6 +44,7 @@ export function AiInfoCard({
   }, [endpoint, type]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Fetch persisted advice/summary once the card mounts.
     peek();
   }, [peek]);
 

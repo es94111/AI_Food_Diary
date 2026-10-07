@@ -11,21 +11,21 @@ import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.util.TimeZone
 
 // FlutterFragmentActivity (a ComponentActivity) is required so the `health`
 // plugin can register its ActivityResultLauncher and launch the Health Connect
 // permission screen. Plain FlutterActivity logs "Permission launcher not found".
 class MainActivity : FlutterFragmentActivity() {
     private val updateChannel = "aifood.shao.one/update"
-    private val reminderChannel = "aifood.shao.one/reminders"
     private var widgetChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, reminderChannel)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "aifood.shao.one/timezone")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
-                    "getLocalTimeZone" -> result.success(java.util.TimeZone.getDefault().id)
+                    "getTimeZoneId" -> result.success(TimeZone.getDefault().id)
                     else -> result.notImplemented()
                 }
             }

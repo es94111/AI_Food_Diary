@@ -139,6 +139,33 @@ export async function getUserTimezone(userId: string): Promise<string | null> {
   return user.profile?.timezone ?? null;
 }
 
+export async function getWeeklySummaryUser(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      profile: {
+        select: {
+          gender: true,
+          birthDate: true,
+          heightCm: true,
+          weightKg: true,
+          encGender: true,
+          encBirthDate: true,
+          encHeightCm: true,
+          encWeightKg: true,
+          activityLevel: true,
+          goal: true,
+          calorieTarget: true,
+          timezone: true,
+        },
+      },
+    },
+  });
+  if (!user) throw new McpApplicationError("FORBIDDEN", "The authenticated user is unavailable.", 403);
+  return user;
+}
+
 export async function findMeal(userId: string, id: string) {
   return prisma.meal.findFirst({ where: { id, userId }, select: mealSelect });
 }

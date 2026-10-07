@@ -17,8 +17,12 @@ import {
   createSavedFoodOutputSchema,
   createWaterLogInputSchema,
   createWaterLogOutputSchema,
+  getHealthDataInputSchema,
+  getHealthDataOutputSchema,
   getMealInputSchema,
   getMealOutputSchema,
+  getWeeklySummaryInputSchema,
+  getWeeklySummaryOutputSchema,
   listMealsInputSchema,
   listMealsOutputSchema,
   listSavedFoodsInputSchema,
@@ -34,7 +38,9 @@ import {
   createMealService,
   createSavedFoodService,
   createWaterLogService,
+  getHealthDataService,
   getMealService,
+  getWeeklySummaryService,
   listMealsService,
   listSavedFoodsService,
   listWaterLogsService,
@@ -273,6 +279,46 @@ export function createAiFoodMcpServer(context: McpRequestContext): McpServer {
       return executeTool(
         { invocation: call, operation: "read", resourceType: "WATER_LOG" },
         () => listWaterLogsService(call, args),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_health_data",
+    {
+      title: "Get health data",
+      description:
+        "Read recent weight, activity, and sleep measurements plus the authenticated user's compact current health context.",
+      inputSchema: getHealthDataInputSchema,
+      outputSchema: getHealthDataOutputSchema,
+      annotations: READ_ANNOTATIONS,
+      _meta: securityMeta("health:read"),
+    },
+    (args) => {
+      const call = invocation(context, userId, "get_health_data");
+      return executeTool(
+        { invocation: call, operation: "read", resourceType: "HEALTH_METRIC" },
+        () => getHealthDataService(call, args),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_weekly_summary",
+    {
+      title: "Get weekly summary",
+      description:
+        "Read the authenticated user's completed-week nutrition, water, and weight recap. Uses existing AI text when available and never generates or writes a summary.",
+      inputSchema: getWeeklySummaryInputSchema,
+      outputSchema: getWeeklySummaryOutputSchema,
+      annotations: READ_ANNOTATIONS,
+      _meta: securityMeta("weekly_summaries:read"),
+    },
+    (args) => {
+      const call = invocation(context, userId, "get_weekly_summary");
+      return executeTool(
+        { invocation: call, operation: "read", resourceType: "WEEKLY_SUMMARY" },
+        () => getWeeklySummaryService(call, args),
       );
     },
   );
