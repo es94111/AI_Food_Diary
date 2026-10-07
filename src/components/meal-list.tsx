@@ -259,6 +259,7 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
       <div className="mt-3">
         {imageUrls.length === 1 ? (
           <div className="group relative">
+            {/* eslint-disable-next-line @next/next/no-img-element -- Meal image URLs use same-origin authenticated API routes. */}
             <img alt="餐點照片" className="max-h-72 w-full rounded-2xl object-cover" src={imageUrls[0]} />
             <button
               aria-label="移除照片"
@@ -275,6 +276,7 @@ function MealCard({ meal, timeZone }: { meal: Meal; timeZone: string }) {
           <div className="flex snap-x gap-2 overflow-x-auto pb-1">
             {imageUrls.map((url, i) => (
               <div className="group relative flex-none" key={url}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- Meal image URLs use same-origin authenticated API routes. */}
                 <img alt={`餐點照片 ${i + 1}`} className="h-44 w-44 snap-start rounded-2xl object-cover" src={url} />
                 <button
                   aria-label={`移除照片 ${i + 1}`}

@@ -108,7 +108,7 @@ description: "Task list for 廠牌食品營養標示搜尋"
 
 **Purpose**: 跨 Story 的收尾檢查，含 SC-001（整體逾時上限）與 SC-002（常見品牌命中率）的驗證證據
 
-- [X] T023 [P] 執行 `npm run lint` 與 `tsc --noEmit`（或 `npm run build`），修正所有異動檔案中的問題（`npm run lint` 在本環境因既有、與本功能無關的 Next.js 16 升級移除 `next lint` 而全域性失效，改以 `tsc --noEmit`（全專案通過，僅剩與本功能無關的既有 `src/worker.ts`/bullmq 錯誤）與 Docker 內 `next build` 成功建置作為替代驗證證據，符合 plan.md Testing 段落允許的替代方案）
+- [X] T023 [P] 執行 `npm run lint` 與 `tsc --noEmit`（或 `npm run build`），修正所有異動檔案中的問題；`npm run lint` 現已透過 ESLint flat config 與 Next.js 16 相容設定恢復可用，不再以 TypeScript 或 build 作為 lint 的替代驗證
 - [ ] T024 依 `specs/001-brand-nutrition-search/quickstart.md` 手動執行情境 1–3 與 6 個 Edge Cases（含暫時移除 `TAVILY_API_KEY` 驗證 503 路徑），於 `npm run dev` 環境完整驗證
   - **狀態（2026-10-06）**：仍未完成——本環境沒有 `.env`、`TAVILY_API_KEY`、`OPENAI_API_KEY`，無法啟動可登入且連接搜尋／AI 服務的驗收環境。T027 的離線規則測試已通過；情境 1–3 的畫面互動、多候選選擇、實際 HTTP 狀態與寫入結果仍須於可登入的正式環境驗證。
 - [ ] T025 [P] 於實機或模擬器上重複 quickstart.md 情境 1–3，確認 Web／Android 行為一致；本功能已將 Android／Flutter 端變更（T016–T018、T020、T022）納入本任務清單範圍，依憲章原則 IV（Web 與 Android 版本同步發佈）此驗證為必要項目，不得省略或視為選做

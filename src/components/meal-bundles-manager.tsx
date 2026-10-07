@@ -173,6 +173,7 @@ export function MealBundlesManager({ initialBundles, foods }: { initialBundles: 
               <input accept="image/*" className="mt-2 block w-full text-sm" onChange={(event) => { void onImageChange(event.target.files?.[0]); event.target.value = ""; }} type="file" />
             </label>
             {draft.imageUrl ? <div className="mt-3 flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element -- Preview sources may be local data URLs or authenticated API routes. */}
               <img alt="餐組照片預覽" className="h-20 w-20 rounded-xl object-cover" src={draft.imageUrl} />
               <button className="text-sm font-semibold text-red-700" onClick={() => setDraft((current) => current && ({ ...current, imageUrl: null, imageDataUrl: undefined, removeImage: true }))} type="button">移除照片</button>
             </div> : null}
@@ -209,7 +210,10 @@ export function MealBundlesManager({ initialBundles, foods }: { initialBundles: 
       <div className="grid gap-3 sm:grid-cols-2">
         {bundles.map((bundle) => <article className="rounded-2xl bg-white p-4 ring-1 ring-stone-200" key={bundle.id}>
           <div className="flex gap-3">
-            {bundle.imageUrl ? <img alt="" className="h-16 w-16 rounded-xl object-cover" src={bundle.imageUrl} /> : null}
+            {bundle.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element -- Stored image URLs can be authenticated API routes.
+              <img alt="" className="h-16 w-16 rounded-xl object-cover" src={bundle.imageUrl} />
+            ) : null}
             <div className="min-w-0 flex-1">
               <h2 className="font-bold">{bundle.name}</h2>
               <p className="mt-1 text-sm text-stone-600">{bundle.items.length} 項 · {bundle.items.reduce((sum, item) => sum + Number(item.calories), 0)} kcal</p>

@@ -36,6 +36,7 @@ export function InsightsDashboard({ initialDate, timeZone }: Props) {
   }, [date, period, timeZone]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Loading state resets when the selected date or period changes.
     void load();
   }, [load]);
 

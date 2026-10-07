@@ -199,14 +199,17 @@ export function MealCaptureForm({
 
   useEffect(() => {
     // 掛載後依使用者時區的當地時間預選最近的餐期（放在 effect 內避免 SSR 與客戶端不一致）。
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Synchronize the local meal choice only after hydration to avoid an SSR mismatch.
     setMealType(nearestMealType(timeZone));
   }, [timeZone]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the advice synchronized when the selected dashboard date changes.
     setNextMealAdvice(initialNextMealAdvice);
   }, [initialNextMealAdvice]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the form's local timestamp synchronized with the selected dashboard date/time.
     setEatenAtLocal(`${initialDate}T${initialTime}`);
   }, [initialDate, initialTime]);
 
@@ -822,6 +825,7 @@ export function MealCaptureForm({
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {previews.map((src, index) => (
               <div className="group relative" key={`${src.slice(0, 32)}-${index}`}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- Previews use local data URLs from the user's selected files. */}
                 <img alt={`餐點預覽 ${index + 1}`} className="h-32 w-full rounded-2xl object-cover" src={src} />
                 <button
                   aria-label={`移除圖片 ${index + 1}`}
@@ -878,7 +882,10 @@ export function MealCaptureForm({
         {savedFoods.length ? (() => {
           const renderFood = (food: SavedFood) => (
             <button className="flex w-full items-center gap-2 rounded-xl bg-stone-50 p-2 text-left text-sm font-semibold text-stone-800" key={food.id} onClick={() => addSavedFood(food)} type="button">
-              {food.hasImage ? <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" decoding="async" loading="lazy" src={food.imageUrl ? withImageWidth(food.imageUrl, 256) : `/api/saved-foods/${food.id}/image?w=256`} /> : null}
+              {food.hasImage ? (
+                // eslint-disable-next-line @next/next/no-img-element -- Saved-food images may be authenticated API routes.
+                <img alt={food.name} className="h-10 w-10 flex-none rounded-lg object-cover" decoding="async" loading="lazy" src={food.imageUrl ? withImageWidth(food.imageUrl, 256) : `/api/saved-foods/${food.id}/image?w=256`} />
+              ) : null}
               <span>+ {food.name} · {food.estimatedAmount} · {food.calories} kcal</span>
             </button>
           );
@@ -1077,6 +1084,7 @@ export function MealCaptureForm({
               {previews.length ? (
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {previews.map((src, index) => (
+                    // eslint-disable-next-line @next/next/no-img-element -- These are local preview data URLs from user-selected photos.
                     <img alt={`待確認餐點 ${index + 1}`} className="h-32 w-full rounded-2xl object-cover" key={`${src.slice(0, 32)}-${index}`} src={src} />
                   ))}
                 </div>
