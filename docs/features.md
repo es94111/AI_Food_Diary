@@ -45,6 +45,7 @@ PWA 安裝、離線頁面、Service Worker 快取範圍與餐點草稿保存／�
 | POST | `/api/auth/logout` | 本機登出 | Authed | 僅清本機 Cookie，不撤銷 `tokenVersion`。回 `{ ok:true }` |
 | POST | `/api/auth/google` | Google SSO 登入／註冊 | Public | 先以 Turnstile action=`login` 驗證人機 token（success、action、hostname），再驗證 Google ID token；以 `googleId` 找回帳號，首次使用自動建立帳號；不以 Email 自動綁定既有帳號 |
 | POST | `/api/auth/google/link` | 綁定 Google SSO | Authed | 供仍有 session 的舊帳號遷移；409 若該 Google 帳號屬於他人 |
+| DELETE | `/api/account` | 永久刪除本人帳號與資料 | Authed + 明確確認 | JSON `{ confirmation: "DELETE" }`；資料庫刪除與稽核解除關聯在同一交易，照片在交易提交後清除，失敗可用 `npm run account:cleanup:photos` 重試 |
 | GET | `/api/me` | 取得目前使用者＋設定檔 | Authed | 敏感欄位（性別／生日／身高／體重）已加密，回傳明文 |
 | PATCH | `/api/me` | 更新設定檔 | Authed | `gender?, birthDate?, heightCm?(80-250), weightKg?(20-350), activityLevel?, goal?, calorieTarget?(800-6000), waterGoalMl?, preferences?[], allergies?[]` |
 | GET | `/api/me/ai-settings` | 取得 AI 設定 | Authed | API 金鑰永不回傳，僅回 `hasKey` 布林 |
@@ -149,7 +150,7 @@ Android APP 餐點新增／修改／刪除或飲水新增／刪除後，會合�
 | 食物 | `/dashboard/foods` | 「我的食物」`SavedFoodsManager` |
 | 餐組 | `/dashboard/meal-bundles` | 「我的餐組」`MealBundlesManager`；建立／編輯／刪除、選用我的食物、可選照片 |
 | 健康 | `/dashboard/health` | Health Connect 同步儀表板；`ActivityHero`；分組 `HealthGroupCard`（活動／睡眠／身體組成）；`HealthHistoryProvider`（點擊鑽取歷史）；BMR/TDEE 代謝卡（Mifflin-St Jeor） |
-| 設定 | `/dashboard/settings` | `ProfileMetabolismForm`、`AiSettingsForm`、`GoogleLinkPanel`（舊帳號綁定）、版本卡（APK 下載 `/api/app/download`）、`LogoutButton` |
+| 設定 | `/dashboard/settings` | `ProfileMetabolismForm`、`AiSettingsForm`、`GoogleLinkPanel`（舊帳號綁定）、帳號永久刪除區、版本卡（APK 下載 `/api/app/download`）、`LogoutButton` |
 
 ### 背景工作 Worker
 
@@ -169,7 +170,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | --- | --- | --- |
 | Splash | `splash_screen.dart` | 品牌動畫閃屏（三色巨量環旋轉、餐廳 logo、標題＋標語）；背景啟動 `BackgroundAnalysis`/`MealAnalysisController`/`UpdateService`；檢查 session 後導向 |
 | 登入／註冊 | `login_screen.dart` | 僅顯示 Google SSO；首次 Google 登入自動建立帳號；成功轉 `/dashboard` |
-| 儀表板 | `dashboard_screen.dart` | `Scaffold` + `NavigationBar` 三分頁（飲食／健康／設定），背景分析時 AppBar 下方顯示進度條。**飲食**：日期切換（每日/每週、不可選未來）、熱量卡（含巨量與淨熱量）、`WaterCard`、`MealCaptureForm`、`MealList`、`_DailySummaryCard`（日檢視）／`_WeeklySummaryCard`（週檢視）；**健康**：`HealthSyncCard`、BMR/TDEE 卡；**設定**：帳號卡、身體資料卡、`AiSettingsCard`、我的食物／餐組管理、Google 連結、`UpdateCard`、管理員面板、登出。接 home widget 快速拍攝 |
+| 儀表板 | `dashboard_screen.dart` | `Scaffold` + `NavigationBar` 三分頁（飲食／健康／設定），背景分析時 AppBar 下方顯示進度條。**飲食**：日期切換（每日/每週、不可選未來）、熱量卡（含巨量與淨熱量）、`WaterCard`、`MealCaptureForm`、`MealList`、`_DailySummaryCard`（日檢視）／`_WeeklySummaryCard`（週檢視）；**健康**：`HealthSyncCard`、BMR/TDEE 卡；**設定**：帳號卡、身體資料卡、`AiSettingsCard`、我的食物／餐組管理、Google 連結、帳號永久刪除（輸入 `DELETE` 確認）、`UpdateCard`、管理員面板、登出。接 home widget 快速拍攝 |
 | 食物管理 | `saved_foods_screen.dart` | `Scaffold` + `SavedFoodsManager()` |
 | 餐組管理 | `meal_bundles_screen.dart` | `MealBundlesScreen`／`MealBundleEditorScreen`：餐組 CRUD、食物或自訂項目、可選照片 |
 
@@ -196,6 +197,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 | AuthService | POST | `/api/auth/google` | Google SSO 登入／首次使用時註冊 |
 | AuthService | POST | `/api/auth/google/link` | 舊帳號綁定 Google SSO |
 | AuthService | POST | `/api/auth/logout` | 登出 |
+| AuthService | DELETE | `/api/account` | 永久刪除帳號（輸入 `DELETE` 確認） |
 | AuthService | GET | `/api/me` | 取得使用者（快取） |
 | AuthService | PATCH | `/api/me` | 更新設定檔 |
 | MealService | GET | `/api/meals?date=&tzOffset=` | 某日餐點（快取） |

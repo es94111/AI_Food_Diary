@@ -70,6 +70,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   int _savedFoodsRevision = 0;
   final Set<int> _mountedTabs = {0};
   bool _loading = true;
+  bool _deletingAccount = false;
   String? _error;
   int _mealLoadGeneration = 0;
 
@@ -371,14 +372,24 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  Future<void> _logout() async {
+  Future<void> _clearAccountSession({
+    required bool revokeOnServer,
+    bool clearHealthToken = false,
+  }) async {
     // Never carry an in-flight or completed draft across account sessions.
     await _analysis.cancel();
     HealthAutoSync.instance.deactivate();
     await GoogleAuth.signOut();
-    await AuthService.logout();
+    if (revokeOnServer) {
+      await AuthService.logout();
+    } else {
+      await ApiClient.instance.clearSession();
+    }
+    if (clearHealthToken) await HealthService.clearToken();
     await HomeWidgetService.clearCalorieProgress();
-    if (!mounted) return;
+  }
+
+  void _navigateToLogin() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const LoginScreen(),
@@ -386,6 +397,114 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       (route) => false,
     );
+  }
+
+  Future<void> _logout() async {
+    await _clearAccountSession(revokeOnServer: true);
+    if (!mounted) return;
+    _navigateToLogin();
+  }
+
+  Future<bool> _confirmAccountDeletion() async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('永久刪除帳號？'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '此操作會立即刪除你的個人設定、餐點與照片、常用食物、餐組、飲水、摘要、健康資料及未使用的 OAuth 授權碼，並撤銷登入，無法復原。請先保存需要保留的資料。',
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'AI 操作稽核紀錄（包含加密的前後狀態）會保留，但會解除與你的帳號及還原者身分連結。若照片儲存服務暫時失敗，帳號仍會刪除，照片清理將保留待維運人員重試。',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: '輸入 DELETE 以確認',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: controller.text == 'DELETE'
+                  ? () => Navigator.of(dialogContext).pop(true)
+                  : null,
+              child: const Text('永久刪除'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final hasConfirmation = confirmed == true && controller.text == 'DELETE';
+    controller.dispose();
+    return hasConfirmation;
+  }
+
+  Future<void> _deleteAccount() async {
+    if (_deletingAccount) return;
+    final confirmed = await _confirmAccountDeletion();
+    if (!confirmed || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    var accountDeleted = false;
+    try {
+      final photoCleanupPending = await AuthService.deleteAccount();
+      accountDeleted = true;
+      await _clearAccountSession(
+        revokeOnServer: false,
+        clearHealthToken: true,
+      );
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('帳號已刪除'),
+          content: Text(
+            photoCleanupPending
+                ? '帳號與資料已刪除並登出；照片清理尚未完成，待處理工作可由維運人員重試。'
+                : '帳號與資料已刪除，所有登入工作階段已失效。',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('返回登入'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      _navigateToLogin();
+    } catch (error) {
+      if (!mounted) return;
+      if (accountDeleted) {
+        _navigateToLogin();
+        return;
+      }
+      final message = error is ApiException
+          ? error.message
+          : '帳號刪除結果無法確認；若已刪除，所有登入工作階段均已失效。';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      setState(() => _deletingAccount = false);
+    }
   }
 
   Future<bool> _consumeInitialWidgetAction() async {
@@ -980,6 +1099,20 @@ class _DashboardScreenState extends State<DashboardScreen>
               );
               if (mounted) setState(() => _savedFoodsRevision++);
             },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.delete_forever_outlined, color: context.palette.danger),
+            title: const Text('永久刪除帳號'),
+            subtitle: Text(
+              _deletingAccount
+                  ? '正在刪除帳號…'
+                  : '永久刪除帳號與個人資料，此操作無法復原',
+            ),
+            enabled: !_deletingAccount,
+            onTap: _deletingAccount ? null : _deleteAccount,
           ),
         ),
         if (GoogleAuth.isConfigured) ...[

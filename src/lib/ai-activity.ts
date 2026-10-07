@@ -194,7 +194,7 @@ type RestoreResource = {
 };
 
 async function loadRestoreResource(row: ActivityRow): Promise<RestoreResource> {
-  if (!row.resourceId) {
+  if (!row.resourceId || !row.userId) {
     return { exists: false, currentState: null, provenanceMatches: false, safeToDelete: false };
   }
   if (row.resourceType === "MEAL") {

@@ -62,19 +62,47 @@ AI provider。**當 `APP_PUBLIC_URL` 未設定**時，無法提供對外可達�
 引用計數由 `src/lib/image-refs.ts` 的 `deleteImageIfUnreferenced` 負責：物件只在
 `SavedFood` 與 `Meal`（含 `imageStorageKeys`）都不再引用時才刪除。
 
-## 4. 帳號刪除範圍（與「帳號刪除與資料清除」對齊）
+## 4. 帳號刪除範圍與失敗處理
 
-帳號刪除時，照片的清除範圍為：
+`DELETE /api/account` 僅允許已登入使用者刪除自己的帳號，並要求 JSON body 中的
+`confirmation` **精確等於 `DELETE`**。設定頁要求使用者先輸入這段文字；沒有冷靜期，提交後即永久刪除。
 
-1. 該使用者 `Meal.imageStorageKey`、`Meal.imageStorageKeys[]`、`SavedFood.imageStorageKey`
-   指向的所有 key（去重後）。
-2. 逐一 `deleteImage`（不經引用計數，因為所有者的資料列都在同一次清除中移除）。
-3. 部分失敗時可重跑：清除腳本再次列出 `meals/<userId>/` 底下的物件（`listKeys`）並刪除殘留，
-   資料庫列已不存在時仍可安全重複執行。
-4. 順序建議：先刪資料庫列（交易）→ 再刪物件；物件失敗不影響授權狀態（session 已由
-   `tokenVersion` 遞增撤銷），殘留物件由 (3) 的清理路徑收斂。
+同一個 PostgreSQL 交易會先遞增 `tokenVersion`、建立照片清理 outbox 工作，解除該使用者所有
+`AiAuditEvent.userId`／`restoredByUserId` 關聯，最後刪除 `User`。資料列範圍包括：
 
-> 帳號刪除本身尚未實作（見該 issue）；本節定義其照片清除的介面與可重跑策略。
+- `User`／`UserProfile`、`Meal`／`MealItem`、`WaterLog`、`SavedFood`、`MealBundle`／`MealBundleItem`
+- `DailySummary`、`WeeklySummary`、`DailyRecommendation`、`HealthConnection`、`HealthMetric`
+- `McpOAuthAuthorizationCode`（未兌換的 OAuth 授權碼）
+
+上列有 `User` 外鍵的資料由 schema 中的 `onDelete: Cascade` 清除；`AiAuditEvent` 是例外：保留不可變
+事件與加密的 before／after state，只將使用者與還原者 ID 解除關聯。`AiAuditEvent.userId` 改為 nullable，
+外鍵採 `ON DELETE SET NULL`；資料庫 trigger 仍拒絕一般更新、刪除與 truncate，只允許將這兩個身分欄位
+由非空改為空。清除後稽核紀錄不再屬於任何使用者，也無法由已刪除帳號檢視或還原。
+
+照片範圍是 `meals/<userId>/` prefix 底下的所有物件（包括 Meal、SavedFood、MealBundle 引用及未被資料列
+引用的孤兒物件），不只目前 DB 欄位列出的 keys。DB 交易提交後，API 立即列出 prefix 並以 S3 批次刪除；
+S3 與 PostgreSQL **不是同一個交易**。DB 交易若失敗，使用者、稽核紀錄與 outbox 一起回滾，完全不碰 S3。
+DB 提交後若列舉／刪除照片失敗，帳號仍保持刪除、所有新請求因使用者不存在而失效，API 回 `202`，outbox
+保留待處理工作；已成功刪除的部分物件不會還原，重試時只會刪除仍存在的物件。`DeleteObjects` 與再次列舉
+prefix 是冪等的。
+
+以部署環境的 DB 與 S3 設定重跑所有未完成工作：
+
+```bash
+npm run account:cleanup:photos
+```
+
+腳本只在 prefix 所有物件均成功刪除（或已不存在）後移除 outbox 工作；任何失敗會保留工作並以非零狀態結束，
+可安全再次執行。工作只保留 `meals/<userId>/` prefix，不保留 email 或使用者資料；成功後即刪除該 prefix 記錄。
+
+### 回滾與營運限制
+
+- DB 交易提交前發生失敗：交易完整回滾，可修復原因後重試刪除。
+- DB 交易提交後不可用程式回滾還原帳號；照片清理失敗只重試清理，不要從備份還原該帳號資料。
+- 回滾應用程式版本不會復原已刪資料。此 migration 不可用簡單 down migration 回復：已保留的稽核事件會有
+  `userId = NULL`，重新設為 NOT NULL／`ON DELETE RESTRICT` 前必須另行定義重新關聯或保留政策。
+- 正常請求會嘗試即時清理；大量照片、儲存服務中斷或函式逾時時，outbox 仍可由上述腳本重試。已通過認證、
+  且在刪除交易提交前開始的請求可能完成當前工作；提交後的新請求均無法再驗證此使用者。
 
 ## 5. 刪除與保留策略
 

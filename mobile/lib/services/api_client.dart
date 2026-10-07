@@ -300,9 +300,9 @@ class ApiClient {
     return dio.patch(path, data: data);
   }
 
-  Future<Response<dynamic>> delete(String path) async {
+  Future<Response<dynamic>> delete(String path, {Object? data}) async {
     final dio = await _client();
-    return dio.delete(path);
+    return dio.delete(path, data: data);
   }
 
   /// Extracts the backend's `{error}` message, falling back to [fallback].
