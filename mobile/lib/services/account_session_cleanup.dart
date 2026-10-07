@@ -1,6 +1,23 @@
 typedef AccountCleanupTask = Future<void> Function();
 
 class AccountSessionCleanup {
+  static Future<bool> runDeletedAccountCleanup({
+    required AccountCleanupTask cleanup,
+    required AccountCleanupTask showFailureWarning,
+    required void Function() navigateToLogin,
+  }) async {
+    try {
+      await cleanup();
+      return true;
+    } catch (_) {
+      try {
+        await showFailureWarning();
+      } catch (_) {}
+      navigateToLogin();
+      return false;
+    }
+  }
+
   static Future<bool> runLogoutAndNavigate({
     required AccountCleanupTask cleanup,
     required AccountCleanupTask showFailureWarning,

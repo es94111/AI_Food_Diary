@@ -400,27 +400,35 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Future<void> _showAccountCleanupFailureWarning({
+    required bool accountDeleted,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(accountDeleted ? '帳號已刪除，裝置清理未完成' : '登出清理未完成'),
+        content: Text(
+          accountDeleted
+              ? '帳號與伺服器資料已永久刪除，但裝置上的部分登入資訊或快取未能確認清除。若重新開啟後仍顯示舊資料，請在 Android 設定的應用程式儲存空間中清除 AI Food Diary 資料。伺服器刪除無法復原。'
+              : '已嘗試清除登入資訊與快取，但部分本機清理失敗。將返回登入頁；若重新開啟後仍顯示舊帳號，請在 Android 設定的應用程式儲存空間中清除 AI Food Diary 資料。',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('前往登入頁'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _logout() async {
     await AccountSessionCleanup.runLogoutAndNavigate(
       cleanup: () => _clearAccountSession(revokeOnServer: true),
-      showFailureWarning: () async {
-        if (!mounted) return;
-        await showDialog<void>(
-          context: context,
-          builder: (dialogContext) => AlertDialog(
-            title: const Text('登出清理未完成'),
-            content: const Text(
-              '已嘗試清除登入資訊與快取，但部分本機清理失敗。將返回登入頁；若重新開啟後仍顯示舊帳號，請在 Android 設定的應用程式儲存空間中清除 AI Food Diary 資料。',
-            ),
-            actions: [
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('前往登入頁'),
-              ),
-            ],
-          ),
-        );
-      },
+      showFailureWarning: () =>
+          _showAccountCleanupFailureWarning(accountDeleted: false),
       navigateToLogin: () {
         if (mounted) _navigateToLogin();
       },
@@ -488,11 +496,19 @@ class _DashboardScreenState extends State<DashboardScreen>
     try {
       final photoCleanupPending = await AuthService.deleteAccount();
       accountDeleted = true;
-      await _clearAccountSession(
-        revokeOnServer: false,
-        clearHealthToken: true,
+      final cleanupSucceeded =
+          await AccountSessionCleanup.runDeletedAccountCleanup(
+        cleanup: () => _clearAccountSession(
+          revokeOnServer: false,
+          clearHealthToken: true,
+        ),
+        showFailureWarning: () =>
+            _showAccountCleanupFailureWarning(accountDeleted: true),
+        navigateToLogin: () {
+          if (mounted) _navigateToLogin();
+        },
       );
-      if (!mounted) return;
+      if (!cleanupSucceeded || !mounted) return;
       await showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -516,6 +532,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     } catch (error) {
       if (!mounted) return;
       if (accountDeleted) {
+        // The server-side deletion already succeeded; the guarded helper has
+        // handled any local-cleanup warning. Just leave the screen.
         _navigateToLogin();
         return;
       }

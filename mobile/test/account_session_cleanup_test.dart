@@ -41,6 +41,25 @@ void main() {
     ]);
   });
 
+  test('a deleted account warns and navigates when local cleanup fails', () async {
+    final calls = <String>[];
+    const serverAccountDeleted = true;
+
+    final cleanupSucceeded =
+        await AccountSessionCleanup.runDeletedAccountCleanup(
+      cleanup: () async {
+        calls.add('local-cleanup');
+        throw StateError('secure storage unavailable');
+      },
+      showFailureWarning: () async => calls.add('deleted-account-warning'),
+      navigateToLogin: () => calls.add('login'),
+    );
+
+    expect(serverAccountDeleted, isTrue);
+    expect(cleanupSucceeded, isFalse);
+    expect(calls, ['local-cleanup', 'deleted-account-warning', 'login']);
+  });
+
   test('logout warns and navigates after mandatory cleanup fails', () async {
     final calls = <String>[];
 
