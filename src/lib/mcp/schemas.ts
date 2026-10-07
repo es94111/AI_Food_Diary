@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  DEFAULT_HEALTH_HISTORY_LIMIT,
+  MAX_HEALTH_HISTORY_LIMIT,
+  MAX_HEALTH_HISTORY_TYPES,
+  MIN_HEALTH_HISTORY_LIMIT,
+  type HealthHistoryType,
+} from "@/lib/health-history-types";
 
 /**
  * Strict MCP boundary schemas.
@@ -53,6 +60,27 @@ const mealTypeSchema = z.enum(["BREAKFAST", "LUNCH", "DINNER", "SNACK"]);
 const aiRatingSchema = z.enum(["GOOD", "OK", "LIMIT", "MANUAL"]);
 const caloriesSchema = z.number().finite().min(0).max(10_000);
 const macroSchema = z.number().finite().min(0).max(1_000);
+
+const MCP_HEALTH_METRIC_TYPES = [
+  "WEIGHT",
+  "STEPS",
+  "ACTIVE_CALORIES",
+  "TOTAL_CALORIES",
+  "BASAL_CALORIES",
+  "EXERCISE",
+  "SLEEP",
+  "SLEEP_DEEP",
+  "SLEEP_LIGHT",
+  "SLEEP_REM",
+  "SLEEP_AWAKE",
+] as const satisfies readonly HealthHistoryType[];
+const healthMetricTypeSchema = z.enum(MCP_HEALTH_METRIC_TYPES);
+const healthHistoryLimitSchema = z
+  .number()
+  .int()
+  .min(MIN_HEALTH_HISTORY_LIMIT)
+  .max(MAX_HEALTH_HISTORY_LIMIT)
+  .default(DEFAULT_HEALTH_HISTORY_LIMIT);
 
 const MEAL_TOTAL_LIMITS = {
   calories: 10_000,
@@ -164,6 +192,21 @@ export const listWaterLogsInputSchema = z
     cursor: cursorSchema.optional(),
     limit: pageSizeSchema
   })
+  .strict();
+
+export const getHealthDataInputSchema = z
+  .object({
+    types: z
+      .array(healthMetricTypeSchema)
+      .min(1)
+      .max(MAX_HEALTH_HISTORY_TYPES)
+      .refine((types) => new Set(types).size === types.length, "Metric types must be unique"),
+    limit: healthHistoryLimitSchema,
+  })
+  .strict();
+
+export const getWeeklySummaryInputSchema = z
+  .object({ date: mcpCalendarDateSchema.optional() })
   .strict();
 
 // ── Create-only inputs ──────────────────────────────────────────────────────
@@ -328,6 +371,58 @@ export const listWaterLogsOutputSchema = z
   })
   .strict();
 
+const healthHistoryPointOutputSchema = z
+  .object({ at: isoDateTimeSchema, value: z.number().finite() })
+  .strict();
+
+export const getHealthDataOutputSchema = z
+  .object({
+    context: z.string().max(2_000),
+    series: z
+      .array(
+        z
+          .object({
+            type: healthMetricTypeSchema,
+            unit: z.string().max(100),
+            points: z.array(healthHistoryPointOutputSchema).max(MAX_HEALTH_HISTORY_LIMIT),
+          })
+          .strict(),
+      )
+      .max(MAX_HEALTH_HISTORY_TYPES),
+  })
+  .strict();
+
+const weeklyNutritionOutputSchema = z
+  .object({
+    calories: z.number().finite().nonnegative(),
+    protein: z.number().finite().nonnegative(),
+    fat: z.number().finite().nonnegative(),
+    carbs: z.number().finite().nonnegative(),
+  })
+  .strict();
+
+const weeklySummaryOutputSchema = z
+  .object({
+    weekStartDate: mcpCalendarDateSchema,
+    weekEndDate: mcpCalendarDateSchema,
+    targetCalories: z.number().finite().nonnegative(),
+    totals: weeklyNutritionOutputSchema,
+    averages: weeklyNutritionOutputSchema.extend({ waterMl: z.number().finite().nonnegative() }).strict(),
+    daysLogged: z.number().int().min(0).max(7),
+    daysInWeek: z.literal(7),
+    waterTotalMl: z.number().int().nonnegative(),
+    weightStartKg: z.number().finite().nullable(),
+    weightEndKg: z.number().finite().nullable(),
+    weightChangeKg: z.number().finite().nullable(),
+    aiSummary: z.string().max(10_000).nullable(),
+    aiRecommendation: z.string().max(10_000).nullable(),
+  })
+  .strict();
+
+export const getWeeklySummaryOutputSchema = z
+  .object({ summary: weeklySummaryOutputSchema.nullable() })
+  .strict();
+
 export const createMealOutputSchema = z
   .object({ meal: mealOutputSchema, ...createReceiptShape })
   .strict();
@@ -358,6 +453,8 @@ export type SearchMealsInput = z.infer<typeof searchMealsInputSchema>;
 export type ListSavedFoodsInput = z.infer<typeof listSavedFoodsInputSchema>;
 export type SearchSavedFoodsInput = z.infer<typeof searchSavedFoodsInputSchema>;
 export type ListWaterLogsInput = z.infer<typeof listWaterLogsInputSchema>;
+export type GetHealthDataInput = z.infer<typeof getHealthDataInputSchema>;
+export type GetWeeklySummaryInput = z.infer<typeof getWeeklySummaryInputSchema>;
 export type CreateMealInput = z.infer<typeof createMealInputSchema>;
 export type CreateSavedFoodInput = z.infer<typeof createSavedFoodInputSchema>;
 export type CreateWaterLogInput = z.infer<typeof createWaterLogInputSchema>;

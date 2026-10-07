@@ -1,5 +1,11 @@
 # Lessons
 
+## 2026-10-07 — Preserve separators when editing adjacent object fields
+
+- **Failure mode:** Updating an MCP tool's description accidentally removed the comma before the following `inputSchema` property, leaving TypeScript syntax invalid.
+- **Detection signal:** The targeted test/build failed during parsing at the next object property (`Expected "}" but found "inputSchema"`); `tsc --noEmit` reported the same location.
+- **Prevention rule:** When replacing a string-valued object property, include and preserve its trailing comma in the replacement. Run the smallest parser-backed test immediately after changing tool registration metadata.
+
 ## 2026-10-06 — New AI feature: decrypt at the response boundary, and never spread a sibling mapper
 
 - **Failure mode:** Two defects in the same change. (1) The on-demand `generate=1` route returned the raw Prisma row from `generateAndStoreWeeklySummary`. Because the write helper moves AI text into `enc*` columns and leaves the plaintext columns `null`, clients received literal nulls — the web card rendered `null\n\nnull` and the app card looked correct only after a reload (which took the decrypted peek path). (2) `toExportWeeklySummary` spread `toExportDailySummary`, injecting a `summaryDate: ""` field the weekly table has no column for into every exported row.

@@ -39,6 +39,8 @@ Read-only tools:
 - `list_meals`, `get_meal`, `search_meals`
 - `list_saved_foods`, `search_saved_foods`
 - `list_water_logs`
+- `get_health_data` — recent weight, activity, and sleep measurements (up to five metric types and 120 readings per type), plus the existing compact current-health context
+- `get_weekly_summary` — completed-week nutrition, hydration, and weight stats, plus stored AI recap text when available. It never triggers AI generation or writes a summary.
 
 Create-only tools:
 
@@ -58,9 +60,12 @@ use upsert or save-existing semantics.
 The server publishes RFC 9728 protected-resource metadata and OAuth
 authorization-server metadata. The authorization-code flow requires PKCE S256,
 exact resource audience, exact redirect URI, one-time short-lived codes, and
-per-tool least-privilege scopes (`*:read` or `*:create`). The stable ChatGPT
-CIMD client metadata URL and connector redirect are enabled by default and
-validated server-side.
+per-tool least-privilege scopes. Existing tools use `meals:read` /
+`meals:create`, `saved_foods:read` / `saved_foods:create`, and
+`water_logs:read` / `water_logs:create`; `get_health_data` requires
+`health:read`, and `get_weekly_summary` requires `weekly_summaries:read`. The
+stable ChatGPT CIMD client metadata URL and connector redirect are enabled by
+default and validated server-side.
 
 Set at minimum in production:
 

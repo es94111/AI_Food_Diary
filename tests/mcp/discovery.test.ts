@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { AuthInfo } from "@modelcontextprotocol/server";
+import { MCP_SCOPES, MCP_TOOL_SCOPES } from "../../src/lib/mcp/config";
 import { aiFoodMcpHandler } from "../../src/lib/mcp/server";
 
 const ALL_SCOPES = [
@@ -10,6 +11,8 @@ const ALL_SCOPES = [
   "saved_foods:create",
   "water_logs:read",
   "water_logs:create",
+  "health:read",
+  "weekly_summaries:read",
 ];
 
 const authInfo: AuthInfo = {
@@ -98,13 +101,17 @@ test("tool discovery exposes exactly the read/create allowlist", async () => {
     "create_meal",
     "create_saved_food",
     "create_water_log",
+    "get_health_data",
     "get_meal",
+    "get_weekly_summary",
     "list_meals",
     "list_saved_foods",
     "list_water_logs",
     "search_meals",
     "search_saved_foods",
   ]);
+  assert.deepEqual(Object.keys(MCP_TOOL_SCOPES).sort(), names);
+  assert.deepEqual([...MCP_SCOPES].sort(), [...ALL_SCOPES].sort());
 
   for (const tool of tools) {
     assert.equal(tool.inputSchema.type, "object");
@@ -118,5 +125,6 @@ test("tool discovery exposes exactly the read/create allowlist", async () => {
     assert.equal(tool.annotations.idempotentHint, !tool.name.startsWith("create_"));
     assert.equal(tool._meta.securitySchemes[0].type, "oauth2");
     assert.equal(tool._meta.securitySchemes[0].scopes.length, 1);
+    assert.equal(tool._meta.securitySchemes[0].scopes[0], MCP_TOOL_SCOPES[tool.name]);
   }
 });

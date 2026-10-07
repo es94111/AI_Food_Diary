@@ -9,6 +9,8 @@ export const MCP_SCOPES = [
   "saved_foods:create",
   "water_logs:read",
   "water_logs:create",
+  "health:read",
+  "weekly_summaries:read",
 ] as const;
 
 export type McpScope = (typeof MCP_SCOPES)[number];
@@ -20,6 +22,8 @@ export const MCP_TOOL_SCOPES: Readonly<Record<string, McpScope>> = {
   list_saved_foods: "saved_foods:read",
   search_saved_foods: "saved_foods:read",
   list_water_logs: "water_logs:read",
+  get_health_data: "health:read",
+  get_weekly_summary: "weekly_summaries:read",
   create_meal: "meals:create",
   create_saved_food: "saved_foods:create",
   create_water_log: "water_logs:create",

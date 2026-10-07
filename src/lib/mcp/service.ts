@@ -1,8 +1,9 @@
 import "server-only";
 
 import { createHmac } from "node:crypto";
-import { addDaysStr, dayRangeUtc, dayStartUtc, todayStr } from "@/lib/dates";
+import { addDaysStr, dayRangeUtc, dayStartUtc, todayStr, weekStartStr } from "@/lib/dates";
 import { isPrismaErrorCode } from "@/lib/db";
+import { getHealthContext } from "@/lib/health-context";
 import { deleteImageIfUnreferenced } from "@/lib/image-refs";
 import {
   canonicalBarcode,
@@ -10,7 +11,9 @@ import {
   normalizeFoodText,
 } from "@/lib/saved-food-matching";
 import { resolveUserTz } from "@/lib/timezone";
-import { appendAiAuditEvent, AI_ACTOR_SOURCE } from "./audit";
+import { getHealthHistory, type HealthHistorySeries } from "@/lib/health-history";
+import { collectWeeklySummaryStats, findStoredWeeklySummary } from "@/lib/weekly-summary";
+import { appendAiAuditEvent, AI_ACTOR_SOURCE, type AiResourceType } from "./audit";
 import { getMcpOAuthSecret } from "./config";
 import { mealToMcpOutput, savedFoodToMcpOutput, waterLogToMcpOutput } from "./dto";
 import { McpApplicationError } from "./errors";
@@ -26,6 +29,7 @@ import {
   findSavedFoods,
   findWaterLogs,
   getUserTimezone,
+  getWeeklySummaryUser,
   sumWaterLogs,
   type McpInvocation,
 } from "./repository";
@@ -34,7 +38,9 @@ import type {
   CreateMealInput,
   CreateSavedFoodInput,
   CreateWaterLogInput,
+  GetHealthDataInput,
   GetMealInput,
+  GetWeeklySummaryInput,
   ListMealsInput,
   ListSavedFoodsInput,
   ListWaterLogsInput,
@@ -62,7 +68,7 @@ function page<T extends { id: string }>(
 
 async function auditRead(
   invocation: McpInvocation,
-  resourceType: "MEAL" | "SAVED_FOOD" | "WATER_LOG",
+  resourceType: AiResourceType,
   result: { ids: string[]; resourceId?: string; query?: string; date?: string },
 ) {
   await appendAiAuditEvent({
@@ -243,6 +249,70 @@ export async function listWaterLogsService(
   const logs = result.values.map(waterLogToMcpOutput);
   await auditRead(invocation, "WATER_LOG", { ids: logs.map((log) => log.id), date });
   return { logs, totalMl, nextCursor: result.nextCursor };
+}
+
+export async function getHealthDataService(
+  invocation: McpInvocation,
+  input: GetHealthDataInput,
+): Promise<{ context: string; series: HealthHistorySeries[] }> {
+  assertMcpCreateOnlyOperation("read");
+  const tz = await userTimeZone(invocation.userId);
+  const { start, end } = dayRangeUtc(todayStr(tz), tz);
+  const [{ series, resultIds }, context] = await Promise.all([
+    getHealthHistory(invocation.userId, input.types, input.limit),
+    getHealthContext(invocation.userId, start, end),
+  ]);
+  await auditRead(invocation, "HEALTH_METRIC", {
+    ids: resultIds,
+    query: input.types.join(","),
+  });
+  return { context, series };
+}
+
+export async function getWeeklySummaryService(
+  invocation: McpInvocation,
+  input: GetWeeklySummaryInput,
+) {
+  assertMcpCreateOnlyOperation("read");
+  const user = await getWeeklySummaryUser(invocation.userId);
+  const tz = resolveUserTz(undefined, user.profile?.timezone);
+  const currentWeekStart = weekStartStr(todayStr(tz));
+  const date = input.date ?? addDaysStr(currentWeekStart, -7);
+  const weekStartDate = weekStartStr(date);
+  if (weekStartDate >= currentWeekStart) {
+    throw new McpApplicationError(
+      "INVALID_INPUT",
+      "Only completed weeks can be queried.",
+    );
+  }
+
+  const [stats, stored] = await Promise.all([
+    collectWeeklySummaryStats(user, date, tz),
+    findStoredWeeklySummary(user.id, date, tz),
+  ]);
+  const summary =
+    stats.daysLogged === 0 && !stored
+      ? null
+      : {
+          weekStartDate: stats.window.startDate,
+          weekEndDate: stats.window.endDate,
+          targetCalories: stats.targetCalories,
+          totals: stats.totals,
+          averages: stats.averages,
+          daysLogged: stats.daysLogged,
+          daysInWeek: stats.window.daysInWeek,
+          waterTotalMl: stats.waterTotalMl,
+          weightStartKg: stats.weightStartKg,
+          weightEndKg: stats.weightEndKg,
+          weightChangeKg: stats.weightChangeKg,
+          aiSummary: stored?.aiSummary ?? null,
+          aiRecommendation: stored?.aiRecommendation ?? null,
+        };
+  await auditRead(invocation, "WEEKLY_SUMMARY", {
+    ids: stored ? [stored.id] : [],
+    date: weekStartDate,
+  });
+  return { summary };
 }
 
 export async function createMealService(

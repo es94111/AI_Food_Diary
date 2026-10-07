@@ -13,12 +13,16 @@ const store: {
   meals: Row[];
   savedFoods: Row[];
   waterLogs: Row[];
+  healthMetrics: Row[];
+  weeklySummaries: Row[];
   auditEvents: AuditRow[];
   serial: number;
 } = {
   meals: [],
   savedFoods: [],
   waterLogs: [],
+  healthMetrics: [],
+  weeklySummaries: [],
   auditEvents: [],
   serial: 0,
 };
@@ -103,7 +107,20 @@ fakePrisma = {
       const where = record(args.where);
       return where.id === "missing-user"
         ? null
-        : { id: where.id, profile: { timezone: "UTC" } };
+        : {
+            id: where.id,
+            isAdmin: false,
+            profile: {
+              timezone: "UTC",
+              gender: null,
+              birthDate: null,
+              heightCm: null,
+              weightKg: null,
+              activityLevel: null,
+              goal: "MAINTAIN",
+              calorieTarget: 2_000,
+            },
+          };
     },
   },
   meal: {
@@ -199,6 +216,54 @@ fakePrisma = {
       return row;
     },
   },
+  healthMetric: {
+    findMany: async (argsValue: unknown) => {
+      const args = record(argsValue);
+      const where = record(args.where);
+      const range = where.measuredAt ? record(where.measuredAt) : {};
+      const order = args.orderBy ? record(args.orderBy) : {};
+      let rows = store.healthMetrics.filter((row) =>
+        row.userId === where.userId &&
+        (!where.type || row.type === where.type) &&
+        (!(range.gte instanceof Date) || (row.measuredAt as Date) >= range.gte) &&
+        (!(range.lt instanceof Date) || (row.measuredAt as Date) < range.lt),
+      );
+      rows = [...rows].sort((left, right) => {
+        const direction = order.measuredAt === "desc" ? -1 : 1;
+        return direction * ((left.measuredAt as Date).getTime() - (right.measuredAt as Date).getTime());
+      });
+      return typeof args.take === "number" ? rows.slice(0, args.take) : rows;
+    },
+    findFirst: async (argsValue: unknown) => {
+      const args = record(argsValue);
+      const where = record(args.where);
+      const range = where.measuredAt ? record(where.measuredAt) : {};
+      const unit = where.unit ? record(where.unit) : null;
+      return (
+        [...store.healthMetrics]
+          .filter((row) =>
+            row.userId === where.userId &&
+            row.type === where.type &&
+            (!(range.lt instanceof Date) || (row.measuredAt as Date) < range.lt) &&
+            (!unit || String(row.unit).toLowerCase() === String(unit.equals).toLowerCase()),
+          )
+          .sort((left, right) => (right.measuredAt as Date).getTime() - (left.measuredAt as Date).getTime())[0] ?? null
+      );
+    },
+  },
+  weeklySummary: {
+    findUnique: async (argsValue: unknown) => {
+      const where = record(record(argsValue).where);
+      const key = record(where.userId_weekStart);
+      const weekStart = key.weekStart as Date;
+      return store.weeklySummaries.find(
+        (row) =>
+          row.userId === key.userId &&
+          row.weekStart instanceof Date &&
+          row.weekStart.getTime() === weekStart.getTime(),
+      ) ?? null;
+    },
+  },
   aiAuditEvent: {
     create: async (argsValue: unknown) => {
       const data = record(record(argsValue).data);
@@ -256,6 +321,8 @@ beforeEach(() => {
   store.meals = [];
   store.savedFoods = [];
   store.waterLogs = [];
+  store.healthMetrics = [];
+  store.weeklySummaries = [];
   store.auditEvents = [];
   store.serial = 0;
 });
@@ -450,6 +517,199 @@ test("water-log create and list append one immutable audit event", async () => {
     store.auditEvents.filter((event) => event.action === "AI_CREATE_SUCCEEDED").length,
     1,
   );
+});
+
+test("health history returns only the authenticated user's bounded plaintext metrics", async () => {
+  const services = await servicesPromise;
+  store.healthMetrics = [
+    {
+      id: "weight-user-a",
+      userId: "user-a",
+      type: "WEIGHT",
+      unit: "kg",
+      measuredAt: new Date("2026-09-08T08:00:00.000Z"),
+      value: 64.5,
+      encValue: null,
+    },
+    {
+      id: "weight-user-b",
+      userId: "user-b",
+      type: "WEIGHT",
+      unit: "kg",
+      measuredAt: new Date("2026-09-08T08:00:00.000Z"),
+      value: 91,
+      encValue: null,
+    },
+    {
+      id: "sleep-user-a",
+      userId: "user-a",
+      type: "SLEEP",
+      unit: "minutes",
+      measuredAt: new Date("2026-09-08T09:00:00.000Z"),
+      value: 420,
+      encValue: null,
+    },
+    {
+      id: "steps-user-a",
+      userId: "user-a",
+      type: "STEPS",
+      unit: "steps",
+      measuredAt: new Date(Date.now() - 60_000),
+      value: 123,
+      encValue: null,
+    },
+    {
+      id: "steps-user-b",
+      userId: "user-b",
+      type: "STEPS",
+      unit: "steps",
+      measuredAt: new Date(Date.now() - 60_000),
+      value: 9_999,
+      encValue: null,
+    },
+  ];
+
+  const result = await services.getHealthDataService(
+    invocation("user-a", "get_health_data", "health-read"),
+    { types: ["WEIGHT", "SLEEP"], limit: 7 },
+  );
+
+  assert.match(result.context, /今日步數 123 步/);
+  assert.doesNotMatch(result.context, /9999/);
+  assert.deepEqual(result.series, [
+    {
+      type: "WEIGHT",
+      unit: "kg",
+      points: [{ at: "2026-09-08T08:00:00.000Z", value: 64.5 }],
+    },
+    {
+      type: "SLEEP",
+      unit: "minutes",
+      points: [{ at: "2026-09-08T09:00:00.000Z", value: 420 }],
+    },
+  ]);
+  assert.deepEqual(Object.keys(result.series[0]), ["type", "unit", "points"]);
+  assert.deepEqual(Object.keys(result.series[0].points[0]), ["at", "value"]);
+  assert.equal(store.auditEvents.at(-1)?.userId, "user-a");
+  assert.equal(store.auditEvents.at(-1)?.resourceType, "HEALTH_METRIC");
+});
+
+test("weekly recap is read-only and scopes stats and stored AI text to its user", async () => {
+  const services = await servicesPromise;
+  const weekStart = new Date("2026-09-07T00:00:00.000Z");
+  store.meals = [
+    {
+      id: "meal-user-a",
+      userId: "user-a",
+      eatenAt: new Date("2026-09-08T12:00:00.000Z"),
+      totalCalories: 500,
+      totalProtein: 30,
+      totalFat: 15,
+      totalCarbs: 60,
+    },
+    {
+      id: "meal-user-b",
+      userId: "user-b",
+      eatenAt: new Date("2026-09-08T12:00:00.000Z"),
+      totalCalories: 2_000,
+      totalProtein: 100,
+      totalFat: 80,
+      totalCarbs: 200,
+    },
+  ];
+  store.waterLogs = [
+    {
+      id: "water-user-a",
+      userId: "user-a",
+      drankAt: new Date("2026-09-08T08:00:00.000Z"),
+      amountMl: 600,
+    },
+    {
+      id: "water-user-b",
+      userId: "user-b",
+      drankAt: new Date("2026-09-08T08:00:00.000Z"),
+      amountMl: 4_000,
+    },
+  ];
+  store.healthMetrics = [
+    {
+      id: "weight-start-user-a",
+      userId: "user-a",
+      type: "WEIGHT",
+      unit: "kg",
+      measuredAt: new Date("2026-09-08T08:00:00.000Z"),
+      value: 65,
+      encValue: null,
+    },
+    {
+      id: "weight-end-user-a",
+      userId: "user-a",
+      type: "WEIGHT",
+      unit: "kg",
+      measuredAt: new Date("2026-09-12T08:00:00.000Z"),
+      value: 64.5,
+      encValue: null,
+    },
+    {
+      id: "weight-user-b",
+      userId: "user-b",
+      type: "WEIGHT",
+      unit: "kg",
+      measuredAt: new Date("2026-09-08T08:00:00.000Z"),
+      value: 90,
+      encValue: null,
+    },
+  ];
+  store.weeklySummaries = [
+    {
+      id: "summary-user-a",
+      userId: "user-a",
+      weekStart,
+      totalCalories: 500,
+      totalProtein: 30,
+      totalFat: 15,
+      totalCarbs: 60,
+      waterTotalMl: 600,
+      aiSummary: "User A weekly recap",
+      aiRecommendation: "User A recommendation",
+      encAiSummary: null,
+      encAiRecommendation: null,
+    },
+    {
+      id: "summary-user-b",
+      userId: "user-b",
+      weekStart,
+      totalCalories: 2_000,
+      totalProtein: 100,
+      totalFat: 80,
+      totalCarbs: 200,
+      waterTotalMl: 4_000,
+      aiSummary: "User B private recap",
+      aiRecommendation: "User B private recommendation",
+      encAiSummary: null,
+      encAiRecommendation: null,
+    },
+  ];
+
+  const result = await services.getWeeklySummaryService(
+    invocation("user-a", "get_weekly_summary", "weekly-read"),
+    { date: "2026-09-09" },
+  );
+
+  assert.ok(result.summary);
+  assert.equal(result.summary.weekStartDate, "2026-09-07");
+  assert.equal(result.summary.weekEndDate, "2026-09-13");
+  assert.equal(result.summary.totals.calories, 500);
+  assert.equal(result.summary.waterTotalMl, 600);
+  assert.equal(result.summary.weightStartKg, 65);
+  assert.equal(result.summary.weightEndKg, 64.5);
+  assert.equal(result.summary.weightChangeKg, -0.5);
+  assert.equal(result.summary.aiSummary, "User A weekly recap");
+  assert.equal(result.summary.aiRecommendation, "User A recommendation");
+  assert.equal("userId" in result.summary, false);
+  assert.equal(store.weeklySummaries.length, 2);
+  assert.equal(store.auditEvents.at(-1)?.userId, "user-a");
+  assert.equal(store.auditEvents.at(-1)?.resourceType, "WEEKLY_SUMMARY");
 });
 
 test("authorized human restore compensates the create and preserves immutable history", async () => {
