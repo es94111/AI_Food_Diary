@@ -30,6 +30,7 @@ import { decryptField } from "@/lib/field-crypto";
 
 export const EXPORT_FORMAT = "ai-food-diary-export";
 export const EXPORT_VERSION = 1;
+export const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
 
 function isPayload(value: unknown): boolean {
   return (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth";
 import { apiRoute, HttpError } from "@/lib/http";
-import { applyImport, ImportValidationError } from "@/lib/admin-export";
+import { applyImport, ImportValidationError, MAX_IMPORT_BYTES } from "@/lib/admin-export";
 import { enforceAdminDataImportRateLimit } from "@/lib/rate-limit";
 
 // Admin full-database import: accepts an export envelope, re-encrypts every
@@ -9,7 +9,6 @@ import { enforceAdminDataImportRateLimit } from "@/lib/rate-limit";
 // order. skip-existing (default) is non-destructive; overwrite requires an
 // explicit confirm flag — mirrored after the DB_BACKUP_CONFIRMED=yes gate in
 // scripts/encryption-migration.ts.
-const MAX_IMPORT_BYTES = 50 * 1024 * 1024; // 50 MB
 
 type ParsedInput = { raw: string; mode: "skip-existing" | "overwrite" };
 
