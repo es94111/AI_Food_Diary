@@ -58,6 +58,21 @@ class AuthService {
     }
   }
 
+  static Future<bool> deleteAccount() async {
+    final res = await _api.delete(
+      '/api/account',
+      data: {'confirmation': 'DELETE'},
+    );
+    if (!ApiClient.ok(res)) {
+      throw ApiException(
+        ApiClient.errorMessage(res, '帳號刪除失敗，請稍後再試'),
+        statusCode: res.statusCode,
+      );
+    }
+    final data = res.data;
+    return data is Map && data['photoCleanup'] == 'pending';
+  }
+
   static Future<void> logout() async {
     try {
       await _api.post('/api/auth/logout');

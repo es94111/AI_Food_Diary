@@ -327,13 +327,12 @@ model HealthConnection {
 }
 
 // Security audit stream for AI/MCP activity and human compensating restores.
-// The database migration installs a trigger that rejects UPDATE and DELETE;
-// all current state (including whether an action was restored) is derived from
-// this immutable event history.
+// Events are append-only; the database permits only unlinking a deleted user's
+// identity fields. Current state is derived from this immutable event history.
 model AiAuditEvent {
   id                 String    @id @default(cuid())
   occurredAt         DateTime  @default(now())
-  userId             String
+  userId             String?
   actorType          String
   actorSource        String
   action             String
@@ -354,7 +353,7 @@ model AiAuditEvent {
   restoreReason      String?
   createdAt          DateTime  @default(now())
 
-  user             User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user             User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
   originalAiAction AiAuditEvent?  @relation("AiAuditRestoreChain", fields: [originalAiActionId], references: [id], onDelete: Restrict)
   restoreEvents    AiAuditEvent[] @relation("AiAuditRestoreChain")
 
@@ -384,4 +383,14 @@ model McpOAuthAuthorizationCode {
 
   @@index([userId, expiresAt])
   @@index([expiresAt, redeemedAt])
+}
+
+// Durable outbox for object-storage cleanup after the account's DB transaction.
+// The prefix is retained only while photo deletion needs retrying.
+model AccountDeletionPhotoCleanup {
+  id            String   @id @default(cuid())
+  storagePrefix String   @unique
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
 }
