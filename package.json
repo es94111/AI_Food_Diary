@@ -31,6 +31,7 @@
     "test:nouriledger": "node --conditions=react-server --import tsx --test tests/nouriledger/*.test.ts",
     "test:insights": "node --conditions=react-server --import tsx --experimental-test-module-mocks --test tests/insights/*.test.ts",
     "test:api": "node --conditions=react-server --import tsx --experimental-test-module-mocks --test tests/api/*.test.ts",
+    "test:recording-streak": "node --conditions=react-server --import tsx --test tests/recording-streak/*.test.ts",
     "test:brand-search": "node --conditions=react-server --import tsx --test tests/brand-search/*.test.ts",
     "test:brand-search:hit-rate": "tsx --conditions=react-server scripts/brand-search-hit-rate.ts",
     "worker": "tsx --conditions=react-server src/worker.ts"

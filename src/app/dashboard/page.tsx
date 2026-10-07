@@ -11,6 +11,8 @@ import { decryptMeal } from "@/lib/b2-crypto";
 import { mealImagePaths } from "@/lib/image-links";
 import { calculateBmr, calculateTdee, calorieTargetFromGoal } from "@/lib/metabolism";
 import { MAX_WATER_LOGS_PER_DAY } from "@/lib/water-limits";
+import { getRecordingStreak } from "@/lib/recording-streak-data";
+import { RecordingStreakCard } from "@/components/recording-streak-card";
 import { MealCaptureForm } from "@/components/meal-capture-form";
 import { DailySummaryPopup } from "@/components/daily-summary-popup";
 import { AiInfoCard } from "@/components/ai-info-card";
@@ -26,19 +28,23 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
   const params = await searchParams;
   const cookieStore = await cookies();
   const tz = resolveUserTz(cookieStore.get(TZ_COOKIE)?.value, user.profile?.timezone);
-  const todayStrValue = todayStr(tz);
+  const now = new Date();
+  const todayStrValue = todayStr(tz, now);
   const selectedDateStr = normalizeDateStr(params.date, tz);
   const view = params.view === "week" ? "week" : "day";
 
   const { start, end } = view === "week" ? weekRangeUtc(selectedDateStr, tz) : dayRangeUtc(selectedDateStr, tz);
-  const meals = await prisma.meal.findMany({
-    where: { userId: user.id, eatenAt: { gte: start, lt: end } },
-    include: { items: true },
-    orderBy: { eatenAt: "desc" }
-  });
-  const todayRecommendation = await prisma.dailyRecommendation.findUnique({
-    where: { userId_recommendationDate: { userId: user.id, recommendationDate: dayStartUtc(todayStrValue, tz) } }
-  });
+  const [meals, todayRecommendation, recordingStreak] = await Promise.all([
+    prisma.meal.findMany({
+      where: { userId: user.id, eatenAt: { gte: start, lt: end } },
+      include: { items: true },
+      orderBy: { eatenAt: "desc" }
+    }),
+    prisma.dailyRecommendation.findUnique({
+      where: { userId_recommendationDate: { userId: user.id, recommendationDate: dayStartUtc(todayStrValue, tz) } }
+    }),
+    getRecordingStreak(user.id, tz, now)
+  ]);
 
   // The calorie target tracks the latest Health Connect weight/height when
   // synced; fetch just those two metrics rather than the whole health set.
@@ -216,6 +222,8 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
             <div className="pulse-note"><span className="pulse-note-mark" aria-hidden="true">↗</span><p>{mealList.length ? `你已經記下 ${mealList.length} 個餐點，繼續保持這個節奏。` : "從一個餐點開始，今天的資料會慢慢成形。"}</p></div>
           </article>
         </section>
+
+        <RecordingStreakCard streak={recordingStreak} />
 
         <div className="dashboard-workspace-grid">
           <section className="dashboard-main-stack" aria-label="餐點紀錄">

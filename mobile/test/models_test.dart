@@ -24,6 +24,7 @@ void main() {
         'goal': 'LOSE_FAT',
         'calorieTarget': 1800,
         'waterGoalMl': 2500,
+        'timezone': 'America/New_York',
       });
       expect(p.gender, 'MALE');
       expect(p.birthDate, '1990-05-01');
@@ -33,6 +34,7 @@ void main() {
       expect(p.goal, 'LOSE_FAT');
       expect(p.calorieTarget, 1800);
       expect(p.waterGoalMl, 2500);
+      expect(p.timezone, 'America/New_York');
     });
 
     test('falls back to defaults when fields are missing', () {
@@ -42,6 +44,7 @@ void main() {
       expect(p.waterGoalMl, 2000);
       expect(p.heightCm, isNull);
       expect(p.weightKg, isNull);
+      expect(p.timezone, isNull);
     });
 
     test('coerces numeric strings to numbers', () {
@@ -53,6 +56,26 @@ void main() {
       expect(p.heightCm, 175);
       expect(p.weightKg, 70.5);
       expect(p.calorieTarget, 1800);
+    });
+  });
+
+  group('RecordingStreak', () {
+    test('parses current, longest, and last-recorded values', () {
+      final streak = RecordingStreak.fromJson({
+        'currentStreak': 3,
+        'longestStreak': 8,
+        'lastRecordedDate': '2026-10-07',
+      });
+      expect(streak.currentStreak, 3);
+      expect(streak.longestStreak, 8);
+      expect(streak.lastRecordedDate, '2026-10-07');
+    });
+
+    test('defaults an empty streak to zero values and no last date', () {
+      final streak = RecordingStreak.fromJson({});
+      expect(streak.currentStreak, 0);
+      expect(streak.longestStreak, 0);
+      expect(streak.lastRecordedDate, isNull);
     });
   });
 

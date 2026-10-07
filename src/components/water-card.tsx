@@ -50,7 +50,10 @@ export function WaterCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountMl })
       });
-      if (res.ok) await refresh();
+      if (res.ok) {
+        await refresh();
+        router.refresh();
+      }
     } finally {
       setBusy(false);
     }
@@ -68,7 +71,10 @@ export function WaterCard({
     setBusy(true);
     try {
       const res = await fetch(`/api/water/${id}`, { method: "DELETE" });
-      if (res.ok) await refresh();
+      if (res.ok) {
+        await refresh();
+        router.refresh();
+      }
     } finally {
       setBusy(false);
     }
