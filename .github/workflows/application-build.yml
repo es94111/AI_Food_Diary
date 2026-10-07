@@ -41,3 +41,57 @@ jobs:
 
       - name: Build application
         run: npm run build
+
+  api-integration:
+    name: Core API integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: food_diary_test
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U user -d food_diary_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://user:password@127.0.0.1:5432/food_diary_test
+      FOOD_TEST_DATABASE_URL: postgresql://user:password@127.0.0.1:5432/food_diary_test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          # Node 24 supports the test runner module mocks used by route suites.
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations to the disposable test database
+        run: npx prisma migrate deploy
+
+      - name: Run personal data export integration tests
+        if: ${{ hashFiles('tests/data-export/*.test.ts') != '' }}
+        run: npm run test:data-export
+
+      - name: Run core API integration tests
+        run: npm run test:api
+
+      - name: Run existing database-backed integration tests
+        run: npm run test:nouriledger && npm run test:insights
