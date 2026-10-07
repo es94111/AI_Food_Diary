@@ -1,0 +1,25 @@
+{
+  "id": "/dashboard",
+  "name": "AI Food Diary",
+  "short_name": "飲食日記",
+  "description": "用 AI 記錄飲食、估算營養並提供下一餐建議",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f7f2e9",
+  "theme_color": "#b45309",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
