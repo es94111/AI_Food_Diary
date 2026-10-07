@@ -32,6 +32,8 @@
 
 ## WEB 功能
 
+PWA 安裝、離線頁面、Service Worker 快取範圍與餐點草稿保存／失效規則，見 [Web PWA 與離線資料政策](web-pwa-offline.md)。
+
 所有 API 路由位於 `src/app/api/`，路徑前綴 `/api`。除非標註「Public」或「Admin」，皆需登入（`requireUser`，缺 Cookie 回 401）。會呼叫 AI 的路由另套用「每位使用者 AI 速率限制」（`enforceAiRateLimit`）。
 
 ### 1. 認證與使用者
@@ -243,6 +245,7 @@ Flutter（Android）App，路徑 `mobile/`。Base URL `https://aifood.shao.one`�
 
 | 指令 | 涵蓋 |
 | --- | --- |
+| `npm run test:pwa` | PWA manifest／圖示、Service Worker 公開資源快取政策、離線頁、草稿還原與登出清理 |
 | `npm run test:storage` | 照片 signed URL：HMAC 簽章、`user`／`ai` scope 隔離、過期、竄改、擁有者前綴、舊版 data URL 相容、AI 圖片來源解析 |
 | `npm run test:mcp` | MCP 工具、政策與傳輸契約 |
 | `npm run test:nouriledger` | 舊站匯出／授權碼（資料庫測試需 `FOOD_TEST_DATABASE_URL`） |
