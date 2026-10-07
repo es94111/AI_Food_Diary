@@ -247,6 +247,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 @media (max-width: 1023px) {
   .dashboard-app-shell { display: block; }
+  .offline-status-banner { padding: 10px 16px; font-size: 12px; }
   .dashboard-sidebar { display: none; }
   .dashboard-topbar { min-height: 64px; padding-inline: 24px; }
   .dashboard-content { padding: 32px 24px 96px; }
@@ -272,6 +273,51 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Public pages: the same warm editorial language as the signed-in workspace. */
 ::selection { color: #211d1a; background: #f5d28b; }
+
+.offline-status-banner {
+  margin: 0;
+  padding: 11px 20px;
+  color: #6d3b07;
+  background: #fff2cc;
+  border-bottom: 1px solid #f1d797;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.meal-draft-status {
+  margin-top: 14px;
+  padding: 12px;
+  color: #5f481d;
+  background: #fff7e6;
+  border: 1px solid #f0dfbe;
+  border-radius: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.meal-draft-status button {
+  margin-top: 8px;
+  color: #92400e;
+  font-weight: 800;
+  text-decoration: underline;
+}
+
+.logout-error-toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 80;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 12px 16px;
+  color: #7f1d1d;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(41, 35, 32, .16);
+  font-size: 13px;
+  font-weight: 700;
+}
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: 2px solid var(--amber);
   outline-offset: 3px;
