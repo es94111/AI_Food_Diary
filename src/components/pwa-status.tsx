@@ -6,6 +6,7 @@ export function PwaStatus() {
   const [online, setOnline] = useState(true);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Read browser network status after hydration to keep server/client markup consistent.
     setOnline(navigator.onLine);
     const handleOnline = () => setOnline(true);
     const handleOffline = () => setOnline(false);

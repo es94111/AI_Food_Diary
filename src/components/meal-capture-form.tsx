@@ -225,6 +225,7 @@ export function MealCaptureForm({
     try {
       const draft = loadMealDraft(window.localStorage, userId);
       if (draft) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore the user's browser draft after client hydration.
         setMode(draft.mode);
         setMealType(draft.mealType);
         setEatenAtLocal(draft.eatenAtLocal);
@@ -265,6 +266,7 @@ export function MealCaptureForm({
       if (hasContent) saveMealDraft(window.localStorage, userId, draft);
       else {
         removeMealDraft(window.localStorage, userId);
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Clear the restoration indicator when the persisted draft is removed.
         setDraftRestored(false);
       }
       setDraftSaveError(false);
