@@ -92,6 +92,9 @@ jobs:
       - name: Apply migrations to the disposable test database
         run: npx prisma migrate deploy
 
+      - name: Run account deletion integration tests
+        run: npm run test:account-deletion
+
       - name: Run personal data export integration tests
         if: ${{ hashFiles('tests/data-export/*.test.ts') != '' }}
         run: npm run test:data-export

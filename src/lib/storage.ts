@@ -1,6 +1,13 @@
 import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  GetObjectCommand,
+  ListObjectsV2Command
+} from "@aws-sdk/client-s3";
 import { encryptBytes, decryptBytes } from "./encryption";
 
 // Self-describing envelope for an encrypted image object. Layout:
@@ -194,6 +201,25 @@ export async function encryptExistingImage(key: string): Promise<"encrypted" | "
 
 export async function deleteImage(key: string): Promise<void> {
   await createClient().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
+}
+
+export async function deleteImages(keys: readonly string[]): Promise<void> {
+  if (keys.length === 0) return;
+  const client = createClient();
+  for (let start = 0; start < keys.length; start += 1000) {
+    const result = await client.send(
+      new DeleteObjectsCommand({
+        Bucket: bucket(),
+        Delete: {
+          Objects: keys.slice(start, start + 1000).map((Key) => ({ Key })),
+          Quiet: true
+        }
+      })
+    );
+    if (result.Errors?.length) {
+      throw new Error(`Failed to delete ${result.Errors.length} image object(s) from storage`);
+    }
+  }
 }
 
 // Returns true when the value is an S3 object key (not a legacy data URL)

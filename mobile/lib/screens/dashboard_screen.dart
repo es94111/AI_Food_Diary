@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
+import '../services/account_session_cleanup.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
@@ -72,6 +73,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   int _savedFoodsRevision = 0;
   final Set<int> _mountedTabs = {0};
   bool _loading = true;
+  bool _deletingAccount = false;
   String? _error;
   int _mealLoadGeneration = 0;
 
@@ -374,19 +376,30 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
-  Future<void> _logout() async {
-    // Never carry an in-flight or completed draft across account sessions.
-    await _analysis.cancel();
-    try {
-      await LocalReminderService.instance.cancelRemindersOnSignOut();
-    } catch (_) {
-      // Reminders are generic device-local copy, so a failed cancel is safe.
-    }
-    HealthAutoSync.instance.deactivate();
-    await GoogleAuth.signOut();
-    await AuthService.logout();
-    await HomeWidgetService.clearCalorieProgress();
-    if (!mounted) return;
+  Future<void> _clearAccountSession({
+    required bool revokeOnServer,
+    bool clearHealthToken = false,
+  }) {
+    return AccountSessionCleanup.run(
+      cancelAnalysis: () async {
+        await _analysis.cancel();
+        // Reminders are generic device-local copy; cancellation is best effort.
+        try {
+          await LocalReminderService.instance.cancelRemindersOnSignOut();
+        } catch (_) {}
+      },
+      deactivateHealthSync: HealthAutoSync.instance.deactivate,
+      signOutGoogle: GoogleAuth.signOut,
+      revokeOnServer: AuthService.logout,
+      clearLocalSession: ApiClient.instance.clearSession,
+      clearHealthToken: HealthService.clearToken,
+      clearHomeWidget: HomeWidgetService.clearCalorieProgress,
+      revokeServerSession: revokeOnServer,
+      clearHealthTokenOnDelete: clearHealthToken,
+    );
+  }
+
+  void _navigateToLogin() {
     Navigator.of(context).pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => const LoginScreen(),
@@ -394,6 +407,153 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       (route) => false,
     );
+  }
+
+  Future<void> _showAccountCleanupFailureWarning({
+    required bool accountDeleted,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(accountDeleted ? '帳號已刪除，裝置清理未完成' : '登出清理未完成'),
+        content: Text(
+          accountDeleted
+              ? '帳號與伺服器資料已永久刪除，但裝置上的部分登入資訊或快取未能確認清除。若重新開啟後仍顯示舊資料，請在 Android 設定的應用程式儲存空間中清除 AI Food Diary 資料。伺服器刪除無法復原。'
+              : '已嘗試清除登入資訊與快取，但部分本機清理失敗。將返回登入頁；若重新開啟後仍顯示舊帳號，請在 Android 設定的應用程式儲存空間中清除 AI Food Diary 資料。',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('前往登入頁'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _logout() async {
+    await AccountSessionCleanup.runLogoutAndNavigate(
+      cleanup: () => _clearAccountSession(revokeOnServer: true),
+      showFailureWarning: () =>
+          _showAccountCleanupFailureWarning(accountDeleted: false),
+      navigateToLogin: () {
+        if (mounted) _navigateToLogin();
+      },
+    );
+  }
+
+  Future<bool> _confirmAccountDeletion() async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('永久刪除帳號？'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '此操作會立即刪除你的個人設定、餐點與照片、常用食物、餐組、飲水、摘要、健康資料及未使用的 OAuth 授權碼，並撤銷登入，無法復原。請先保存需要保留的資料。',
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'AI 操作稽核紀錄（包含加密的前後狀態）會保留，但會解除與你的帳號及還原者身分連結。若照片儲存服務暫時失敗，帳號仍會刪除，照片清理將保留待維運人員重試。',
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  onChanged: (_) => setDialogState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: '輸入 DELETE 以確認',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: controller.text == 'DELETE'
+                  ? () => Navigator.of(dialogContext).pop(true)
+                  : null,
+              child: const Text('永久刪除'),
+            ),
+          ],
+        ),
+      ),
+    );
+    final hasConfirmation = confirmed == true && controller.text == 'DELETE';
+    controller.dispose();
+    return hasConfirmation;
+  }
+
+  Future<void> _deleteAccount() async {
+    if (_deletingAccount) return;
+    final confirmed = await _confirmAccountDeletion();
+    if (!confirmed || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    var accountDeleted = false;
+    try {
+      final photoCleanupPending = await AuthService.deleteAccount();
+      accountDeleted = true;
+      final cleanupSucceeded =
+          await AccountSessionCleanup.runDeletedAccountCleanup(
+        cleanup: () => _clearAccountSession(
+          revokeOnServer: false,
+          clearHealthToken: true,
+        ),
+        showFailureWarning: () =>
+            _showAccountCleanupFailureWarning(accountDeleted: true),
+        navigateToLogin: () {
+          if (mounted) _navigateToLogin();
+        },
+      );
+      if (!cleanupSucceeded || !mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('帳號已刪除'),
+          content: Text(
+            photoCleanupPending
+                ? '帳號與資料已刪除並登出；照片清理尚未完成，待處理工作可由維運人員重試。'
+                : '帳號與資料已刪除，所有登入工作階段已失效。',
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('返回登入'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      _navigateToLogin();
+    } catch (error) {
+      if (!mounted) return;
+      if (accountDeleted) {
+        // The server-side deletion already succeeded; the guarded helper has
+        // handled any local-cleanup warning. Just leave the screen.
+        _navigateToLogin();
+        return;
+      }
+      final message = error is ApiException
+          ? error.message
+          : '帳號刪除結果無法確認；若已刪除，所有登入工作階段均已失效。';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      setState(() => _deletingAccount = false);
+    }
   }
 
   Future<bool> _consumeInitialWidgetAction() async {
@@ -990,6 +1150,20 @@ class _DashboardScreenState extends State<DashboardScreen>
               );
               if (mounted) setState(() => _savedFoodsRevision++);
             },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: Icon(Icons.delete_forever_outlined, color: context.palette.danger),
+            title: const Text('永久刪除帳號'),
+            subtitle: Text(
+              _deletingAccount
+                  ? '正在刪除帳號…'
+                  : '永久刪除帳號與個人資料，此操作無法復原',
+            ),
+            enabled: !_deletingAccount,
+            onTap: _deletingAccount ? null : _deleteAccount,
           ),
         ),
         if (GoogleAuth.isConfigured) ...[

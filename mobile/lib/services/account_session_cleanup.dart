@@ -1,0 +1,84 @@
+typedef AccountCleanupTask = Future<void> Function();
+
+class AccountSessionCleanup {
+  static Future<bool> runDeletedAccountCleanup({
+    required AccountCleanupTask cleanup,
+    required AccountCleanupTask showFailureWarning,
+    required void Function() navigateToLogin,
+  }) async {
+    try {
+      await cleanup();
+      return true;
+    } catch (_) {
+      try {
+        await showFailureWarning();
+      } catch (_) {}
+      navigateToLogin();
+      return false;
+    }
+  }
+
+  static Future<bool> runLogoutAndNavigate({
+    required AccountCleanupTask cleanup,
+    required AccountCleanupTask showFailureWarning,
+    required void Function() navigateToLogin,
+  }) async {
+    var cleanupSucceeded = true;
+    try {
+      await cleanup();
+    } catch (_) {
+      cleanupSucceeded = false;
+      try {
+        await showFailureWarning();
+      } catch (_) {}
+    } finally {
+      navigateToLogin();
+    }
+    return cleanupSucceeded;
+  }
+
+  static Future<void> run({
+    required AccountCleanupTask cancelAnalysis,
+    required void Function() deactivateHealthSync,
+    required AccountCleanupTask signOutGoogle,
+    required AccountCleanupTask revokeOnServer,
+    required AccountCleanupTask clearLocalSession,
+    required AccountCleanupTask clearHealthToken,
+    required AccountCleanupTask clearHomeWidget,
+    required bool revokeServerSession,
+    required bool clearHealthTokenOnDelete,
+  }) async {
+    await _ignoreFailure(cancelAnalysis);
+    try {
+      deactivateHealthSync();
+    } catch (_) {}
+    await _ignoreFailure(signOutGoogle);
+    if (revokeServerSession) await _ignoreFailure(revokeOnServer);
+
+    Object? firstError;
+    StackTrace? firstStackTrace;
+
+    Future<void> runMandatory(AccountCleanupTask task) async {
+      try {
+        await task();
+      } catch (error, stackTrace) {
+        firstError ??= error;
+        firstStackTrace ??= stackTrace;
+      }
+    }
+
+    await runMandatory(clearLocalSession);
+    if (clearHealthTokenOnDelete) await runMandatory(clearHealthToken);
+    await runMandatory(clearHomeWidget);
+
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError!, firstStackTrace!);
+    }
+  }
+
+  static Future<void> _ignoreFailure(AccountCleanupTask task) async {
+    try {
+      await task();
+    } catch (_) {}
+  }
+}

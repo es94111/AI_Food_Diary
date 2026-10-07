@@ -8,6 +8,7 @@ import { LogoutButton } from "@/components/logout-button";
 import { GoogleLinkPanel } from "@/components/google-link-panel";
 import { Metric } from "@/components/health-cards";
 import { NouriLedgerMigrationCard } from "@/components/nouriledger-migration-card";
+import { AccountDeletionPanel } from "@/components/account-deletion-panel";
 import { WEB_VERSION } from "@/lib/version";
 import { getLatestAppRelease } from "@/lib/app-release";
 
@@ -105,6 +106,7 @@ export default async function SettingsPage() {
             </a>
           ) : null}
         </div>
+        <AccountDeletionPanel />
         <div>
           <LogoutButton />
         </div>
