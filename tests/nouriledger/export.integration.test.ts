@@ -35,7 +35,7 @@ async function setup() {
   const hugePhoto = `meals/${alice.id}/huge.jpg`;
   const brokenPhoto = `meals/${alice.id}/broken.jpg`;
   const missingPhoto = `meals/${alice.id}/missing.jpg`;
-  const foreignPhoto = `meals/${bob.id}/private.jpg`;
+  const foreignPhoto = "meals/other-user/private.jpg";
   const photos = new Map<string, { body: Buffer; contentType: string }>([
     [mealPhoto, { body: jpeg(1), contentType: "image/jpeg" }],
     [chickenPhoto, { body: jpeg(2), contentType: "image/png" }],
@@ -258,7 +258,7 @@ test("an account without photos still exports cleanly, and an oversized total is
 
   const crowded = await prisma.user.create({ data: { email: `crowded-${suffix}@export.test`, passwordHash: "x" } });
   try {
-    const keys = Array.from({ length: 14 }, (_, index) => `meals/crowded/${index}.jpg`);
+    const keys = Array.from({ length: 14 }, (_, index) => `meals/${crowded.id}/${index}.jpg`);
     await prisma.meal.create({ data: { userId: crowded.id, mealType: "SNACK", imageStorageKey: keys[0], imageStorageKeys: keys, totalCalories: 1 } });
     const big = Buffer.alloc(packager.MAX_IMAGE_BYTES - 1024, 5);
     await assert.rejects(() => packager.buildNouriLedgerPackage(crowded.id, async () => ({ body: big, contentType: "image/jpeg" })), (error: unknown) => error instanceof packager.ExportTooLargeError);
@@ -271,7 +271,7 @@ test("photos are fetched a few at a time and still land in their original order"
   const { prisma, packager, suffix } = ctx;
   const user = await prisma.user.create({ data: { email: `parallel-${suffix}@export.test`, passwordHash: "x" } });
   try {
-    const keys = Array.from({ length: 10 }, (_, index) => `meals/parallel/${index}.jpg`);
+    const keys = Array.from({ length: 10 }, (_, index) => `meals/${user.id}/${index}.jpg`);
     await prisma.meal.create({ data: { userId: user.id, mealType: "SNACK", imageStorageKey: keys[0], imageStorageKeys: keys, totalCalories: 1 } });
     let active = 0;
     let peak = 0;

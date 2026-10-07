@@ -134,7 +134,8 @@ test("a disabled account or a revoked session (tokenVersion) cannot redeem a cod
 test("photos that cannot be read do not fail the export; they are reported in a header", { skip }, async () => {
   const { makeUser, grantFor, post, exportRoute, prisma } = ctx;
   const user = await makeUser("karl");
-  await prisma.meal.create({ data: { userId: user.id, mealType: "BREAKFAST", imageStorageKey: "meals/karl/gone.jpg", imageStorageKeys: ["meals/karl/gone.jpg"], totalCalories: 300 } });
+  const photoKey = `meals/${user.id}/gone.jpg`;
+  await prisma.meal.create({ data: { userId: user.id, mealType: "BREAKFAST", imageStorageKey: photoKey, imageStorageKeys: [photoKey], totalCalories: 300 } });
   const response = await post(exportRoute, grantFor(user));
   assert.equal(response.status, 200, "object storage is not configured in this test, so every read fails");
   const header = response.headers.get("x-nouriledger-export-warnings");
