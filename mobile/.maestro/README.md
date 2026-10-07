@@ -64,9 +64,15 @@ setup on a fresh emulator.
 - Google provider integration details — token verification and account policy
   still require backend integration tests; Maestro only exercises the client
   handoff.
-- CI integration — these flows need a booted Android emulator and are not
-  currently wired into GitHub Actions. Ask before adding that (emulator CI
-  jobs are slow and cost minutes).
+- CI integration — intentionally not wired into GitHub Actions. `ApiClient.baseUrl`
+  is fixed to the production host, login requires a real Google account and an
+  interactive Turnstile challenge, and the meal flow creates then deletes a
+  record on that backend. The PR APK validation job is secret-free, and the app
+  has no isolated test-backend or test-session configuration. Running these
+  flows in CI would either touch production data or require a separate test
+  backend plus a safe auth/challenge path and build-time API URL configuration.
+  Keep Maestro manual until those prerequisites exist; use only a dedicated
+  test account, never a personal account.
 
 ## Troubleshooting
 
