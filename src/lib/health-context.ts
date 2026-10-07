@@ -19,7 +19,8 @@ export async function getHealthContext(userId: string, dayStart: Date, dayEnd: D
       measuredAt: { gte: new Date(dayStart.getTime() - 14 * DAY_MS), lt: dayEnd }
     },
     orderBy: { measuredAt: "desc" },
-    take: 200
+    take: 200,
+    select: { type: true, value: true, encValue: true, unit: true, measuredAt: true }
   });
   // Decrypt each value back to plaintext for the in-process aggregation below.
   const metrics: HealthMetric[] = rawMetrics.map((m) => ({

@@ -31,7 +31,7 @@ test("MCP tool registration contains no forbidden tool names", () => {
   for (const name of ["update", "edit", "patch", "modify", "delete", "remove", "overwrite", "replace", "upsert", "restore"]) {
     assert.doesNotMatch(source, new RegExp(`registerTool\\(\\s*[\\"'](?:${name})_`, "i"));
   }
-  for (const name of ["list_meals", "get_meal", "search_meals", "list_saved_foods", "search_saved_foods", "list_water_logs", "create_meal", "create_saved_food", "create_water_log"]) {
+  for (const name of ["list_meals", "get_meal", "search_meals", "list_saved_foods", "search_saved_foods", "list_water_logs", "get_health_data", "get_weekly_summary", "create_meal", "create_saved_food", "create_water_log"]) {
     assert.match(source, new RegExp(`registerTool\\(\\s*[\\"']${name}[\\"']`));
   }
 });

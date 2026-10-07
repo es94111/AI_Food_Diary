@@ -21,7 +21,32 @@ import {
 // Same minimal user shape the daily summary needs (see daily-summary.ts): the id,
 // the admin flag for the env-key fallback, and the full profile for AI settings
 // and body metrics. Both the API route (requireUser) and the worker provide it.
-export type WeeklySummaryUser = { id: string; isAdmin: boolean; profile: UserProfile | null };
+type WeeklySummaryProfile = Pick<
+  UserProfile,
+  | "gender"
+  | "birthDate"
+  | "heightCm"
+  | "weightKg"
+  | "encGender"
+  | "encBirthDate"
+  | "encHeightCm"
+  | "encWeightKg"
+  | "activityLevel"
+  | "goal"
+  | "calorieTarget"
+  | "timezone"
+>;
+
+export type WeeklySummaryUser = {
+  id: string;
+  isAdmin: boolean;
+  profile: UserProfile | null;
+};
+
+export type WeeklySummaryStatsUser = {
+  id: string;
+  profile: WeeklySummaryProfile | null;
+};
 
 export type WeeklySummaryStats = WeeklySummaryAggregate & {
   targetCalories: number;
@@ -37,7 +62,7 @@ export type WeeklySummaryStats = WeeklySummaryAggregate & {
  * `weekWindow`), so "last week" is never decided by the server's UTC clock.
  */
 export async function collectWeeklySummaryStats(
-  user: WeeklySummaryUser,
+  user: WeeklySummaryStatsUser,
   weekDateStr: string,
   tz: TzSpec
 ): Promise<WeeklySummaryStats> {
