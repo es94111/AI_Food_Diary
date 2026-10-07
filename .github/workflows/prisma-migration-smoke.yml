@@ -60,6 +60,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma client
+        run: npx prisma generate
+
       - name: Apply all committed migrations to empty PostgreSQL
         run: npx prisma migrate deploy
 
