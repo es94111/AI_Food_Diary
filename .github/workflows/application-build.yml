@@ -42,5 +42,8 @@ jobs:
       - name: Lint application
         run: npm run lint
 
+      - name: Test lint config coverage
+        run: npm run test:lint-config
+
       - name: Build application
         run: npm run build

@@ -7,7 +7,8 @@ const react = require("react");
 const eslintRequire = createRequire(require.resolve("eslint"));
 const { Variable } = eslintRequire("eslint-scope");
 const nextParser = nextRequire("./parser");
-// Use Next's Babel parser for TypeScript 7 and adapt its scope manager for ESLint 10.
+// typescript-eslint 8.63 supports TypeScript <6.1; use Next's Babel parser for TypeScript 7.
+// Adapt its scope manager to ESLint 10's globals API.
 const parser = {
   ...nextParser,
   parseForESLint(code, options) {

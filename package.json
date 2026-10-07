@@ -30,6 +30,7 @@
     "test:insights": "node --conditions=react-server --import tsx --experimental-test-module-mocks --test tests/insights/*.test.ts",
     "test:brand-search": "node --conditions=react-server --import tsx --test tests/brand-search/*.test.ts",
     "test:brand-search:hit-rate": "tsx --conditions=react-server scripts/brand-search-hit-rate.ts",
+    "test:lint-config": "node --test tests/lint/eslint-config.test.mjs",
     "worker": "tsx --conditions=react-server src/worker.ts"
   },
   "dependencies": {
