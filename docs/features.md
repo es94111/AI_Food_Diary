@@ -150,7 +150,7 @@ Android APP 餐點新增／修改／刪除或飲水新增／刪除後，會合�
 | 食物 | `/dashboard/foods` | 「我的食物」`SavedFoodsManager` |
 | 餐組 | `/dashboard/meal-bundles` | 「我的餐組」`MealBundlesManager`；建立／編輯／刪除、選用我的食物、可選照片 |
 | 健康 | `/dashboard/health` | Health Connect 同步儀表板；`ActivityHero`；分組 `HealthGroupCard`（活動／睡眠／身體組成）；`HealthHistoryProvider`（點擊鑽取歷史）；BMR/TDEE 代謝卡（Mifflin-St Jeor） |
-| 設定 | `/dashboard/settings` | `ProfileMetabolismForm`、`AiSettingsForm`、`GoogleLinkPanel`（舊帳號綁定）、帳號永久刪除區、版本卡（APK 下載 `/api/app/download`）、`LogoutButton` |
+| 設定 | `/dashboard/settings` | `ProfileMetabolismForm`、`AiSettingsForm`、`GoogleLinkPanel`（舊帳號綁定）、個人資料下載及帳號永久刪除區（刪除前可下載本人 JSON、輸入 `DELETE` 確認）、版本卡（APK 下載 `/api/app/download`）、`LogoutButton` |
 
 ### 背景工作 Worker
 

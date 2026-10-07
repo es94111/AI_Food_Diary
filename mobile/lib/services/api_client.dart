@@ -145,20 +145,36 @@ class ApiClient {
 
   Future<void> clearSession() async {
     _sessionCookie = null;
-    await _storage.delete(key: _sessionKey);
     // Drop any requests still in flight under the old session so a request
     // the next signed-in user makes for the same path+query can never join
     // (and be resolved by) a stale in-flight future started by the previous
     // account. The dropped requests themselves still complete for whoever
     // originally awaited them; they just stop being shared.
     _inFlightGets.clear();
+
+    Object? firstError;
+    StackTrace? firstStackTrace;
+    Future<void> attemptCleanup(Future<void> Function() cleanup) async {
+      try {
+        await cleanup();
+      } catch (error, stackTrace) {
+        firstError ??= error;
+        firstStackTrace ??= stackTrace;
+      }
+    }
+
+    await attemptCleanup(() => _storage.delete(key: _sessionKey));
     // Cached responses belong to the signed-out account; drop them so the
     // next sign-in never briefly shows stale data from a previous user.
-    await CacheService.clearAll();
+    await attemptCleanup(CacheService.clearAll);
     // Same for cached images — the on-disk image cache is keyed only by URL,
     // so without clearing it the next account could load a previous user's
     // authenticated photos straight from disk.
-    await ImageCacheService.clearAll();
+    await attemptCleanup(ImageCacheService.clearAll);
+
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError!, firstStackTrace!);
+    }
   }
 
   /// Test-only: swaps in a pre-configured [Dio] (e.g. one wired to a fake

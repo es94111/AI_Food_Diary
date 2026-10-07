@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/models.dart';
 import '../theme/app_theme.dart';
+import '../services/account_session_cleanup.dart';
 import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../services/google_auth.dart';
@@ -375,18 +376,18 @@ class _DashboardScreenState extends State<DashboardScreen>
   Future<void> _clearAccountSession({
     required bool revokeOnServer,
     bool clearHealthToken = false,
-  }) async {
-    // Never carry an in-flight or completed draft across account sessions.
-    await _analysis.cancel();
-    HealthAutoSync.instance.deactivate();
-    await GoogleAuth.signOut();
-    if (revokeOnServer) {
-      await AuthService.logout();
-    } else {
-      await ApiClient.instance.clearSession();
-    }
-    if (clearHealthToken) await HealthService.clearToken();
-    await HomeWidgetService.clearCalorieProgress();
+  }) {
+    return AccountSessionCleanup.run(
+      cancelAnalysis: _analysis.cancel,
+      deactivateHealthSync: HealthAutoSync.instance.deactivate,
+      signOutGoogle: GoogleAuth.signOut,
+      revokeOnServer: AuthService.logout,
+      clearLocalSession: ApiClient.instance.clearSession,
+      clearHealthToken: HealthService.clearToken,
+      clearHomeWidget: HomeWidgetService.clearCalorieProgress,
+      revokeServerSession: revokeOnServer,
+      clearHealthTokenOnDelete: clearHealthToken,
+    );
   }
 
   void _navigateToLogin() {

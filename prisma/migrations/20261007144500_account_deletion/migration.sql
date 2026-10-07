@@ -29,6 +29,14 @@ BEGIN
       IS NOT DISTINCT FROM
         (to_jsonb(OLD) - ARRAY['userId', 'restoredByUserId'])
     AND (
+      NEW."userId" IS NOT DISTINCT FROM OLD."userId"
+      OR (OLD."userId" IS NOT NULL AND NEW."userId" IS NULL)
+    )
+    AND (
+      NEW."restoredByUserId" IS NOT DISTINCT FROM OLD."restoredByUserId"
+      OR (OLD."restoredByUserId" IS NOT NULL AND NEW."restoredByUserId" IS NULL)
+    )
+    AND (
       (OLD."userId" IS NOT NULL AND NEW."userId" IS NULL)
       OR (OLD."restoredByUserId" IS NOT NULL AND NEW."restoredByUserId" IS NULL)
     )

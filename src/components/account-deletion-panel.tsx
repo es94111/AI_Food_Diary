@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { clearDeletedAccountPwaState } from "@/lib/account-deletion-client";
+import { setPwaLogoutInProgress } from "@/lib/pwa-storage";
 
 export function AccountDeletionPanel() {
   const [confirmation, setConfirmation] = useState("");
@@ -13,6 +15,7 @@ export function AccountDeletionPanel() {
   async function deleteAccount() {
     setPending(true);
     setError(null);
+    setPwaLogoutInProgress(true);
     try {
       const response = await fetch("/api/account", {
         method: "DELETE",
@@ -24,6 +27,7 @@ export function AccountDeletionPanel() {
         photoCleanup?: unknown;
       };
       if (!response.ok) {
+        setPwaLogoutInProgress(false);
         setError(
           typeof body.error === "string"
             ? body.error
@@ -31,10 +35,12 @@ export function AccountDeletionPanel() {
         );
         return;
       }
+      await clearDeletedAccountPwaState();
       setPhotoCleanupPending(body.photoCleanup === "pending");
       setDeleted(true);
     } catch {
-      setError("無法連線至伺服器，請確認網路後再試。若帳號已刪除，既有登入也已失效。");
+      await clearDeletedAccountPwaState();
+      setError("無法確認刪除結果；為保護隱私，已清除本機草稿與快取。若帳號已刪除，既有登入也已失效。");
     } finally {
       setPending(false);
     }
@@ -70,6 +76,15 @@ export function AccountDeletionPanel() {
         為維持不可變稽核歷史，AI 操作紀錄會保留（包含加密的前後狀態），但會解除與你的帳號及還原者身分連結。
         若照片儲存服務暫時無法使用，帳號仍會刪除，照片清理會保留待重試工作。
       </p>
+      <p className="mt-4 text-sm font-semibold text-stone-700">
+        刪除前請先下載你想保留的資料副本。
+      </p>
+      <a
+        href="/api/me/data/export"
+        className="mt-2 inline-block rounded-full bg-white px-5 py-3 font-semibold text-stone-800 shadow-sm"
+      >
+        下載我的資料
+      </a>
       <label className="mt-5 block text-sm font-semibold text-stone-700" htmlFor="account-deletion-confirmation">
         輸入 DELETE 以確認
       </label>

@@ -66,6 +66,9 @@ AI provider。**當 `APP_PUBLIC_URL` 未設定**時，無法提供對外可達�
 
 `DELETE /api/account` 僅允許已登入使用者刪除自己的帳號，並要求 JSON body 中的
 `confirmation` **精確等於 `DELETE`**。設定頁要求使用者先輸入這段文字；沒有冷靜期，提交後即永久刪除。
+刪除區會直接提供「下載我的資料」連結（`/api/me/data/export`），建議先下載需要保留的個人副本。
+Web 成功回應後清除應用程式命名空間下的 PWA 本機草稿／狀態與應用程式快取，不影響其他網站的資料；
+Android 會清除安全儲存中的 session／Health Connect token、API／照片快取與桌面小工具資料。
 
 同一個 PostgreSQL 交易會先遞增 `tokenVersion`、建立照片清理 outbox 工作，解除該使用者所有
 `AiAuditEvent.userId`／`restoredByUserId` 關聯，最後刪除 `User`。資料列範圍包括：

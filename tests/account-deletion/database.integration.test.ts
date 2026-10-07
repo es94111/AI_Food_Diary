@@ -1,23 +1,15 @@
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import { after, before, mock, test } from "node:test";
+import { isDisposableTestDatabaseUrl } from "../helpers/disposable-test-database";
 
 type PrismaClient = (typeof import("../../src/lib/db"))["prisma"];
 type DeleteAccount = (typeof import("../../src/lib/account-deletion"))["deleteAccount"];
 type VerifyMcpAccessToken = (typeof import("../../src/lib/mcp/oauth"))["verifyMcpAccessToken"];
 type McpRuntimeConfig = import("../../src/lib/mcp/config").McpRuntimeConfig;
 
-const databaseUrl = process.env.FOOD_TEST_DATABASE_URL ?? "";
-let usable = false;
-try {
-  const parsed = new URL(databaseUrl);
-  usable =
-    ["postgres:", "postgresql:"].includes(parsed.protocol) &&
-    ["127.0.0.1", "localhost"].includes(parsed.hostname) &&
-    /_test$/u.test(parsed.pathname);
-} catch {
-  // No disposable local database is configured.
-}
+const databaseUrl = process.env.FOOD_TEST_DATABASE_URL;
+const usable = isDisposableTestDatabaseUrl(databaseUrl);
 const skip = usable ? false : "set FOOD_TEST_DATABASE_URL to a local *_test database";
 
 let prisma: PrismaClient | null = null;
@@ -26,10 +18,12 @@ let verifyMcpAccessToken: VerifyMcpAccessToken | null = null;
 let mcpConfig: McpRuntimeConfig | null = null;
 let accessToken = "";
 let userId = "";
+let otherUserId = "";
 let auditEventId = "";
+let otherAuditEventId = "";
 
 before(async () => {
-  if (!usable) return;
+  if (!usable || !databaseUrl) return;
   process.env.DATABASE_URL = databaseUrl;
   process.env.MCP_OAUTH_SECRET = Buffer.alloc(32, 7).toString("base64");
   mock.module("../../src/lib/storage", {
@@ -53,6 +47,14 @@ before(async () => {
     },
   });
   userId = user.id;
+  const otherUser = await prisma.user.create({
+    data: {
+      email: `account-deletion-other-${randomBytes(6).toString("hex")}@route.test`,
+      passwordHash: "unused-test-hash",
+      name: "Other account deletion test",
+    },
+  });
+  otherUserId = otherUser.id;
   const config: McpRuntimeConfig = {
     publicUrl: new URL("https://food.example.test/mcp"),
     issuer: new URL("https://food.example.test"),
@@ -157,10 +159,25 @@ before(async () => {
     },
   });
   auditEventId = event.id;
+  const otherEvent = await prisma.aiAuditEvent.create({
+    data: {
+      userId: otherUserId,
+      actorType: "human",
+      actorSource: "test",
+      action: "AI_READ_SUCCEEDED",
+      resourceType: "MEAL",
+      requestId: randomUUID(),
+      correlationId: randomUUID(),
+      status: "succeeded",
+    },
+  });
+  otherAuditEventId = otherEvent.id;
 });
 
 after(async () => {
-  if (usable && prisma) await prisma.$disconnect();
+  if (!usable || !prisma) return;
+  if (otherUserId) await prisma.user.deleteMany({ where: { id: otherUserId } });
+  await prisma.$disconnect();
 });
 
 test("PostgreSQL cascades account data, revokes MCP tokens, and retains audit history unlinked", { skip }, async () => {
@@ -211,4 +228,17 @@ test("PostgreSQL cascades account data, revokes MCP tokens, and retains audit hi
   await assert.rejects(
     db.aiAuditEvent.delete({ where: { id: auditEventId } }),
   );
+
+  await assert.rejects(
+    db.aiAuditEvent.update({
+      where: { id: otherAuditEventId },
+      data: { userId: null, restoredByUserId: otherUserId },
+    }),
+    /AiAuditEvent is append-only/,
+  );
+  const unchangedOtherEvent = await db.aiAuditEvent.findUnique({
+    where: { id: otherAuditEventId },
+  });
+  assert.equal(unchangedOtherEvent?.userId, otherUserId);
+  assert.equal(unchangedOtherEvent?.restoredByUserId, null);
 });
