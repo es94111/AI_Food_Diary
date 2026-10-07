@@ -7,6 +7,8 @@ import { NextMealAdvice } from "@/components/next-meal-advice";
 import { withImageWidth } from "@/lib/image-url";
 import { mealPhotoDataUrlsForSave } from "@/lib/meal-capture";
 import { localDateTimeToUtc, type TzSpec } from "@/lib/dates";
+import { loadMealDraft, removeMealDraft, saveMealDraft, type MealDraft, type MealDraftItem } from "@/lib/meal-draft";
+import { isPwaLogoutInProgress, setPwaLogoutInProgress } from "@/lib/pwa-storage";
 
 type ManualItem = {
   id: string;
@@ -137,12 +139,14 @@ const MAX_IMAGES = 5;
 const MAX_IMAGE_BYTES = 6 * 1024 * 1024;
 
 export function MealCaptureForm({
+  userId,
   initialNextMealAdvice = "",
   initialDate,
   initialTime,
   timeZone,
   timeZoneSpec
 }: {
+  userId: string;
   initialNextMealAdvice?: string;
   initialDate: string;
   initialTime: string;
@@ -181,6 +185,9 @@ export function MealCaptureForm({
   const [showConfirm, setShowConfirm] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [mealType, setMealType] = useState("LUNCH");
+  const [draftHydrated, setDraftHydrated] = useState(false);
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [draftSaveError, setDraftSaveError] = useState(false);
   const [savedFoodConflict, setSavedFoodConflict] = useState<SavedFoodConflictPrompt | null>(null);
   const [brandInput, setBrandInput] = useState("");
   const [brandItemNameInput, setBrandItemNameInput] = useState("");
@@ -212,6 +219,59 @@ export function MealCaptureForm({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Keep the form's local timestamp synchronized with the selected dashboard date/time.
     setEatenAtLocal(`${initialDate}T${initialTime}`);
   }, [initialDate, initialTime]);
+
+  useEffect(() => {
+    setPwaLogoutInProgress(false);
+    try {
+      const draft = loadMealDraft(window.localStorage, userId);
+      if (draft) {
+        setMode(draft.mode);
+        setMealType(draft.mealType);
+        setEatenAtLocal(draft.eatenAtLocal);
+        setDescription(draft.description);
+        setPreciseMode(draft.preciseMode);
+        setManualItems(itemsFromDraft(draft.manualItems));
+        setConfirmItems(itemsFromDraft(draft.confirmItems));
+        setConfirmMealType(draft.confirmMealType);
+        setConfirmEatenAt(draft.confirmEatenAt);
+        setConfirmDate(draft.confirmDate);
+        setShowConfirm(draft.showConfirm || draft.confirmItems.length > 0);
+        setDraftRestored(true);
+      }
+    } catch {
+      setDraftSaveError(true);
+    }
+    setDraftHydrated(true);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!draftHydrated || isPwaLogoutInProgress()) return;
+    const draft: MealDraft = {
+      mode,
+      mealType,
+      eatenAtLocal,
+      description,
+      preciseMode,
+      manualItems: itemsForDraft(manualItems),
+      confirmItems: itemsForDraft(confirmItems),
+      confirmMealType,
+      confirmEatenAt,
+      confirmDate,
+      showConfirm
+    };
+    const hasContent = description.trim().length > 0 ||
+      manualItems.some(hasDraftItemContent) || confirmItems.some(hasDraftItemContent);
+    try {
+      if (hasContent) saveMealDraft(window.localStorage, userId, draft);
+      else {
+        removeMealDraft(window.localStorage, userId);
+        setDraftRestored(false);
+      }
+      setDraftSaveError(false);
+    } catch {
+      setDraftSaveError(true);
+    }
+  }, [userId, draftHydrated, mode, mealType, eatenAtLocal, description, preciseMode, manualItems, confirmItems, confirmMealType, confirmEatenAt, confirmDate, showConfirm]);
 
   // Validates a batch of picked/dropped files against the per-image size limit and
   // the overall count limit, returning only the data URLs that fit (and surfacing a
@@ -388,6 +448,12 @@ export function MealCaptureForm({
         setError(data.error ?? "儲存失敗，請稍後再試");
         return;
       }
+      try {
+        removeMealDraft(window.localStorage, userId);
+        setDraftSaveError(false);
+      } catch {
+        setDraftSaveError(true);
+      }
       setPreviews([]);
       setPickedFoodIds([]);
       setPickedBundleIds([]);
@@ -399,6 +465,7 @@ export function MealCaptureForm({
       setFoodSearch("");
       setConfirmItems([]);
       setShowConfirm(false);
+      setDraftRestored(false);
       await loadNextMealAdvice();
       const currentUrl = new URL(window.location.href);
       if (currentUrl.searchParams.get("date") !== confirmDate || currentUrl.searchParams.get("view") === "week") {
@@ -746,6 +813,14 @@ export function MealCaptureForm({
     <form id="capture" onSubmit={onSubmit} className="capture-form">
       <h2 className="text-2xl font-black">新增餐點</h2>
       <p className="mt-2 text-sm text-stone-600">選擇一種方式記錄餐點，AI 會先估算營養數據供你確認。</p>
+      <div className="meal-draft-status" role="status">
+        <p>文字草稿會自動保存在此瀏覽器 7 天，不會同步到雲端。照片不會寫入草稿，重新載入後需重新選取。</p>
+        {draftRestored ? <div>
+          <p className="mt-2 font-bold">已恢復此帳號在這台裝置上的未完成草稿。</p>
+          <button onClick={clearDraft} type="button">清除本機草稿</button>
+        </div> : null}
+        {draftSaveError ? <p className="mt-2 font-semibold text-red-700">無法保存本機草稿；請勿關閉此頁，以免遺失未完成內容。</p> : null}
+      </div>
       <select className="mt-5 w-full rounded-2xl border border-stone-200 px-4 py-3" name="mealType" value={mealType} onChange={(e) => setMealType(e.target.value)}>
         <option value="BREAKFAST">早餐</option>
         <option value="LUNCH">午餐</option>
@@ -1075,7 +1150,7 @@ export function MealCaptureForm({
           <div className="flex items-start justify-between gap-3 border-b border-stone-200 px-4 py-4 sm:px-6">
             <div>
               <h2 className="text-2xl font-black">確認 AI 分析品項</h2>
-              <p className="mt-1 text-sm text-stone-500">請確認食物是否正確，可先修正、刪除或新增後再儲存。</p>
+              <p className="mt-1 text-sm text-stone-500">請確認食物是否正確，可先修正、刪除或新增後再儲存。{draftRestored && mode === "photo" && previews.length === 0 ? " 本機草稿不含照片，請重新選取後再儲存。" : ""}</p>
             </div>
             <button className="shrink-0 rounded-full bg-stone-100 px-3 py-1 font-semibold" onClick={() => setShowConfirm(false)} type="button">關閉</button>
           </div>
@@ -1115,9 +1190,55 @@ export function MealCaptureForm({
     </form>
   );
 
+  function clearDraft() {
+    try {
+      removeMealDraft(window.localStorage, userId);
+      setDraftSaveError(false);
+    } catch {
+      setDraftSaveError(true);
+      return;
+    }
+    setDraftRestored(false);
+    setMode("photo");
+    setPreviews([]);
+    setPreciseMode(false);
+    setDescription("");
+    setManualItems([emptyManualItem()]);
+    setConfirmItems([]);
+    setConfirmMealType("LUNCH");
+    setConfirmEatenAt("");
+    setConfirmDate(initialDate);
+    setEatenAtLocal(`${initialDate}T${initialTime}`);
+    setShowConfirm(false);
+    setPickedFoodIds([]);
+    setPickedBundleIds([]);
+    setBarcode("");
+  }
+
   function updateManualItem(id: string, field: keyof Omit<ManualItem, "id">, value: string) {
     setManualItems((items) => items.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   }
+}
+
+function itemsForDraft(items: ManualItem[]): MealDraftItem[] {
+  return items.map((item) => ({
+    name: item.name,
+    estimatedAmount: item.estimatedAmount,
+    calories: item.calories,
+    protein: item.protein,
+    fat: item.fat,
+    carbs: item.carbs,
+    aiRating: item.aiRating
+  }));
+}
+
+function itemsFromDraft(items: MealDraftItem[]): ManualItem[] {
+  return items.map((item) => ({ ...item, id: crypto.randomUUID() }));
+}
+
+function hasDraftItemContent(item: ManualItem) {
+  return [item.name, item.estimatedAmount, item.calories, item.protein, item.fat, item.carbs]
+    .some((value) => value.trim().length > 0);
 }
 
 function itemsForPayload(items: ManualItem[]) {

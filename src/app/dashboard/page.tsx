@@ -240,6 +240,8 @@ export default async function FoodPage({ searchParams }: { searchParams: Promise
 
           <aside className="dashboard-side-stack">
             <MealCaptureForm
+              key={user.id}
+              userId={user.id}
               initialNextMealAdvice={isTodayView ? todayRecommendation?.advice ?? "" : ""}
               initialDate={view === "day" ? selectedDateStr : todayStrValue}
               initialTime={timeStrInTz(tz)}
