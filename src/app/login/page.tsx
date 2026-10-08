@@ -1,9 +1,12 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { BrandMark } from "@/components/brand-mark";
 import { getCurrentUser } from "@/lib/auth";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
+import { OpenInSystemBrowser } from "@/components/open-in-system-browser";
+import { isEmbeddedWebViewUserAgent } from "@/lib/embedded-browser";
 import { TURNSTILE_SITE_KEY } from "@/lib/turnstile-config";
 
 // Only these in-app destinations may be a post-login target: the MCP consent page and the one-click
@@ -31,6 +34,12 @@ export default async function LoginPage({
   const user = await getCurrentUser();
   if (user) redirect(nextPath);
 
+  const headerList = await headers();
+  const embeddedWebView = isEmbeddedWebViewUserAgent(headerList.get("user-agent"));
+  const host = headerList.get("x-forwarded-host") ?? headerList.get("host") ?? "";
+  const proto = headerList.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";
+  const absoluteLoginUrl = `${proto}://${host}/login?next=${encodeURIComponent(nextPath)}`;
+
   return (
     <div className="site-auth">
       <header className="site-header site-auth-header site-wrap">
@@ -56,11 +65,15 @@ export default async function LoginPage({
           <h2 id="site-auth-title">登入或註冊</h2>
           <p>使用 Google 帳號繼續。首次登入時會自動建立帳號，之後就能接著記錄。</p>
           <div className="site-auth-signin">
-            <GoogleSignInButton
-              clientId={process.env.GOOGLE_CLIENT_ID ?? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID}
-              turnstileSiteKey={TURNSTILE_SITE_KEY}
-              nextPath={nextPath}
-            />
+            {embeddedWebView ? (
+              <OpenInSystemBrowser url={absoluteLoginUrl} />
+            ) : (
+              <GoogleSignInButton
+                clientId={process.env.GOOGLE_CLIENT_ID ?? process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+                turnstileSiteKey={TURNSTILE_SITE_KEY}
+                nextPath={nextPath}
+              />
+            )}
           </div>
         </section>
       </main>
