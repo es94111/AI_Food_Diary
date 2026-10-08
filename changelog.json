@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.87.0",
+  "currentVersion": "0.87.1",
   "releases": [
+    {
+      "version": "0.87.1",
+      "date": "2026-10-08",
+      "title": "修復 ChatGPT 手機版連接器登入問題",
+      "type": "fixed",
+      "changes": [
+        {
+          "tag": "修復",
+          "text": "修復在 ChatGPT 手機 App 中新增 MCP 連接器時，登入／允許連結畫面卡住或打不開的問題。原因是 Google 登入無法在 App 內建瀏覽器中執行；現在偵測到這種環境時會提示改用系統瀏覽器（Safari / Chrome）開啟登入連結完成授權，不影響 Web 與本專案 Android App 原有的登入方式。"
+        }
+      ]
+    },
     {
       "version": "0.87.0",
       "date": "2026-10-08",
