@@ -67,6 +67,20 @@ per-tool least-privilege scopes. Existing tools use `meals:read` /
 stable ChatGPT CIMD client metadata URL and connector redirect are enabled by
 default and validated server-side.
 
+### Mobile app connector login
+
+ChatGPT's mobile apps render the `/oauth/authorize` -> `/login` hop in an
+embedded in-app browser. Google Identity Services ("Sign in with Google")
+refuses to run there and fails with `disallowed_useragent`, which otherwise
+leaves mobile users stuck on the login screen while the web client connects
+fine (the web client hits the same login page in a real browser tab).
+`src/lib/embedded-browser.ts` detects known in-app-browser user agents, and
+`/login` swaps the Google button for an "open in your browser" prompt
+(`src/components/open-in-system-browser.tsx`) with a copyable link so the
+user can finish login outside the embedded view and return to the connector
+flow. This project's own Flutter app is unaffected: it signs in with the
+native `google_sign_in` SDK and never loads this web login page.
+
 Set at minimum in production:
 
 ```dotenv

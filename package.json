@@ -25,6 +25,7 @@
     "admin:data:verify:roundtrip": "tsx scripts/admin-data-export-import-check.ts roundtrip",
     "admin:data:verify:wipe": "tsx scripts/admin-data-export-import-check.ts wipe",
     "test:mcp": "node --conditions=react-server --import tsx --test tests/mcp/*.test.ts",
+    "test:auth": "node --conditions=react-server --import tsx --test tests/auth/*.test.ts",
     "test:storage": "node --conditions=react-server --import tsx --test tests/storage/*.test.ts",
     "test:data-export": "node --conditions=react-server --import tsx --experimental-test-module-mocks --test tests/data-export/*.test.ts tests/nouriledger/export.integration.test.ts",
     "test:pwa": "node --conditions=react-server --import tsx --test tests/pwa/*.test.ts",
