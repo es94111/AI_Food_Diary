@@ -1,6 +1,18 @@
 {
-  "currentVersion": "0.87.1",
+  "currentVersion": "0.87.2",
   "releases": [
+    {
+      "version": "0.87.2",
+      "date": "2026-10-09",
+      "title": "修復 Next.js 安全性漏洞",
+      "type": "fixed",
+      "changes": [
+        {
+          "tag": "修復",
+          "text": "升級 Next.js 至 16.3.8，修復多項安全性漏洞：Image Optimization 伺服器端請求偽造(SSRF)、SSG/ISR 頁面快取污染（可能導致跨使用者內容混淆與服務中斷）、App Router metadata 圖片路由繞過 dynamicParams 造成的資訊洩漏、Draft Mode 內容遭快取洩漏，以及開發伺服器 MCP 端點資訊洩漏。不影響現有功能與使用方式。"
+        }
+      ]
+    },
     {
       "version": "0.87.1",
       "date": "2026-10-08",
