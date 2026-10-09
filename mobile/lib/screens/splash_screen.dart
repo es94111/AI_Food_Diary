@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/background_analysis.dart';
 import '../services/meal_analysis_controller.dart';
+import '../services/local_reminder_service.dart';
 import '../services/update_service.dart';
 import 'dashboard_screen.dart';
 import 'login_screen.dart';
@@ -101,6 +102,9 @@ class _SplashScreenState extends State<SplashScreen>
     // cannot prevent the remaining services from starting.
     try {
       await BackgroundAnalysis.init();
+    } catch (_) {}
+    try {
+      await LocalReminderService.instance.init();
     } catch (_) {}
     try {
       await MealAnalysisController.instance.init();

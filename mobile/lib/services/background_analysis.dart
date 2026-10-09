@@ -19,6 +19,7 @@ import 'api_client.dart';
 /// Android only — iOS falls back to the in-app foreground analysis.
 class BackgroundAnalysis {
   static const taskName = 'ai_food_meal_analysis';
+  static const _legacyDailyGoalTaskName = 'ai_food_daily_goal_summary';
   static const _channelId = 'meal_analysis';
   static const _channelName = '餐點 AI 分析';
   static const _progressNotifId = 1900;
@@ -33,6 +34,7 @@ class BackgroundAnalysis {
   static Future<void> init() async {
     if (!supported) return;
     await Workmanager().initialize(analysisCallbackDispatcher);
+    await _retireLegacyDailyGoalTask();
     await _ensureNotifications();
     await FlutterLocalNotificationsPlugin()
         .resolvePlatformSpecificImplementation<
@@ -179,6 +181,20 @@ class BackgroundAnalysis {
         );
   }
 
+  /// Removes any queued daily-goal task left by an earlier build.
+  ///
+  /// Only ever registered by an unmerged draft of this branch; this is
+  /// best-effort database cleanup. Even if cancellation fails, the task can do
+  /// nothing: [analysisCallbackDispatcher] rejects the task name before reading
+  /// (or acting on) any stored input.
+  static Future<void> _retireLegacyDailyGoalTask() async {
+    try {
+      await Workmanager().cancelByUniqueName(_legacyDailyGoalTaskName);
+    } catch (_) {
+      // The dispatcher ignores the legacy task name regardless.
+    }
+  }
+
   static Future<void> _showProgressNotification() async {
     await _ensureNotifications();
     await FlutterLocalNotificationsPlugin().show(
@@ -233,13 +249,24 @@ class BackgroundAnalysis {
   }
 }
 
+/// Whether [task] is the only task this dispatcher is allowed to run.
+///
+/// Any other task name — including queued work left by an earlier build — is
+/// ignored before its `inputData` is read, so a stale credential for a
+/// signed-out account can never be used.
+@visibleForTesting
+bool isMealAnalysisTask(String task) => task == BackgroundAnalysis.taskName;
+
 /// WorkManager background-isolate entry point. Runs the analysis HTTP call with
 /// raw Dio (pure Dart, no platform plugins needed), writes the result to the
 /// agreed file, and fires the completion notification.
 @pragma('vm:entry-point')
 void analysisCallbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    if (task != BackgroundAnalysis.taskName || inputData == null) {
+    if (!isMealAnalysisTask(task)) {
+      return true;
+    }
+    if (inputData == null) {
       return true;
     }
     final requestPath = inputData['requestPath'] as String?;
@@ -257,9 +284,9 @@ void analysisCallbackDispatcher() {
     }
 
     try {
-      final req =
-          jsonDecode(await File(requestPath).readAsString())
-              as Map<String, dynamic>;
+      final req = jsonDecode(
+        await File(requestPath).readAsString(),
+      ) as Map<String, dynamic>;
       final mode = req['mode'] as String;
       final body = req['body'] as Map<String, dynamic>;
       final path = switch (mode) {

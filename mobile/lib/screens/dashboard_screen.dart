@@ -13,6 +13,7 @@ import '../services/health_service.dart';
 import '../services/home_widget_service.dart';
 import '../services/meal_analysis_controller.dart';
 import '../services/meal_service.dart';
+import '../services/local_reminder_service.dart';
 import '../services/device_timezone_service.dart';
 import '../services/recording_streak_service.dart';
 import '../services/update_service.dart';
@@ -24,6 +25,7 @@ import '../widgets/daily_summary_popup.dart';
 import '../widgets/markdown_text.dart';
 import '../widgets/meal_capture_form.dart';
 import '../widgets/meal_list.dart';
+import '../widgets/local_reminders_card.dart';
 import '../widgets/water_card.dart';
 import '../widgets/profile_form.dart';
 import '../widgets/recording_streak_card.dart';
@@ -110,6 +112,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _dashboardReady) {
+      unawaited(LocalReminderService.instance.reconcile().catchError((_) {}));
       _queueRecentHealthTotals();
       unawaited(_loadRecordingStreak());
       unawaited(_maybeShowYesterdaySummary());
@@ -378,7 +381,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     bool clearHealthToken = false,
   }) {
     return AccountSessionCleanup.run(
-      cancelAnalysis: _analysis.cancel,
+      cancelAnalysis: () async {
+        await _analysis.cancel();
+        // Reminders are generic device-local copy; cancellation is best effort.
+        try {
+          await LocalReminderService.instance.cancelRemindersOnSignOut();
+        } catch (_) {}
+      },
       deactivateHealthSync: HealthAutoSync.instance.deactivate,
       signOutGoogle: GoogleAuth.signOut,
       revokeOnServer: AuthService.logout,
@@ -1101,6 +1110,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         _accountCard(),
         const SizedBox(height: 12),
         _bodyDataCard(metabolism),
+        const SizedBox(height: 12),
+        const LocalRemindersCard(),
         const SizedBox(height: 12),
         const AiSettingsCard(),
         const SizedBox(height: 12),
